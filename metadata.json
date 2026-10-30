@@ -1,0 +1,6 @@
+{
+  "name": "Yemen Store",
+  "description": "سوق مركزي رقمي يجمع بين المنتجات المحلية والماركات العالمية مع مساعد ذكي باللهجة اليمنية.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": []
+}

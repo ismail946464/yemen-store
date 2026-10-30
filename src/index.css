@@ -1,0 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=Cairo:wght@400;600;700&family=Almarai:wght@400;700&family=El+Messiri:wght@400;600;700&family=Changa:wght@400;600;700&family=Amiri:wght@400;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-tajawal: "Tajawal", sans-serif;
+  --font-cairo: "Cairo", sans-serif;
+  --font-almarai: "Almarai", sans-serif;
+  --font-messiri: "El Messiri", sans-serif;
+  --font-changa: "Changa", sans-serif;
+  --font-amiri: "Amiri", serif;
+}
+
+@layer utilities {
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+body {
+  font-family: 'Tajawal', system-ui, -apple-system, sans-serif;
+}
