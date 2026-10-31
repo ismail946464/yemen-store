@@ -43,6 +43,7 @@ interface AppContextType {
   getThemeClasses: (type: 'bg' | 'text' | 'hover' | 'border' | 'bgLight' | 'textDark') => string;
   isDarkMode: boolean;
   toggleDarkMode: () => void;
+  getAuthHeaders: () => Promise<Record<string, string>>;
 }
 
 export interface CartItem {
@@ -555,10 +556,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, code })
       });
-      const data = await res.json();
+      
+      const contentType = res.headers.get('content-type') || '';
+      let data: any;
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        toast.error('تعذر معالجة استجابة الخادم. يرجى المحاولة لاحقاً.');
+        return false;
+      }
+
       if (!data.success) {
         toast.error(data.message || 'فشل التحقق من الرمز');
         return false;
+      }
+      if (data.sessionToken) {
+        localStorage.setItem('yemen_store_session_token', data.sessionToken);
       }
       const sessionUser: AppUser = {
         uid: data.user.uid,
@@ -572,13 +585,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setUserData(data.user);
       return true;
     } catch (err: any) {
-      toast.error('تعذر الاتصال بالخادم: ' + err.message);
+      toast.error('تعذر الاتصال بالخادم: ' + (err?.message || 'خطأ غير معروف'));
       return false;
     }
   };
 
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    if (auth.currentUser) {
+      try {
+        const idToken = await auth.currentUser.getIdToken();
+        if (idToken) return { Authorization: `Bearer ${idToken}` };
+      } catch {}
+    }
+    const sessionToken = localStorage.getItem('yemen_store_session_token');
+    if (sessionToken) {
+      return { Authorization: `Bearer ${sessionToken}` };
+    }
+    return {};
+  };
+
   const logout = async () => {
     localStorage.removeItem('yemen_store_session');
+    localStorage.removeItem('yemen_store_session_token');
     setUser(null);
     setUserData(null);
     try {
@@ -671,7 +699,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     globalStats, 
     getThemeClasses,
     isDarkMode,
-    toggleDarkMode
+    toggleDarkMode,
+    getAuthHeaders
   }), [
     user, 
     userData, 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mail, ArrowRight, RefreshCw, X, CheckCircle2, AlertCircle, Copy, Check } from 'lucide-react';
+import { Mail, ArrowRight, RefreshCw, X, CheckCircle2 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import toast from 'react-hot-toast';
 
@@ -18,8 +18,6 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
-  const [previewCode, setPreviewCode] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -68,7 +66,16 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase() })
       });
-      const data = await res.json();
+      
+      const contentType = res.headers.get('content-type') || '';
+      let data: any;
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        toast.error('تعذر معالجة استجابة الخادم. يرجى المحاولة لاحقاً.');
+        setLoading(false);
+        return;
+      }
 
       if (!data.success) {
         toast.error(data.message || 'فشل إرسال رمز التحقق');
@@ -76,15 +83,12 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
         return;
       }
 
-      toast.success('تم إرسال رمز التحقق بنجاح!');
-      if (data.codePreview) {
-        setPreviewCode(data.codePreview);
-      }
+      toast.success('تم إرسال رمز التحقق بنجاح إلى بريدك الإلكتروني!');
       setStep('otp');
       setResendCooldown(60);
       setOtpDigits(['', '', '', '', '', '']);
     } catch (err: any) {
-      toast.error('تعذر الاتصال بالخادم: ' + err.message);
+      toast.error('تعذر الاتصال بالخادم: ' + (err?.message || 'خطأ غير معروف'));
     } finally {
       setLoading(false);
     }
@@ -155,21 +159,7 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
     }
   };
 
-  const applyPreviewCode = () => {
-    if (previewCode && previewCode.length === 6) {
-      setOtpDigits(previewCode.split(''));
-      handleVerifyOtp(previewCode);
-    }
-  };
 
-  const copyPreviewCode = () => {
-    if (previewCode) {
-      navigator.clipboard.writeText(previewCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      toast.success('تم نسخ الرمز');
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" dir="rtl">
@@ -281,35 +271,7 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
                 </p>
               </div>
 
-              {/* Instant preview code banner for preview environment */}
-              {previewCode && (
-                <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-2xl p-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                    <div className="text-right">
-                      <span className="text-[11px] text-amber-800 dark:text-amber-300 font-medium block">رمز التحقق المُولد:</span>
-                      <span className="font-mono font-black text-amber-900 dark:text-amber-200 text-lg tracking-widest">{previewCode}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={applyPreviewCode}
-                      className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition"
-                    >
-                      تعبئة تلقائية
-                    </button>
-                    <button
-                      type="button"
-                      onClick={copyPreviewCode}
-                      className="p-1.5 bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 rounded-lg text-xs transition"
-                      title="نسخ الرمز"
-                    >
-                      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                </div>
-              )}
+
 
               {/* 6 Digit Input Boxes */}
               <div className="flex justify-center gap-2 sm:gap-3" dir="ltr" onPaste={handlePaste}>
@@ -358,7 +320,6 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
                   type="button"
                   onClick={() => {
                     setStep('email');
-                    setPreviewCode(null);
                   }}
                   className="hover:text-gray-700 dark:hover:text-gray-300 font-medium"
                 >

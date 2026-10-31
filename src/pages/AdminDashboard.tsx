@@ -202,7 +202,7 @@ export default function AdminDashboard() {
   const { 
     isAdmin, isStore, loading, user, userData, 
     settings, getThemeClasses, globalStats,
-    isDarkMode, toggleDarkMode
+    isDarkMode, toggleDarkMode, getAuthHeaders
   } = useAppContext();
   
   const navigate = useNavigate();
@@ -598,14 +598,20 @@ export default function AdminDashboard() {
     setIsCleaningUp(true);
     const toastId = toast.loading('جاري تنفيذ عملية تنظيف السيرفر...');
     try {
-      const response = await fetch('/api/admin/cleanup-products');
+      const authHeaders = await getAuthHeaders();
+      const response = await fetch('/api/admin/cleanup-products', {
+        headers: {
+          ...authHeaders
+        }
+      });
       if (response.ok) {
         toast.success('تم تنفيذ عملية التنظيف بنجاح. تحقق من سجلات السيرفر.', { id: toastId });
       } else {
-        throw new Error('فشل في الوصول إلى السيرفر');
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'فشل في الوصول إلى السيرفر');
       }
-    } catch (err) {
-      toast.error('خطأ في الاتصال بالسيرفر', { id: toastId });
+    } catch (err: any) {
+      toast.error('خطأ: ' + (err?.message || 'خطأ في الاتصال بالسيرفر'), { id: toastId });
     } finally {
       setIsCleaningUp(false);
     }
@@ -614,9 +620,13 @@ export default function AdminDashboard() {
   const handleSaveOtpSettings = async () => {
     setIsSavingOtpConfig(true);
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/auth/save-smtp-settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...authHeaders
+        },
         body: JSON.stringify({
           otpSenderEmail: otpSenderConfig.senderEmail,
           otpSenderName: otpSenderConfig.senderName,
