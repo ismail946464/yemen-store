@@ -295,6 +295,13 @@ service cloud.firestore {
         && (!('paymentMethod' in data) || (data.paymentMethod is string && data.paymentMethod.size() <= 50))
         && (!('createdAt' in data) || data.createdAt is string)
         && (!('storeId' in data) || (data.storeId is string && data.storeId.size() <= 128))
+        && (!('customerName' in data) || (data.customerName is string && data.customerName.size() <= 200))
+        && (!('customerEmail' in data) || (data.customerEmail is string && data.customerEmail.size() <= 200))
+        && (!('customerPhone' in data) || (data.customerPhone is string && data.customerPhone.size() <= 100))
+        && (!('customerNotes' in data) || (data.customerNotes is string && data.customerNotes.size() <= 2000))
+        && (!('transferReference' in data) || data.transferReference == null || (data.transferReference is string && data.transferReference.size() <= 200))
+        && (!('paymentProof' in data) || data.paymentProof == null || (data.paymentProof is string && data.paymentProof.size() <= 2000000))
+        && (!('selectedWallet' in data) || data.selectedWallet == null || data.selectedWallet is map)
         && (!('location' in data) || (data.location == null || (data.location.keys().hasAll(['lat', 'lng']) && data.location.lat is number && data.location.lng is number)));
     }
 
