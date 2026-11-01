@@ -30,6 +30,8 @@ interface AppContextType {
   login: () => Promise<void> | void;
   loginWithGoogle: () => Promise<void>;
   loginWithOtp: (email: string, code: string) => Promise<boolean>;
+  loginWithPassword: (email: string, password: string) => Promise<boolean>;
+  registerWithStore: (email: string, name: string, phone?: string) => Promise<{ success: boolean; message: string; password?: string }>;
   logout: () => Promise<void>;
   cart: CartItem[];
   addToCart: (product: any) => void;
@@ -590,6 +592,81 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const loginWithPassword = async (email: string, password: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toast.error(data.message || 'فشل تسجيل الدخول');
+        return false;
+      }
+      if (data.sessionToken) {
+        localStorage.setItem('yemen_store_session_token', data.sessionToken);
+      }
+      const sessionUser: AppUser = {
+        uid: data.user.uid,
+        email: data.user.email,
+        displayName: data.user.displayName || data.user.name || data.user.email?.split('@')[0],
+        photoURL: data.user.photoURL || '',
+        role: data.user.role
+      };
+      localStorage.setItem('yemen_store_session', JSON.stringify(sessionUser));
+      setUser(sessionUser);
+      setUserData(data.user);
+      toast.success(data.message || 'تم تسجيل الدخول بنجاح');
+      return true;
+    } catch (err: any) {
+      toast.error('تعذر الاتصال بالخادم: ' + (err?.message || 'خطأ غير معروف'));
+      return false;
+    }
+  };
+
+  const registerWithStore = async (
+    email: string,
+    name: string,
+    phone?: string
+  ): Promise<{ success: boolean; message: string; password?: string }> => {
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name, phone })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toast.error(data.message || 'فشل إنشاء الحساب');
+        return { success: false, message: data.message || 'فشل إنشاء الحساب' };
+      }
+      if (data.sessionToken) {
+        localStorage.setItem('yemen_store_session_token', data.sessionToken);
+      }
+      if (data.user) {
+        const sessionUser: AppUser = {
+          uid: data.user.uid,
+          email: data.user.email,
+          displayName: data.user.displayName || data.user.name || data.user.email?.split('@')[0],
+          photoURL: '',
+          role: data.user.role
+        };
+        localStorage.setItem('yemen_store_session', JSON.stringify(sessionUser));
+        setUser(sessionUser);
+        setUserData(data.user);
+      }
+      return {
+        success: true,
+        message: data.message || 'تم إنشاء الحساب بنجاح',
+        password: data.password
+      };
+    } catch (err: any) {
+      toast.error('تعذر الاتصال بالخادم: ' + (err?.message || 'خطأ غير معروف'));
+      return { success: false, message: err?.message || 'خطأ اتصال' };
+    }
+  };
+
   const getAuthHeaders = async (): Promise<Record<string, string>> => {
     if (auth.currentUser) {
       try {
@@ -688,6 +765,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     login, 
     loginWithGoogle,
     loginWithOtp,
+    loginWithPassword,
+    registerWithStore,
     logout, 
     cart, 
     addToCart, 

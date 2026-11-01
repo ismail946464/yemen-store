@@ -1,14 +1,14 @@
 import crypto from "crypto";
 import nodemailer from "nodemailer";
-import { getFirebaseAdmin } from "./firebaseAdmin";
-import { createSignedSessionToken } from "./authMiddleware";
+import { getFirebaseAdmin } from "./firebaseAdmin.js";
+import { createSignedSessionToken } from "./authMiddleware.js";
 import {
   fetchOtpRecord,
   saveOtpRecord,
   updateOtpAttempts,
   deleteOtpRecord,
   hasServiceAccount
-} from "./otpStorage";
+} from "./otpStorage.js";
 
 export interface SenderConfig {
   senderEmail: string;

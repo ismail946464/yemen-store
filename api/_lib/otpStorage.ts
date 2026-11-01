@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { getFirebaseAdmin } from "./firebaseAdmin";
+import { getFirebaseAdmin } from "./firebaseAdmin.js";
 
 export interface StoredOtpData {
   email: string;

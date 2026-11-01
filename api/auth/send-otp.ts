@@ -1,4 +1,4 @@
-import { processSendOtp } from "../_lib/otpService";
+import { processSendOtp } from "../_lib/otpService.js";
 
 export default async function handler(req: any, res: any) {
   // CORS Headers

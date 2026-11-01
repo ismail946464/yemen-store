@@ -18,7 +18,7 @@ import {
   DollarSign, Package, Eye, ChevronLeft, ChevronRight, 
   Twitter, Instagram, Facebook, Mail, Phone,
   BarChart3, LayoutDashboard, Layout, Sun, Moon, Server, Activity,
-  Upload, Palette, Wallet
+  Upload, Palette, Wallet, KeyRound
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -26,6 +26,7 @@ import toast from 'react-hot-toast';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
 import { aiSystem } from '../services/geminiService';
 import WalletManagement from '../components/WalletManagement';
+import StoreAccountsManagement from '../components/StoreAccountsManagement';
 
 // Types for complex data structures
 interface StoreProfile {
@@ -206,7 +207,7 @@ export default function AdminDashboard() {
   } = useAppContext();
   
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'users' | 'stores' | 'settings' | 'categories' | 'store-profile' | 'wallets' | 'server'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'users' | 'stores' | 'settings' | 'categories' | 'store-profile' | 'wallets' | 'server' | 'store-accounts'>('overview');
   const [isSaving, setIsSaving] = useState(false);
   
   // Data States
@@ -762,6 +763,7 @@ export default function AdminDashboard() {
             {isAdmin && (
               <div className="pt-6 mt-6 border-t border-gray-100 space-y-1">
                 <p className="text-[10px] font-black text-gray-900 px-4 mb-2 uppercase tracking-widest">إدارة النظام</p>
+                <NavItem active={activeTab === 'store-accounts'} onClick={() => handleTabClick('store-accounts')} icon={<KeyRound className="w-5 h-5 text-amber-500"/>} label="الحسابات وكلمات المرور" />
                 <NavItem active={activeTab === 'stores'} onClick={() => handleTabClick('stores')} icon={<Store className="w-5 h-5 text-blue-500"/>} label="إدارة المتاجر والتوثيق" count={viewedTabs['stores'] ? undefined : allStoresList.length} />
                 <NavItem active={activeTab === 'users'} onClick={() => handleTabClick('users')} icon={<Users className="w-5 h-5"/>} label="المستخدمين" count={viewedTabs['users'] ? undefined : users.length} />
                 <NavItem active={activeTab === 'categories'} onClick={() => handleTabClick('categories')} icon={<ListFilter className="w-5 h-5"/>} label="تصنيفات النظام" />
@@ -2419,6 +2421,11 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* TAB: STORE ACCOUNTS */}
+            {activeTab === 'store-accounts' && (
+              <StoreAccountsManagement />
             )}
           </motion.div>
         </AnimatePresence>

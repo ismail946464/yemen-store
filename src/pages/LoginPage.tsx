@@ -1,21 +1,30 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Mail, ArrowRight, RefreshCw, CheckCircle2, Store } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Mail, Lock, User, Phone, Eye, EyeOff, Copy, Check, ArrowRight, Sparkles, ShieldCheck, KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../AppContext';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
-  const { user, loginWithOtp, loginWithGoogle, settings, getThemeClasses, isDarkMode } = useAppContext();
+  const { user, loginWithPassword, registerWithStore, settings, getThemeClasses, isDarkMode } = useAppContext();
   const navigate = useNavigate();
 
-  const [step, setStep] = useState<'email' | 'otp'>('email');
-  const [email, setEmail] = useState('');
-  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
-  const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0);
+  const [activeTab, setActiveTab] = useState<'login' | 'register'>('login');
 
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  // Login form state
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
+
+  // Register form state
+  const [regName, setRegName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPhone, setRegPhone] = useState('');
+  const [regLoading, setRegLoading] = useState(false);
+
+  // Registration success state (shows generated password)
+  const [newlyCreatedPassword, setNewlyCreatedPassword] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // If already logged in, redirect home
   useEffect(() => {
@@ -24,132 +33,69 @@ export default function LoginPage() {
     }
   }, [user, navigate]);
 
-  // Countdown timer for resend
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const interval = setInterval(() => {
-      setResendCooldown(prev => Math.max(0, prev - 1));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [resendCooldown]);
-
-  // Focus first OTP input when switching to OTP step
-  useEffect(() => {
-    if (step === 'otp') {
-      setTimeout(() => {
-        inputRefs.current[0]?.focus();
-      }, 100);
-    }
-  }, [step]);
-
-  const handleSendOtp = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!email || !email.includes('@')) {
-      toast.error('يرجى إدخال بريد إلكتروني صحيح');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const res = await fetch('/api/auth/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase() })
-      });
-
-      const contentType = res.headers.get('content-type') || '';
-      let data: any;
-      if (contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        toast.error('تعذر معالجة استجابة الخادم. يرجى المحاولة لاحقاً.');
-        setLoading(false);
-        return;
-      }
-
-      if (!data.success) {
-        toast.error(data.message || 'فشل إرسال رمز التحقق');
-        setLoading(false);
-        return;
-      }
-
-      toast.success('تم إرسال رمز التحقق بنجاح إلى بريدك الإلكتروني!');
-      setStep('otp');
-      setResendCooldown(60);
-      setOtpDigits(['', '', '', '', '', '']);
-    } catch (err: any) {
-      toast.error('تعذر الاتصال بالخادم: ' + (err?.message || 'خطأ غير معروف'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOtpChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
-
-    const newDigits = [...otpDigits];
-    newDigits[index] = value.slice(-1);
-    setOtpDigits(newDigits);
-
-    // Auto advance
-    if (value && index < 5) {
-      inputRefs.current[index + 1]?.focus();
-    }
-
-    // Auto submit if all 6 digits entered
-    if (newDigits.every(d => d !== '')) {
-      handleVerifyOtp(newDigits.join(''));
-    }
-  };
-
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    }
-  };
-
-  const handlePaste = (e: React.ClipboardEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text').trim();
-    if (/^\d{6}$/.test(pasted)) {
-      const digits = pasted.split('');
-      setOtpDigits(digits);
-      handleVerifyOtp(pasted);
-    }
-  };
+    const email = loginEmail.trim().toLowerCase();
+    const password = loginPassword.trim();
 
-  const handleVerifyOtp = async (codeToVerify?: string) => {
-    const finalCode = codeToVerify || otpDigits.join('');
-    if (finalCode.length !== 6) {
-      toast.error('يرجى إدخال رمز التحقق المكون من 6 أرقام');
+    if (!email || !email.includes('@')) {
+      toast.error('يرجى إدخال بريد إلكتروني صالح');
+      return;
+    }
+    if (!password) {
+      toast.error('يرجى إدخال كلمة المرور الخاصة بحسابك');
       return;
     }
 
-    setLoading(true);
+    setLoginLoading(true);
     try {
-      const success = await loginWithOtp(email.trim().toLowerCase(), finalCode);
+      const success = await loginWithPassword(email, password);
       if (success) {
-        toast.success('تم تسجيل الدخول بنجاح! أهلاً بك');
         navigate('/');
       }
     } finally {
-      setLoading(false);
+      setLoginLoading(false);
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setGoogleLoading(true);
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = regEmail.trim().toLowerCase();
+    const name = regName.trim();
+
+    if (!email || !email.includes('@')) {
+      toast.error('يرجى إدخال بريد إلكتروني صالح');
+      return;
+    }
+    if (!name) {
+      toast.error('يرجى كتابة الاسم أو اللقب');
+      return;
+    }
+
+    setRegLoading(true);
     try {
-      await loginWithGoogle();
-      navigate('/');
-    } catch {
-      // Handled in loginWithGoogle
+      const result = await registerWithStore(email, name, regPhone.trim());
+      if (result.success && result.password) {
+        setNewlyCreatedPassword(result.password);
+        toast.success('تم إنشاء الحساب وتوليد كلمة المرور بنجاح!');
+      }
     } finally {
-      setGoogleLoading(false);
+      setRegLoading(false);
     }
   };
 
+  const handleCopyPassword = () => {
+    if (!newlyCreatedPassword) return;
+    navigator.clipboard.writeText(newlyCreatedPassword);
+    setCopied(true);
+    toast.success('تم نسخ كلمة المرور بنجاح! احتفظ بها.');
+    setTimeout(() => setCopied(false), 3000);
+  };
 
+  const handleFinishRegistration = () => {
+    setNewlyCreatedPassword(null);
+    navigate('/');
+  };
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center py-12 px-4" dir="rtl">
@@ -165,158 +111,272 @@ export default function LoginPage() {
           </div>
 
           <h1 className="text-2xl font-black">{settings?.storeName || 'متجر يمن ستور'}</h1>
-          <p className="text-xs text-white/80 mt-1 font-medium">تسجيل الدخول برمز التحقق بالبريد الإلكتروني</p>
+          <p className="text-xs text-white/80 mt-1 font-medium">نظام الحسابات الداخلية المباشر الخاص بالمتجر</p>
         </div>
 
-        {/* Form Body */}
+        {/* Body */}
         <div className="p-8">
-          {step === 'email' ? (
-            <form onSubmit={handleSendOtp} className="space-y-6">
+          {newlyCreatedPassword ? (
+            /* Registration Success */
+            <div className="text-center space-y-6 animate-in zoom-in-95 duration-200">
+              <div className="w-16 h-16 mx-auto bg-green-100 dark:bg-green-950/60 text-green-600 rounded-3xl flex items-center justify-center border-2 border-green-500/30">
+                <ShieldCheck className="w-8 h-8" />
+              </div>
+
               <div>
-                <label className="block text-sm font-bold mb-2">
-                  البريد الإلكتروني
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-gray-400">
-                    <Mail className="w-5 h-5" />
-                  </div>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@example.com"
-                    className={`w-full pr-11 pl-4 py-3.5 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                      isDarkMode 
-                        ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' 
-                        : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
-                    }`}
-                    dir="ltr"
-                    autoFocus
-                  />
-                </div>
-                <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                  <span>ℹ️</span>
-                  <span>سيصلك كود تحقق تلقائي فوري مكون من 6 أرقام.</span>
-                </p>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || !email}
-                className={`w-full py-4 px-4 rounded-2xl font-black text-white text-sm shadow-xl shadow-green-600/20 flex items-center justify-center gap-2 transition disabled:opacity-50 ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
-              >
-                {loading ? (
-                  <>
-                    <RefreshCw className="w-5 h-5 animate-spin" />
-                    <span>جاري إرسال رمز التحقق...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>إرسال رمز التحقق إلى بريدي</span>
-                    <ArrowRight className="w-5 h-5 rotate-180" />
-                  </>
-                )}
-              </button>
-
-              <div className="relative flex py-2 items-center">
-                <div className="flex-grow border-t border-gray-200 dark:border-gray-800"></div>
-                <span className="flex-shrink mx-4 text-xs font-semibold text-gray-400">أو المتابعة السريعة</span>
-                <div className="flex-grow border-t border-gray-200 dark:border-gray-800"></div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleGoogleLogin}
-                disabled={googleLoading}
-                className={`w-full py-3.5 px-4 rounded-2xl border font-bold text-xs flex items-center justify-center gap-3 transition ${
-                  isDarkMode 
-                    ? 'bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-200' 
-                    : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-700 shadow-sm'
-                }`}
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                </svg>
-                <span>{googleLoading ? 'جاري الاتصال بـ Google...' : 'تسجيل الدخول السريع بحساب Google'}</span>
-              </button>
-            </form>
-          ) : (
-            <div className="space-y-6">
-              <div className="text-center">
-                <p className="text-base font-bold text-gray-800 dark:text-gray-200">أدخل رمز التحقق (6 أرقام)</p>
+                <h2 className="text-2xl font-black text-gray-900 dark:text-white">تم إنشاء حسابك في المتجر بنجاح!</h2>
                 <p className="text-xs text-gray-500 mt-1">
-                  تم إرسال رمز التحقق المكون من 6 أرقام إلى: <strong className="text-green-600 font-mono">{email}</strong>
+                  لقد خصص المتجر لك كلمة مرور خاصة بحسابك، احفظها الآن:
                 </p>
               </div>
 
+              {/* Password Display Box */}
+              <div className="bg-emerald-50 dark:bg-emerald-950/40 border-2 border-dashed border-emerald-500 rounded-2xl p-6 relative group">
+                <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 block mb-1">كلمة المرور الخاصة بك:</span>
+                <div className="text-3xl font-black font-mono tracking-widest text-emerald-700 dark:text-emerald-300 select-all" dir="ltr">
+                  {newlyCreatedPassword}
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={handleCopyPassword}
+                  className="mt-4 inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-600/20 active:scale-95 transition"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>تم النسخ بنجاح!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      <span>نسخ كلمة المرور</span>
+                    </>
+                  )}
+                </button>
+              </div>
 
-
-              {/* 6 Digits */}
-              <div className="flex justify-center gap-2 sm:gap-3" dir="ltr" onPaste={handlePaste}>
-                {otpDigits.map((digit, idx) => (
-                  <input
-                    key={idx}
-                    ref={el => (inputRefs.current[idx] = el)}
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleOtpChange(idx, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(idx, e)}
-                    className={`w-12 h-14 text-center text-2xl font-black rounded-2xl border transition focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                      digit 
-                        ? 'border-green-500 bg-green-50/30 text-green-700 dark:bg-green-950/30 dark:text-green-300' 
-                        : isDarkMode 
-                          ? 'bg-gray-800 border-gray-700 text-white' 
-                          : 'bg-gray-50 border-gray-200 text-gray-900'
-                    }`}
-                  />
-                ))}
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl p-3.5 text-right">
+                <p className="text-xs text-amber-800 dark:text-amber-300 font-medium leading-relaxed">
+                  ⚠️ <strong>تنبيه هام:</strong> احفظ كلمة المرور هذه في مكان آمن، فلن تتمكن من تسجيل الدخول إلى حسابك هذا في المتجر مستقبلاً إلا بكتابة كلمة المرور هذه بدقة.
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => handleVerifyOtp()}
-                disabled={loading || otpDigits.some(d => !d)}
-                className={`w-full py-4 px-4 rounded-2xl font-black text-white text-sm shadow-xl shadow-green-600/20 flex items-center justify-center gap-2 transition disabled:opacity-50 ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                onClick={handleFinishRegistration}
+                className={`w-full py-4 px-4 rounded-2xl font-black text-white text-sm shadow-xl shadow-green-600/20 flex items-center justify-center gap-2 transition ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
               >
-                {loading ? (
-                  <>
-                    <RefreshCw className="w-5 h-5 animate-spin" />
-                    <span>جاري التحقق والدخول...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-5 h-5" />
-                    <span>تأكيد تسجيل الدخول</span>
-                  </>
-                )}
+                <span>دخول المتجر واستخدام الحساب الآن</span>
+                <ArrowRight className="w-4 h-4 rotate-180" />
               </button>
-
-              <div className="flex items-center justify-between text-xs text-gray-500 pt-2">
+            </div>
+          ) : (
+            <div>
+              {/* Tabs */}
+              <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl mb-6">
                 <button
                   type="button"
-                  onClick={() => {
-                    setStep('email');
-                  }}
-                  className="hover:text-gray-700 dark:hover:text-gray-300 font-medium"
+                  onClick={() => setActiveTab('login')}
+                  className={`flex-1 py-3 text-xs font-black rounded-xl transition ${
+                    activeTab === 'login'
+                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                  }`}
                 >
-                  ← تغيير البريد
+                  تسجيل الدخول
                 </button>
-
                 <button
                   type="button"
-                  onClick={() => handleSendOtp()}
-                  disabled={resendCooldown > 0 || loading}
-                  className="text-green-600 hover:text-green-700 font-bold disabled:opacity-50"
+                  onClick={() => setActiveTab('register')}
+                  className={`flex-1 py-3 text-xs font-black rounded-xl transition ${
+                    activeTab === 'register'
+                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                  }`}
                 >
-                  {resendCooldown > 0 ? `إعادة الإرسال بعد ${resendCooldown} ثانية` : 'إعادة إرسال رمز جديد'}
+                  إنشاء حساب جديد
                 </button>
               </div>
+
+              {activeTab === 'login' ? (
+                /* Login Form */
+                <form onSubmit={handleLoginSubmit} className="space-y-5">
+                  <div>
+                    <label className="block text-xs font-bold mb-2">البريد الإلكتروني المسجل</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-gray-400">
+                        <Mail className="w-5 h-5" />
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        placeholder="name@example.com"
+                        className={`w-full pr-11 pl-4 py-3.5 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                          isDarkMode 
+                            ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' 
+                            : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
+                        }`}
+                        dir="ltr"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold mb-2">كلمة مرور المتجر</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-gray-400">
+                        <KeyRound className="w-5 h-5" />
+                      </div>
+                      <input
+                        type={showLoginPassword ? 'text' : 'password'}
+                        required
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        placeholder="كلمة المرور الخاصة بحسابك"
+                        className={`w-full pr-11 pl-11 py-3.5 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                          isDarkMode 
+                            ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' 
+                            : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
+                        }`}
+                        dir="ltr"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowLoginPassword(!showLoginPassword)}
+                        className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400 hover:text-gray-600 transition"
+                      >
+                        {showLoginPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1.5">
+                      أدخل كلمة المرور التي استلمتها من المتجر عند التسجيل.
+                    </p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loginLoading}
+                    className={`w-full py-4 px-4 rounded-2xl font-black text-white text-sm shadow-xl shadow-green-600/20 flex items-center justify-center gap-2 transition disabled:opacity-50 mt-2 ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                  >
+                    {loginLoading ? (
+                      <span>جاري تسجيل الدخول...</span>
+                    ) : (
+                      <>
+                        <span>تسجيل الدخول إلى حسابي</span>
+                        <ArrowRight className="w-4 h-4 rotate-180" />
+                      </>
+                    )}
+                  </button>
+
+                  <div className="pt-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('register')}
+                      className="text-xs text-green-600 dark:text-green-400 font-bold hover:underline"
+                    >
+                      ليس لديك حساب؟ اضغط هنا لإنشاء حساب واستلام كلمة مرورك فوراً
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                /* Register Form */
+                <form onSubmit={handleRegisterSubmit} className="space-y-5">
+                  <div>
+                    <label className="block text-xs font-bold mb-2">الاسم الكامل أو اللقب</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-gray-400">
+                        <User className="w-5 h-5" />
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={regName}
+                        onChange={(e) => setRegName(e.target.value)}
+                        placeholder="اسمك الظاهر في المتجر"
+                        className={`w-full pr-11 pl-4 py-3.5 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                          isDarkMode 
+                            ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' 
+                            : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
+                        }`}
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold mb-2">
+                      البريد الإلكتروني
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-gray-400">
+                        <Mail className="w-5 h-5" />
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={regEmail}
+                        onChange={(e) => setRegEmail(e.target.value)}
+                        placeholder="name@example.com"
+                        className={`w-full pr-11 pl-4 py-3.5 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                          isDarkMode 
+                            ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' 
+                            : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
+                        }`}
+                        dir="ltr"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1.5">
+                      🔒 يمنع تكرار البريد في النظام، وسيكون هذا معرّفك الدائم في المتجر.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold mb-2">رقم الهاتف (اختياري للتواصل والطلبات)</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-gray-400">
+                        <Phone className="w-5 h-5" />
+                      </div>
+                      <input
+                        type="tel"
+                        value={regPhone}
+                        onChange={(e) => setRegPhone(e.target.value)}
+                        placeholder="77XXXXXXX"
+                        className={`w-full pr-11 pl-4 py-3.5 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                          isDarkMode 
+                            ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' 
+                            : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
+                        }`}
+                        dir="ltr"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-xl p-3.5 text-right">
+                    <p className="text-xs text-emerald-800 dark:text-emerald-300 font-medium">
+                      ✨ بمجرد الضغط على إنشاء الحساب، سيقوم المتجر بتوليد كلمة مرور فورية خاصة بك لعرضها ونسخها مباشرة.
+                    </p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={regLoading}
+                    className={`w-full py-4 px-4 rounded-2xl font-black text-white text-sm shadow-xl shadow-green-600/20 flex items-center justify-center gap-2 transition disabled:opacity-50 ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                  >
+                    {regLoading ? (
+                      <span>جاري إنشاء الحساب...</span>
+                    ) : (
+                      <>
+                        <Sparkles className="w-5 h-5" />
+                        <span>إنشاء الحساب واستلام كلمة المرور</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
             </div>
           )}
         </div>

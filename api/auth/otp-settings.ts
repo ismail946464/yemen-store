@@ -1,4 +1,4 @@
-import { getSenderConfig } from "../_lib/otpService";
+import { getSenderConfig } from "../_lib/otpService.js";
 
 export default async function handler(req: any, res: any) {
   res.setHeader("Access-Control-Allow-Credentials", "true");

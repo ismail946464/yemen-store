@@ -1,9 +1,17 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { getFirebaseAdmin } from "./api/_lib/firebaseAdmin";
-import { processSendOtp, processVerifyOtp, getSenderConfig } from "./api/_lib/otpService";
-import { requireAdminAuth } from "./api/_lib/authMiddleware";
+import { getFirebaseAdmin } from "./api/_lib/firebaseAdmin.js";
+import { processSendOtp, processVerifyOtp, getSenderConfig } from "./api/_lib/otpService.js";
+import { requireAdminAuth } from "./api/_lib/authMiddleware.js";
+import {
+  processRegisterStoreAccount,
+  processLoginStoreAccount,
+  processAdminListAccounts,
+  processAdminUpdateAccount,
+  processAdminDeleteAccount,
+  processAdminCreateAccount
+} from "./api/_lib/accountService.js";
 
 async function startServer() {
   const app = express();
@@ -105,6 +113,64 @@ async function startServer() {
   // ==========================================
   // API ROUTES (ALWAYS RETURN JSON)
   // ==========================================
+
+  // Direct Store Accounts System (Internal Accounts & Store-Issued Passwords)
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { email, name, phone } = req.body || {};
+      const result = await processRegisterStoreAccount({ email, name, phone });
+      return res.status(result.success ? 200 : 400).json(result);
+    } catch (err: any) {
+      console.error("register route error:", err);
+      return res.status(500).json({ success: false, message: "حدث خطأ غير متوقع أثناء إنشاء الحساب" });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body || {};
+      const result = await processLoginStoreAccount({ email, password });
+      return res.status(result.success ? 200 : 400).json(result);
+    } catch (err: any) {
+      console.error("login route error:", err);
+      return res.status(500).json({ success: false, message: "حدث خطأ غير متوقع أثناء تسجيل الدخول" });
+    }
+  });
+
+  // Admin Account Management
+  app.get("/api/admin/accounts", async (req, res) => {
+    const admin = await requireAdminAuth(req, res);
+    if (!admin) return;
+    try {
+      const result = await processAdminListAccounts();
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err?.message || "Internal error" });
+    }
+  });
+
+  app.post("/api/admin/accounts", async (req, res) => {
+    const admin = await requireAdminAuth(req, res);
+    if (!admin) return;
+    try {
+      const { action, payload } = req.body || {};
+      if (action === "create") {
+        const result = await processAdminCreateAccount(payload || {});
+        return res.status(result.success ? 200 : 400).json(result);
+      }
+      if (action === "update") {
+        const result = await processAdminUpdateAccount(payload || {});
+        return res.status(result.success ? 200 : 400).json(result);
+      }
+      if (action === "delete") {
+        const result = await processAdminDeleteAccount(payload?.email);
+        return res.status(result.success ? 200 : 400).json(result);
+      }
+      return res.status(400).json({ success: false, message: "إجراء غير معروف" });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err?.message || "Internal error" });
+    }
+  });
 
   // 1. Send OTP Endpoint
   app.post("/api/auth/send-otp", async (req, res) => {

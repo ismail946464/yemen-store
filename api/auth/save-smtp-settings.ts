@@ -1,5 +1,5 @@
-import { getFirebaseAdmin } from "../_lib/firebaseAdmin";
-import { requireAdminAuth } from "../_lib/authMiddleware";
+import { getFirebaseAdmin } from "../_lib/firebaseAdmin.js";
+import { requireAdminAuth } from "../_lib/authMiddleware.js";
 
 export default async function handler(req: any, res: any) {
   res.setHeader("Access-Control-Allow-Credentials", "true");

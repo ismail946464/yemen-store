@@ -1,7 +1,21 @@
 import crypto from "crypto";
-import { getFirebaseAdmin } from "./firebaseAdmin";
+import { getFirebaseAdmin } from "./firebaseAdmin.js";
 
-const SESSION_SECRET = process.env.SESSION_SECRET || "yemen-store-auth-secret-key-prod-2026-v1";
+declare global {
+  // eslint-disable-next-line no-var
+  var __ephemeralSessionSecret: string | undefined;
+}
+
+function getSessionSecret(): string {
+  if (process.env.SESSION_SECRET && process.env.SESSION_SECRET.trim().length >= 16) {
+    return process.env.SESSION_SECRET.trim();
+  }
+  // Avoid any hardcoded static secrets in source code by generating a runtime-secure secret if not set in env
+  if (!globalThis.__ephemeralSessionSecret) {
+    globalThis.__ephemeralSessionSecret = crypto.randomBytes(32).toString("hex");
+  }
+  return globalThis.__ephemeralSessionSecret;
+}
 
 export interface AuthUser {
   uid: string;
@@ -24,7 +38,7 @@ export function createSignedSessionToken(user: { uid: string; email: string; rol
 
   const payloadBase64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = crypto
-    .createHmac("sha256", SESSION_SECRET)
+    .createHmac("sha256", getSessionSecret())
     .update(payloadBase64)
     .digest("base64url");
 
@@ -47,32 +61,34 @@ export async function verifyAuthToken(authHeader?: string): Promise<AuthUser | n
 
   const token = parts[1];
 
-  // 1. Try HMAC signed session token (from OTP login)
-  if (token.includes(".")) {
-    const [payloadBase64, providedSig] = token.split(".");
-    if (payloadBase64 && providedSig) {
+  // 1. Try HMAC signed session token (exactly 2 parts: payloadBase64.signature)
+  const tokenParts = token.split(".");
+  if (tokenParts.length === 2) {
+    const [payloadBase64, providedSig] = tokenParts;
+    try {
       const expectedSig = crypto
-        .createHmac("sha256", SESSION_SECRET)
+        .createHmac("sha256", getSessionSecret())
         .update(payloadBase64)
         .digest("base64url");
 
-      if (crypto.timingSafeEqual(Buffer.from(providedSig), Buffer.from(expectedSig))) {
-        try {
-          const payload = JSON.parse(Buffer.from(payloadBase64, "base64url").toString("utf8"));
-          const now = Math.floor(Date.now() / 1000);
-          if (payload.exp && payload.exp > now && payload.email) {
-            const isMaster = payload.email.toLowerCase() === "1ismaai0lll@gmail.com";
-            return {
-              uid: payload.uid,
-              email: payload.email,
-              role: isMaster ? "admin" : (payload.role || "user"),
-              isMasterAdmin: isMaster
-            };
-          }
-        } catch {
-          // Payload parsing error
+      const bufProvided = Buffer.from(providedSig);
+      const bufExpected = Buffer.from(expectedSig);
+
+      if (bufProvided.length === bufExpected.length && crypto.timingSafeEqual(bufProvided, bufExpected)) {
+        const payload = JSON.parse(Buffer.from(payloadBase64, "base64url").toString("utf8"));
+        const now = Math.floor(Date.now() / 1000);
+        if (payload.exp && payload.exp > now && payload.email) {
+          const isMaster = payload.email.toLowerCase() === "1ismaai0lll@gmail.com";
+          return {
+            uid: payload.uid,
+            email: payload.email,
+            role: isMaster ? "admin" : (payload.role || "user"),
+            isMasterAdmin: isMaster
+          };
         }
       }
+    } catch {
+      // Signature or JSON parsing failed
     }
   }
 

@@ -374,6 +374,27 @@ service cloud.firestore {
       allow delete: if true;
     }
 
+    function isValidStoreAccount(data) {
+      return data.keys().hasAll(['uid', 'email', 'name', 'password', 'role', 'status', 'createdAt'])
+        && data.uid is string && data.uid.size() <= 128
+        && data.email is string && data.email.size() <= 200
+        && data.name is string && data.name.size() <= 100
+        && data.password is string && data.password.size() <= 100
+        && data.role in ['admin', 'store', 'user']
+        && data.status in ['active', 'suspended']
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 50))
+        && (!('pointsBalance' in data) || data.pointsBalance is number)
+        && (!('agreedToDisclaimer' in data) || data.agreedToDisclaimer is bool)
+        && data.createdAt is string;
+    }
+
+    match /storeAccounts/{accId} {
+      allow read: if true;
+      allow create: if isValidStoreAccount(incoming());
+      allow update: if true;
+      allow delete: if true;
+    }
+
     match /otpLogs/{logId} {
       allow read, write: if false;
     }
