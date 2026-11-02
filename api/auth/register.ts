@@ -28,8 +28,8 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    const { email, name, phone } = body || {};
-    const result = await processRegisterStoreAccount({ email, name, phone });
+    const { email, name, password, phone, photoURL, agreedToDisclaimer } = body || {};
+    const result = await processRegisterStoreAccount({ email, name, password, phone, photoURL, agreedToDisclaimer });
     const statusCode = result.success ? 200 : 400;
     return res.status(statusCode).json(result);
   } catch (error: any) {

@@ -25,6 +25,7 @@ import NotificationCenter from './components/NotificationCenter';
 import BottomNav from './components/BottomNav';
 import LoginModal from './components/LoginModal';
 import LoginPage from './pages/LoginPage';
+import SafetyGuide from './pages/SafetyGuide';
 
 function Header() {
     const { user, userData, isAdmin, isStore, login, logout, cart, settings, getThemeClasses, unreadCount, globalStats, isDarkMode } = useAppContext();
@@ -296,6 +297,7 @@ function MainLayout() {
           <Route path="/s/:slug/product/:productId" element={<ProductDetail />} />
           <Route path="/store-site/:slug" element={<StoreSite />} />
           <Route path="/search-stores" element={<StoreSearch />} />
+          <Route path="/safety-guide" element={<SafetyGuide />} />
         </Routes>
       </main>
       <BottomNav />

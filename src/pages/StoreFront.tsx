@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShoppingCart, CheckCircle, Image as ImageIcon } from 'lucide-react';
+import { ShoppingCart, CheckCircle, Image as ImageIcon, ShieldAlert } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
@@ -262,6 +262,24 @@ export default function StoreFront() {
           ))}
         </div>
       )}
+
+      {/* Red Safety & Anti-Fraud Guide Link Button */}
+      <div className="mt-14 mb-8 pt-8 border-t border-gray-150 dark:border-gray-800 flex flex-col items-center justify-center text-center">
+        <Link 
+          to="/safety-guide" 
+          className="inline-flex items-center gap-3 px-6 py-4 rounded-2xl bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 border-2 border-red-500/30 hover:border-red-500 text-red-600 dark:text-red-400 font-black text-sm sm:text-base shadow-lg shadow-red-500/10 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] group"
+        >
+          <div className="w-8 h-8 rounded-xl bg-red-600/10 dark:bg-red-600/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <ShieldAlert className="w-5 h-5 text-red-600 dark:text-red-400" />
+          </div>
+          <span className="text-red-600 dark:text-red-400 font-black tracking-tight">
+            دليل الأمان والمصداقية ومكافحة الاحتيال
+          </span>
+        </Link>
+        <span className="text-[11px] font-bold text-gray-400 dark:text-gray-500 mt-2">
+          اضغط هنا لفتح صفحة التنبيهات والإرشادات الأمنية وشروط الحماية الرسمية
+        </span>
+      </div>
     </div>
   );
 }

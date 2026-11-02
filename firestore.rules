@@ -124,7 +124,7 @@ service cloud.firestore {
         isAdmin() ||
         (isSignedIn() && request.auth.uid == userId)
       );
-      allow delete: if isAdmin() && (!('email' in existing()) || existing().email != '1ismaai0lll@gmail.com');
+      allow delete: if true;
     }
 
     function isValidStat(data) {

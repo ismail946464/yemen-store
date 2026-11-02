@@ -273,7 +273,7 @@ export default function AdminDashboard() {
   // Form States
   const [productForm, setProductForm] = useState<any>(null);
   const [categoryForm, setCategoryForm] = useState<any>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string, type: string, title: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string, type: string, title: string, email?: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
   // Settings Local States (Admin Only)
@@ -569,11 +569,48 @@ export default function AdminDashboard() {
   const handleDelete = async () => {
     if (!deleteConfirm) return;
     try {
+      if (deleteConfirm.type === 'users') {
+        const targetEmail = deleteConfirm.email || '';
+        if (targetEmail.toLowerCase() === '1ismaai0lll@gmail.com') {
+          toast.error("لا يمكن حذف حساب المدير العام للمتجر");
+          setDeleteConfirm(null);
+          return;
+        }
+
+        const authHeaders = await getAuthHeaders();
+        const res = await fetch('/api/admin/accounts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders
+          },
+          body: JSON.stringify({
+            action: 'delete',
+            payload: { email: targetEmail || deleteConfirm.id, id: deleteConfirm.id }
+          })
+        });
+        const data = await res.json().catch(() => null);
+        if (data?.success) {
+          toast.success("تم حذف الحساب بنجاح من قاعدة البيانات");
+          setUsers(prev => prev.filter(u => u.id !== deleteConfirm.id && u.email !== targetEmail));
+          setDeleteConfirm(null);
+          return;
+        }
+        
+        // Also fallback to direct Firestore deletion if needed
+        await deleteDoc(doc(db, 'users', deleteConfirm.id));
+        toast.success("تم الحذف بنجاح");
+        setUsers(prev => prev.filter(u => u.id !== deleteConfirm.id));
+        setDeleteConfirm(null);
+        return;
+      }
+
       await deleteDoc(doc(db, deleteConfirm.type, deleteConfirm.id));
       toast.success("تم الحذف بنجاح");
       setDeleteConfirm(null);
-    } catch (err) {
-      toast.error("فشل الحذف");
+    } catch (err: any) {
+      console.error('Delete error:', err);
+      toast.error("فشل الحذف: " + (err?.message || "يرجى المحاولة لاحقاً"));
     }
   };
 
@@ -788,18 +825,6 @@ export default function AdminDashboard() {
                   <span>{isDarkMode ? 'الوضع النهاري' : 'الوضع الليلي'}</span>
                 </button>
               </div>
-
-              <p className={`text-[10px] px-4 mb-4 ${isDarkMode ? 'text-gray-500' : 'text-gray-900'}`}>واجهة المتجر</p>
-               <Link 
-                 to="/" 
-                 target="_blank"
-                 className="flex items-center gap-4 px-6 py-5 bg-black text-white rounded-[2rem] font-black text-base hover:scale-[1.02] active:scale-95 transition shadow-2xl shadow-black/20 group"
-               >
-                 <div className="w-10 h-10 bg-white/10 rounded-2xl flex items-center justify-center group-hover:rotate-12 transition">
-                    <ExternalLink className="w-5 h-5" />
-                 </div>
-                 <span>زيارة المتجر الرسمي</span>
-               </Link>
             </div>
           </nav>
         </div>
@@ -1604,7 +1629,7 @@ export default function AdminDashboard() {
                                      >
                                        <ExternalLink className="w-4 h-4" />
                                      </Link>
-                                     <button onClick={() => setDeleteConfirm({ id: u.id, type: 'users', title: u.name })} className="text-red-600 hover:text-red-800 p-1.5 transition">
+                                     <button onClick={() => setDeleteConfirm({ id: u.id, type: 'users', title: u.name, email: u.email })} className="text-red-600 hover:text-red-800 p-1.5 transition">
                                         <Trash2 className="w-4 h-4" />
                                      </button>
                                   </div>

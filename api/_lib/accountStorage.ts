@@ -1,13 +1,14 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { getFirebaseAdmin } from "./firebaseAdmin.js";
+import { getFirebaseAdmin, sanitizeDatabaseId } from "./firebaseAdmin.js";
 
 export interface StoreAccount {
   uid: string;
   email: string;
   name: string;
   phone?: string;
+  photoURL?: string;
   password: string;
   passwordHash?: string;
   role: "admin" | "store" | "user";
@@ -71,14 +72,14 @@ export function hasServiceAccount(): boolean {
 function getRestDocUrl(docId: string): string | null {
   const cfg = getAppletConfig();
   if (!cfg?.apiKey || !cfg?.projectId) return null;
-  const dbId = cfg.firestoreDatabaseId || "(default)";
+  const dbId = sanitizeDatabaseId(cfg.firestoreDatabaseId || process.env.FIRESTORE_DATABASE_ID);
   return `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/${dbId}/documents/storeAccounts/${docId}?key=${cfg.apiKey}`;
 }
 
 function getRestCollectionUrl(): string | null {
   const cfg = getAppletConfig();
   if (!cfg?.apiKey || !cfg?.projectId) return null;
-  const dbId = cfg.firestoreDatabaseId || "(default)";
+  const dbId = sanitizeDatabaseId(cfg.firestoreDatabaseId || process.env.FIRESTORE_DATABASE_ID);
   return `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/${dbId}/documents/storeAccounts?key=${cfg.apiKey}`;
 }
 
@@ -193,6 +194,7 @@ export async function saveAccount(account: StoreAccount): Promise<boolean> {
           name: account.name,
           email: account.email,
           phone: account.phone || "",
+          photoURL: account.photoURL || "",
           role: account.role,
           pointsBalance: account.pointsBalance,
           agreedToDisclaimer: account.agreedToDisclaimer,
@@ -308,32 +310,70 @@ export async function getAllAccounts(): Promise<StoreAccount[]> {
   );
 }
 
-export async function deleteAccountRecord(email: string): Promise<boolean> {
-  const normalizedEmail = email.trim().toLowerCase();
-  if (normalizedEmail === MASTER_ADMIN_EMAIL) {
+export async function deleteAccountRecord(identifier: string): Promise<boolean> {
+  const normalized = identifier.trim().toLowerCase();
+  if (normalized === MASTER_ADMIN_EMAIL) {
     return false; // Cannot delete master admin
   }
 
-  const docId = getAccountDocId(normalizedEmail);
-  memoryAccountsStore.delete(normalizedEmail);
+  let targetEmail = normalized;
+  let targetUid = "";
 
-  if (hasServiceAccount()) {
-    const { db } = getFirebaseAdmin();
-    if (db) {
-      try {
-        await db.collection("storeAccounts").doc(docId).delete();
-      } catch {
-        // ignore
+  if (normalized.includes("@")) {
+    targetEmail = normalized;
+    const existing = await getAccountByEmail(normalized);
+    if (existing) targetUid = existing.uid;
+  } else {
+    targetUid = normalized;
+    for (const [em, acc] of memoryAccountsStore.entries()) {
+      if (acc.uid === targetUid) {
+        targetEmail = em;
+        break;
       }
     }
   }
 
+  if (targetEmail === MASTER_ADMIN_EMAIL) {
+    return false;
+  }
+
+  const docId = getAccountDocId(targetEmail);
+  memoryAccountsStore.delete(targetEmail);
+
+  // 1. Delete from Firestore via Admin SDK
+  const { db } = getFirebaseAdmin();
+  if (db) {
+    try {
+      await db.collection("storeAccounts").doc(docId).delete();
+      if (targetUid) {
+        await db.collection("users").doc(targetUid).delete();
+      }
+      // Also delete any matching document in users by email
+      const userSnaps = await db.collection("users").where("email", "==", targetEmail).get();
+      for (const uDoc of userSnaps.docs) {
+        await uDoc.ref.delete();
+      }
+    } catch (err: any) {
+      console.warn("Delete account notice:", err.message);
+    }
+  }
+
+  // 2. Also REST delete if available
   const url = getRestDocUrl(docId);
   if (url) {
     try {
       await fetch(url, { method: "DELETE" });
-    } catch {
-      // ignore
+    } catch {}
+  }
+
+  if (targetUid) {
+    const cfg = getAppletConfig();
+    if (cfg?.apiKey && cfg?.projectId) {
+      const dbId = sanitizeDatabaseId(cfg.firestoreDatabaseId || process.env.FIRESTORE_DATABASE_ID);
+      const userUrl = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/${dbId}/documents/users/${targetUid}?key=${cfg.apiKey}`;
+      try {
+        await fetch(userUrl, { method: "DELETE" });
+      } catch {}
     }
   }
 

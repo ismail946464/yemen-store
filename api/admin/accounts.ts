@@ -54,8 +54,9 @@ export default async function handler(req: any, res: any) {
     }
 
     if (action === "delete") {
-      const { email } = payload || {};
-      const result = await processAdminDeleteAccount(email);
+      const { email, id } = payload || {};
+      const target = email || id || (typeof payload === "string" ? payload : "");
+      const result = await processAdminDeleteAccount(target);
       return res.status(result.success ? 200 : 400).json(result);
     }
 

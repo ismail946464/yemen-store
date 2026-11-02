@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { getFirebaseAdmin } from "./firebaseAdmin.js";
+import { getFirebaseAdmin, sanitizeDatabaseId } from "./firebaseAdmin.js";
 
 export interface StoredOtpData {
   email: string;
@@ -56,7 +56,7 @@ export function getOtpDocId(email: string): string {
 function getRestDocUrl(docId: string): string | null {
   const cfg = getAppletConfig();
   if (!cfg?.apiKey || !cfg?.projectId) return null;
-  const dbId = cfg.firestoreDatabaseId || "(default)";
+  const dbId = sanitizeDatabaseId(cfg.firestoreDatabaseId || process.env.FIRESTORE_DATABASE_ID);
   return `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/${dbId}/documents/_otps/${docId}?key=${cfg.apiKey}`;
 }
 

@@ -31,7 +31,8 @@ interface AppContextType {
   loginWithGoogle: () => Promise<void>;
   loginWithOtp: (email: string, code: string) => Promise<boolean>;
   loginWithPassword: (email: string, password: string) => Promise<boolean>;
-  registerWithStore: (email: string, name: string, phone?: string) => Promise<{ success: boolean; message: string; password?: string }>;
+  registerWithStore: (email: string, name: string, password?: string, phone?: string, photoURL?: string) => Promise<{ success: boolean; message: string; user?: any; password?: string }>;
+  updateUserProfile: (data: { name?: string; phone?: string; photoURL?: string }) => Promise<boolean>;
   logout: () => Promise<void>;
   cart: CartItem[];
   addToCart: (product: any) => void;
@@ -628,13 +629,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const registerWithStore = async (
     email: string,
     name: string,
-    phone?: string
-  ): Promise<{ success: boolean; message: string; password?: string }> => {
+    password?: string,
+    phone?: string,
+    photoURL?: string
+  ): Promise<{ success: boolean; message: string; user?: any; password?: string }> => {
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, phone })
+        body: JSON.stringify({ email, name, password, phone, photoURL, agreedToDisclaimer: true })
       });
       const data = await res.json();
       if (!data.success) {
@@ -649,7 +652,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           uid: data.user.uid,
           email: data.user.email,
           displayName: data.user.displayName || data.user.name || data.user.email?.split('@')[0],
-          photoURL: '',
+          photoURL: data.user.photoURL || '',
           role: data.user.role
         };
         localStorage.setItem('yemen_store_session', JSON.stringify(sessionUser));
@@ -659,11 +662,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return {
         success: true,
         message: data.message || 'تم إنشاء الحساب بنجاح',
+        user: data.user,
         password: data.password
       };
     } catch (err: any) {
       toast.error('تعذر الاتصال بالخادم: ' + (err?.message || 'خطأ غير معروف'));
       return { success: false, message: err?.message || 'خطأ اتصال' };
+    }
+  };
+
+  const updateUserProfile = async (updates: { name?: string; phone?: string; photoURL?: string }): Promise<boolean> => {
+    if (!user) return false;
+    try {
+      const res = await fetch('/api/auth/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, ...updates })
+      });
+      const data = await res.json();
+      if (data.success && data.user) {
+        setUserData((prev: any) => ({ ...prev, ...data.user }));
+        setUser((prev: any) => ({
+          ...prev,
+          displayName: data.user.displayName || data.user.name || prev?.displayName,
+          photoURL: data.user.photoURL || prev?.photoURL
+        }));
+        const updatedSession = {
+          ...user,
+          displayName: data.user.displayName || data.user.name || user.displayName,
+          photoURL: data.user.photoURL || user.photoURL
+        };
+        localStorage.setItem('yemen_store_session', JSON.stringify(updatedSession));
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
     }
   };
 
@@ -767,6 +801,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loginWithOtp,
     loginWithPassword,
     registerWithStore,
+    updateUserProfile,
     logout, 
     cart, 
     addToCart, 

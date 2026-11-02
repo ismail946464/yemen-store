@@ -6,6 +6,7 @@ import { processSendOtp, processVerifyOtp, getSenderConfig } from "./api/_lib/ot
 import { requireAdminAuth } from "./api/_lib/authMiddleware.js";
 import {
   processRegisterStoreAccount,
+  processUpdateProfile,
   processLoginStoreAccount,
   processAdminListAccounts,
   processAdminUpdateAccount,
@@ -117,12 +118,26 @@ async function startServer() {
   // Direct Store Accounts System (Internal Accounts & Store-Issued Passwords)
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, name, phone } = req.body || {};
-      const result = await processRegisterStoreAccount({ email, name, phone });
+      const { email, name, password, phone, photoURL, agreedToDisclaimer } = req.body || {};
+      const result = await processRegisterStoreAccount({ email, name, password, phone, photoURL, agreedToDisclaimer });
       return res.status(result.success ? 200 : 400).json(result);
     } catch (err: any) {
       console.error("register route error:", err);
       return res.status(500).json({ success: false, message: "حدث خطأ غير متوقع أثناء إنشاء الحساب" });
+    }
+  });
+
+  app.post("/api/auth/update-profile", async (req, res) => {
+    try {
+      const { email, name, phone, photoURL } = req.body || {};
+      if (!email) {
+        return res.status(400).json({ success: false, message: "البريد الإلكتروني مطلوب" });
+      }
+      const result = await processUpdateProfile({ email, name, phone, photoURL });
+      return res.status(result.success ? 200 : 400).json(result);
+    } catch (err: any) {
+      console.error("update-profile error:", err);
+      return res.status(500).json({ success: false, message: "حدث خطأ غير متوقع أثناء تحديث الملف الشخصي" });
     }
   });
 
@@ -163,7 +178,8 @@ async function startServer() {
         return res.status(result.success ? 200 : 400).json(result);
       }
       if (action === "delete") {
-        const result = await processAdminDeleteAccount(payload?.email);
+        const target = payload?.email || payload?.id || (typeof payload === "string" ? payload : "");
+        const result = await processAdminDeleteAccount(target);
         return res.status(result.success ? 200 : 400).json(result);
       }
       return res.status(400).json({ success: false, message: "إجراء غير معروف" });

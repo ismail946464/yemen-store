@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { db } from '../firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { useAppContext } from '../AppContext';
@@ -13,15 +13,16 @@ export default function DisclaimerModal() {
   const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
-    if (!loading && user && userData && userData.agreedToDisclaimer === false) {
-      setShow(true);
-    } else {
-      setShow(false);
-    }
-  }, [loading, user, userData]);
+    const handleOpen = () => setShow(true);
+    window.addEventListener('open-disclaimer-modal', handleOpen);
+    return () => window.removeEventListener('open-disclaimer-modal', handleOpen);
+  }, []);
 
   const handleAgree = async () => {
-    if (!user) return;
+    if (!user) {
+      setShow(false);
+      return;
+    }
     setSubmitting(true);
     try {
       await updateDoc(doc(db, 'users', user.uid), {
@@ -47,13 +48,22 @@ export default function DisclaimerModal() {
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
             className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl relative border border-gray-100"
           >
+            {/* Close Button */}
+            <button
+              onClick={() => setShow(false)}
+              className="absolute top-4 left-4 p-2 rounded-full bg-red-100 hover:bg-red-200 text-red-700 transition z-10"
+              aria-label="إغلاق"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
             {/* Header */}
             <div className="bg-red-50 p-8 text-center border-b border-red-100">
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
                 <AlertTriangle className="w-8 h-8 text-red-600" />
               </div>
-              <h2 className="text-2xl font-black text-gray-900 mb-2">تنبيه هام جداً</h2>
-              <p className="text-red-700 font-bold text-sm">يرجى قراءة والموافقة على الشروط للمتابعة</p>
+              <h2 className="text-2xl font-black text-gray-900 mb-2">تعليمات وتنبيهات الحماية من الاحتيال</h2>
+              <p className="text-red-700 font-bold text-sm">شروط الاستخدام وإخلاء المسؤولية المعتمدة</p>
             </div>
 
             {/* Content */}

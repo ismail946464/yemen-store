@@ -19,7 +19,10 @@ function generateStorePassword(): string {
 export async function processRegisterStoreAccount(input: {
   email: string;
   name?: string;
+  password?: string;
   phone?: string;
+  photoURL?: string;
+  agreedToDisclaimer?: boolean;
 }): Promise<{
   success: boolean;
   message: string;
@@ -46,9 +49,18 @@ export async function processRegisterStoreAccount(input: {
     };
   }
 
+  const userPassword = String(input.password || "").trim();
+  if (userPassword && userPassword.length < 4) {
+    return {
+      success: false,
+      message: "كلمة المرور قصيرة جداً. يرجى اختيار كلمة مرور من 4 خانات على الأقل."
+    };
+  }
+
+  const password = userPassword || generateStorePassword();
   const displayName = String(input.name || "").trim() || normalizedEmail.split("@")[0] || "مستخدم";
   const phone = String(input.phone || "").trim();
-  const password = generateStorePassword();
+  const photoURL = String(input.photoURL || "").trim();
   const isMasterAdmin = normalizedEmail === "1ismaai0lll@gmail.com";
   const docId = getAccountDocId(normalizedEmail);
   const uid = `u_${docId.slice(4)}`;
@@ -58,12 +70,13 @@ export async function processRegisterStoreAccount(input: {
     email: normalizedEmail,
     name: displayName,
     phone,
+    photoURL,
     password,
     passwordHash: hashPassword(password),
     role: isMasterAdmin ? "admin" : "user",
     status: "active",
     pointsBalance: 0,
-    agreedToDisclaimer: false,
+    agreedToDisclaimer: true,
     createdAt: new Date().toISOString(),
     lastLoginAt: new Date().toISOString()
   };
@@ -85,12 +98,48 @@ export async function processRegisterStoreAccount(input: {
       email: normalizedEmail,
       displayName,
       phone,
+      photoURL,
       role: newAccount.role,
       pointsBalance: 0,
-      agreedToDisclaimer: false,
+      agreedToDisclaimer: true,
       createdAt: newAccount.createdAt
     },
     sessionToken
+  };
+}
+
+export async function processUpdateProfile(input: {
+  email: string;
+  name?: string;
+  phone?: string;
+  photoURL?: string;
+}): Promise<{ success: boolean; message: string; user?: any }> {
+  const normalizedEmail = String(input.email || "").trim().toLowerCase();
+  const account = await getAccountByEmail(normalizedEmail);
+  if (!account) {
+    return { success: false, message: "لم يتم العثور على الحساب" };
+  }
+
+  if (input.name) account.name = String(input.name).trim();
+  if (input.phone !== undefined) account.phone = String(input.phone).trim();
+  if (input.photoURL !== undefined) account.photoURL = String(input.photoURL).trim();
+
+  await saveAccount(account);
+
+  return {
+    success: true,
+    message: "تم تحديث الملف الشخصي بنجاح",
+    user: {
+      uid: account.uid,
+      email: account.email,
+      displayName: account.name,
+      phone: account.phone || "",
+      photoURL: account.photoURL || "",
+      role: account.role,
+      pointsBalance: account.pointsBalance || 0,
+      agreedToDisclaimer: true,
+      createdAt: account.createdAt
+    }
   };
 }
 
