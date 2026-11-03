@@ -6,9 +6,12 @@ import {
   getAllAccounts,
   deleteAccountRecord,
   getAccountDocId,
-  hashPassword
+  hashPassword,
+  MASTER_ADMIN_UID,
+  getServerFirestore
 } from "./accountStorage.js";
 import { createSignedSessionToken, AuthUser } from "./authMiddleware.js";
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 
 function generateStorePassword(): string {
   // Generates memorable, high-entropy store password like "YM-749201"
@@ -40,13 +43,28 @@ export async function processRegisterStoreAccount(input: {
     };
   }
 
-  // Strict Uniqueness check
+  // Strict Uniqueness check 1: store accounts
   const existing = await getAccountByEmail(normalizedEmail);
   if (existing) {
     return {
       success: false,
-      message: "عذراً، هذا البريد مسجل مسبقاً في النظام. لا يمكن تكرار الحسابات. يرجى تسجيل الدخول بكلمة المرور الخاصة به."
+      message: "عذراً، هذا البريد مسجل مسبقاً في النظام. لا يمكن تسجيل أكثر من حساب بنفس البريد. يرجى تسجيل الدخول بحسابك."
     };
+  }
+
+  // Strict Uniqueness check 2: check Firestore users collection
+  const db = getServerFirestore();
+  if (db) {
+    try {
+      const q = query(collection(db, "users"), where("email", "==", normalizedEmail));
+      const uSnap = await getDocs(q);
+      if (!uSnap.empty) {
+        return {
+          success: false,
+          message: "عذراً، هذا البريد مسجل مسبقاً في النظام. لا يمكن تسجيل أكثر من حساب بنفس البريد. يرجى تسجيل الدخول بحسابك."
+        };
+      }
+    } catch {}
   }
 
   const userPassword = String(input.password || "").trim();
@@ -228,50 +246,98 @@ export async function processAdminListAccounts(): Promise<{
 }
 
 export async function processAdminUpdateAccount(payload: {
-  email: string;
+  id?: string;
+  email?: string;
   password?: string;
   role?: "admin" | "store" | "user";
   name?: string;
   phone?: string;
   status?: "active" | "suspended";
 }): Promise<{ success: boolean; message: string }> {
-  const normalizedEmail = String(payload.email || "").trim().toLowerCase();
-  if (!normalizedEmail) {
-    return { success: false, message: "البريد الإلكتروني مطلوب" };
+  let targetEmail = String(payload.email || "").trim().toLowerCase();
+  const targetId = String(payload.id || "").trim();
+
+  let account: StoreAccount | null = null;
+  if (targetEmail) {
+    account = await getAccountByEmail(targetEmail);
+  }
+  if (!account && targetId) {
+    const all = await getAllAccounts();
+    account = all.find(a => a.uid === targetId) || null;
+    if (account) targetEmail = account.email;
   }
 
-  const account = await getAccountByEmail(normalizedEmail);
-  if (!account) {
-    return { success: false, message: "الحساب غير موجود" };
+  if (account) {
+    if (payload.password) {
+      account.password = String(payload.password).trim();
+      account.passwordHash = hashPassword(account.password);
+    }
+    if (payload.role && ["admin", "store", "user"].includes(payload.role)) {
+      if (targetEmail === "1ismaai0lll@gmail.com" || account.uid === MASTER_ADMIN_UID) {
+        account.role = "admin";
+      } else {
+        account.role = payload.role;
+      }
+    }
+    if (payload.name) account.name = String(payload.name).trim();
+    if (payload.phone !== undefined) account.phone = String(payload.phone).trim();
+    if (payload.status) account.status = payload.status;
+    await saveAccount(account);
   }
 
-  if (payload.password) {
-    account.password = String(payload.password).trim();
-    account.passwordHash = hashPassword(account.password);
-  }
-  if (payload.role && ["admin", "store", "user"].includes(payload.role)) {
-    // Master admin remains admin
-    if (normalizedEmail === "1ismaai0lll@gmail.com") {
-      account.role = "admin";
-    } else {
-      account.role = payload.role;
+  // Also directly update in Firestore users collection
+  if (targetId || account?.uid) {
+    const uidToUpdate = targetId || account?.uid;
+    if (uidToUpdate) {
+      const db = getServerFirestore();
+      if (db) {
+        try {
+          const updates: Record<string, any> = {};
+          if (payload.role && (uidToUpdate !== MASTER_ADMIN_UID || payload.role === "admin")) {
+            updates.role = payload.role;
+          }
+          if (payload.name) updates.name = payload.name;
+          if (payload.phone !== undefined) updates.phone = payload.phone;
+          if (Object.keys(updates).length > 0) {
+            await setDoc(doc(db, "users", uidToUpdate), updates, { merge: true });
+          }
+          // If promoted to store, also ensure storeProfiles doc exists
+          if (payload.role === "store") {
+            const storeRef = doc(db, "storeProfiles", uidToUpdate);
+            const sSnap = await getDoc(storeRef);
+            if (!sSnap.exists()) {
+              const oneYear = new Date();
+              oneYear.setFullYear(oneYear.getFullYear() + 1);
+              await setDoc(storeRef, {
+                userId: uidToUpdate,
+                name: payload.name || account?.name || "متجر جديد",
+                description: "متجر رسمي معتمد في منصة يمن ستور",
+                logoUrl: account?.photoURL || "",
+                verified: true,
+                verifiedUntil: oneYear.toISOString(),
+                updatedAt: new Date().toISOString()
+              }, { merge: true });
+            }
+          }
+        } catch (err: any) {
+          console.warn("Update user in users collection notice:", err?.message);
+        }
+      }
     }
   }
-  if (payload.name) account.name = String(payload.name).trim();
-  if (payload.phone !== undefined) account.phone = String(payload.phone).trim();
-  if (payload.status) account.status = payload.status;
 
-  await saveAccount(account);
-  return { success: true, message: "تم تحديث بيانات الحساب بنجاح" };
+  return { success: true, message: "تم تحديث بيانات الحساب والرتبة بنجاح" };
 }
 
-export async function processAdminDeleteAccount(email: string): Promise<{ success: boolean; message: string }> {
-  const normalizedEmail = String(email || "").trim().toLowerCase();
-  if (normalizedEmail === "1ismaai0lll@gmail.com") {
-    return { success: false, message: "لا يمكن حذف حساب المدير العام للمتجر" };
+export async function processAdminDeleteAccount(identifier: string, targetId?: string): Promise<{ success: boolean; message: string }> {
+  const normalizedEmail = String(identifier || "").trim().toLowerCase();
+  const uid = String(targetId || "").trim();
+
+  if (uid === MASTER_ADMIN_UID || (normalizedEmail === "1ismaai0lll@gmail.com" && (!uid || uid === MASTER_ADMIN_UID))) {
+    return { success: false, message: "لا يمكن حذف حساب المدير العام الرئيسي للمتجر" };
   }
 
-  const ok = await deleteAccountRecord(normalizedEmail);
+  const ok = await deleteAccountRecord(uid || normalizedEmail);
   if (ok) {
     return { success: true, message: "تم حذف الحساب نهائياً بنجاح" };
   }

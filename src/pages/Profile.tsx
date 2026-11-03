@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { User, Shield, LogOut, Camera, Loader2, LayoutDashboard, Moon, Sun } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -58,11 +58,14 @@ export default function Profile() {
     setIsSubmitting(true);
     setMessage('');
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
+      const targetUid = (user.email?.toLowerCase() === '1ismaai0lll@gmail.com' || user.uid === 'u_32cd7332ee7ec2e0c1121512')
+        ? 'MQAwCYqFztd2PZbV1fRMxKRqoYX2'
+        : user.uid;
+      await setDoc(doc(db, 'users', targetUid), {
         name,
         phone,
         photoURL
-      });
+      }, { merge: true });
       setMessage('تم التحديث بنجاح!');
       toast.success("تم تحديث الملف الشخصي");
       setTimeout(() => setMessage(''), 3000);
@@ -180,16 +183,6 @@ export default function Profile() {
             placeholder="+967..."
           />
         </div>
-        {userData?.pointsBalance !== undefined && (
-          <div>
-            <label className={`block text-sm font-black mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>رصيد محفظتك ({settings?.storeName || 'يمن ستور'})</label>
-            <div className={`w-full border rounded-lg p-3 font-black flex justify-between ${isDarkMode ? 'bg-gray-800 border-gray-700 text-green-400' : 'bg-gray-100 border-gray-200 text-gray-900'}`}>
-              <span>{userData.pointsBalance}</span>
-              <span>ريال</span>
-            </div>
-            <p className={`text-xs font-black mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-900'}`}>تواصل مع الإدارة لشحن رصيدك.</p>
-          </div>
-        )}
         <button
           type="submit"
           disabled={isSubmitting}

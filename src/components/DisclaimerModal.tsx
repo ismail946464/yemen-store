@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { db } from '../firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { useAppContext } from '../AppContext';
 import toast from 'react-hot-toast';
 
@@ -25,9 +25,12 @@ export default function DisclaimerModal() {
     }
     setSubmitting(true);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
+      const targetUid = (user.email?.toLowerCase() === '1ismaai0lll@gmail.com' || user.uid === 'u_32cd7332ee7ec2e0c1121512')
+        ? 'MQAwCYqFztd2PZbV1fRMxKRqoYX2'
+        : user.uid;
+      await setDoc(doc(db, 'users', targetUid), {
         agreedToDisclaimer: true
-      });
+      }, { merge: true });
       setShow(false);
       toast.success("شكراً لتفهمكم");
     } catch (err) {

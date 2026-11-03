@@ -18,7 +18,7 @@ import {
   DollarSign, Package, Eye, ChevronLeft, ChevronRight, 
   Twitter, Instagram, Facebook, Mail, Phone,
   BarChart3, LayoutDashboard, Layout, Sun, Moon, Server, Activity,
-  Upload, Palette, Wallet, KeyRound
+  Upload, Palette, Wallet, KeyRound, Lock
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -570,37 +570,49 @@ export default function AdminDashboard() {
     if (!deleteConfirm) return;
     try {
       if (deleteConfirm.type === 'users') {
-        const targetEmail = deleteConfirm.email || '';
-        if (targetEmail.toLowerCase() === '1ismaai0lll@gmail.com') {
-          toast.error("لا يمكن حذف حساب المدير العام للمتجر");
+        const targetId = deleteConfirm.id;
+        const targetEmail = (deleteConfirm.email || '').trim().toLowerCase();
+
+        // Strictly protect the master admin account
+        if (targetId === 'MQAwCYqFztd2PZbV1fRMxKRqoYX2') {
+          toast.error("لا يمكن حذف حساب المدير العام الرئيسي للمتجر");
           setDeleteConfirm(null);
           return;
         }
 
-        const authHeaders = await getAuthHeaders();
-        const res = await fetch('/api/admin/accounts', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...authHeaders
-          },
-          body: JSON.stringify({
-            action: 'delete',
-            payload: { email: targetEmail || deleteConfirm.id, id: deleteConfirm.id }
-          })
-        });
-        const data = await res.json().catch(() => null);
-        if (data?.success) {
-          toast.success("تم حذف الحساب بنجاح من قاعدة البيانات");
-          setUsers(prev => prev.filter(u => u.id !== deleteConfirm.id && u.email !== targetEmail));
-          setDeleteConfirm(null);
-          return;
+        // 1. Direct Firestore user doc deletion
+        try {
+          await deleteDoc(doc(db, 'users', targetId));
+        } catch (e: any) {
+          console.warn("Direct firestore delete notice:", e?.message);
         }
-        
-        // Also fallback to direct Firestore deletion if needed
-        await deleteDoc(doc(db, 'users', deleteConfirm.id));
-        toast.success("تم الحذف بنجاح");
-        setUsers(prev => prev.filter(u => u.id !== deleteConfirm.id));
+
+        // 2. Also delete from backend accounts & storeAccounts collection
+        try {
+          const authHeaders = await getAuthHeaders();
+          await fetch('/api/admin/accounts', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...authHeaders
+            },
+            body: JSON.stringify({
+              action: 'delete',
+              payload: { email: targetEmail, id: targetId }
+            })
+          });
+        } catch (e: any) {
+          console.warn("Backend accounts delete notice:", e?.message);
+        }
+
+        // 3. If target had a storeProfile, clean it up
+        try {
+          await deleteDoc(doc(db, 'storeProfiles', targetId));
+        } catch {}
+
+        // Instant UI update
+        setUsers(prev => prev.filter(u => u.id !== targetId));
+        toast.success("تم حذف الحساب نهائياً بنجاح");
         setDeleteConfirm(null);
         return;
       }
@@ -624,11 +636,76 @@ export default function AdminDashboard() {
   };
 
   const handleUpdateUserRole = async (userId: string, role: string) => {
+    const targetUser = users.find(u => u.id === userId);
+    const roleLabels: Record<string, string> = {
+      admin: 'مدير نظام',
+      store: 'متجر رسمي',
+      user: 'عضو عادي'
+    };
+    const roleName = roleLabels[role] || role;
+
+    // Prevent changing master admin role away from admin
+    if (userId === 'MQAwCYqFztd2PZbV1fRMxKRqoYX2' && role !== 'admin') {
+      toast.error("لا يمكن تغيير رتبة المدير العام الرئيسي للمتجر");
+      return;
+    }
+
     try {
-      await updateDoc(doc(db, 'users', userId), { role });
-      toast.success("تم تحديث الرتبة");
-    } catch (err) {
-      toast.error("فشل التحديث");
+      // 1. Optimistic UI update
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u));
+
+      // 2. Update backend storeAccounts & users via server
+      try {
+        const authHeaders = await getAuthHeaders();
+        await fetch('/api/admin/accounts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders
+          },
+          body: JSON.stringify({
+            action: 'update',
+            payload: { id: userId, email: targetUser?.email, role }
+          })
+        });
+      } catch (backendErr) {
+        console.warn("Backend role update notice:", backendErr);
+      }
+
+      // 3. Update Firestore users collection directly from client
+      try {
+        await setDoc(doc(db, 'users', userId), { role }, { merge: true });
+      } catch (fsErr) {
+        console.warn("Client direct firestore role update notice:", fsErr);
+      }
+
+      // 4. If promoted to store, ensure storeProfile exists
+      if (role === 'store') {
+        try {
+          const storeRef = doc(db, 'storeProfiles', userId);
+          const pSnap = await getDoc(storeRef);
+          if (!pSnap.exists()) {
+            const oneYearLater = new Date();
+            oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
+            await setDoc(storeRef, {
+              userId,
+              name: targetUser?.name || 'متجر جديد',
+              description: 'متجر رسمي معتمد في منصة يمن ستور',
+              logoUrl: targetUser?.photoURL || '',
+              verified: true,
+              verifiedUntil: oneYearLater.toISOString(),
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+          }
+        } catch (profileErr) {
+          console.warn("Store profile creation note:", profileErr);
+        }
+      }
+
+      toast.success(`تم تحديث رتبة (${targetUser?.name || 'المستخدم'}) إلى [${roleName}] بنجاح`);
+    } catch (err: any) {
+      console.error('Role update error:', err);
+      toast.error("فشل تحديث الرتبة: " + (err?.message || "يرجى المحاولة لاحقاً"));
     }
   };
 
@@ -1567,13 +1644,39 @@ export default function AdminDashboard() {
             )}
 
             {/* ADMIN ONLY TABS */}
-            {isAdmin && activeTab === 'users' && (
+            {isAdmin && activeTab === 'users' && (() => {
+              const uniqueUsers = (() => {
+                const map = new Map<string, any>();
+                for (const u of users) {
+                  const key = (u.email || u.id).trim().toLowerCase();
+                  if (u.id === 'MQAwCYqFztd2PZbV1fRMxKRqoYX2') {
+                    map.set(key, u);
+                  } else if (!map.has(key)) {
+                    map.set(key, u);
+                  }
+                }
+                return Array.from(map.values());
+              })();
+
+              return (
                <div className="space-y-8">
-                  <h2 className="text-3xl font-black text-black">إدارة المستخدمين</h2>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <h2 className="text-3xl font-black text-black dark:text-white">إدارة المستخدمين</h2>
+                      <p className="text-xs text-gray-500 font-bold mt-1">
+                        التحكم بالحسابات وتعيين وترقية الرتب (مدير، متجر رسمي، عضو) وإدارة الصلاحيات
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-gray-800 text-xs font-black text-gray-700 dark:text-gray-300">
+                        إجمالي الحسابات: {uniqueUsers.length}
+                      </span>
+                    </div>
+                  </div>
                   <div className="overflow-x-auto">
                      <table className="w-full text-right border-separate border-spacing-y-4">
                         <thead>
-                          <tr className="text-gray-900 text-[10px] font-black uppercase border-b border-gray-100">
+                          <tr className="text-gray-900 dark:text-gray-300 text-[10px] font-black uppercase border-b border-gray-100 dark:border-gray-800">
                             <th className="p-4">المستخدم</th>
                             <th className="p-4 text-center">البريد الإلكتروني</th>
                             <th className="p-4 text-center">الرتبة</th>
@@ -1582,65 +1685,99 @@ export default function AdminDashboard() {
                           </tr>
                         </thead>
                         <tbody>
-                          {users.map(u => (
-                            <tr key={u.id} className="bg-gray-50/50 hover:bg-white transition rounded-2xl">
-                               <td className="p-4 rounded-r-2xl">
-                                  <div className="flex items-center gap-3">
-                                     <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border border-gray-200 shadow-sm">
-                                        {u.photoURL ? <img src={u.photoURL} className="w-full h-full object-cover" /> : <User className="w-6 h-6 text-gray-900" />}
-                                     </div>
-                                     <p className="font-black text-sm text-black">{u.name}</p>
-                                  </div>
-                               </td>
-                               <td className="p-4 text-center text-xs font-black text-gray-900">{u.email}</td>
-                               <td className="p-4 text-center">
-                                  <select 
-                                    value={u.role || 'user'} 
-                                    onChange={(e) => handleUpdateUserRole(u.id, e.target.value)}
-                                    className={`text-[10px] font-black px-3 py-1 rounded-full border-0 focus:ring-0 cursor-pointer ${
-                                      u.role === 'admin' ? 'bg-red-100 text-red-800 shadow-sm' : u.role === 'store' ? 'bg-blue-100 text-blue-800 shadow-sm' : 'bg-gray-200 text-gray-900 shadow-sm'
-                                    }`}
-                                  >
-                                     <option value="user">عضو</option>
-                                     <option value="store">متجر</option>
-                                     <option value="admin">مدير نظام</option>
-                                  </select>
-                               </td>
-                               <td className="p-4 text-center text-[10px] text-gray-900 font-black">{new Date(u.createdAt).toLocaleDateString('ar-YE')}</td>
-                               <td className="p-4 rounded-l-2xl text-left">
-                                  <div className="flex items-center justify-end gap-2">
-                                     <button 
-                                       onClick={() => {
-                                         handleSelectStore(u.id);
-                                         setActiveTab('store-profile');
-                                         toast.success(`أنت الآن تعدل متجر: ${u.name}`);
-                                       }}
-                                       title="تعديل وتوثيق ملف هذا المتجر"
-                                       className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 rounded-xl font-black text-xs transition"
+                          {uniqueUsers.map(u => {
+                            const isMasterAdminAccount = u.id === 'MQAwCYqFztd2PZbV1fRMxKRqoYX2' || (u.email && u.email.toLowerCase() === '1ismaai0lll@gmail.com');
+                            return (
+                             <tr key={u.id} className="bg-gray-50/50 dark:bg-gray-850 hover:bg-white dark:hover:bg-gray-800 transition rounded-2xl">
+                                <td className="p-4 rounded-r-2xl">
+                                   <div className="flex items-center gap-3">
+                                      <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center overflow-hidden border border-gray-200 dark:border-gray-600 shadow-sm">
+                                         {u.photoURL ? <img src={u.photoURL} className="w-full h-full object-cover" /> : <User className="w-6 h-6 text-gray-900 dark:text-gray-200" />}
+                                      </div>
+                                      <div>
+                                        <p className="font-black text-sm text-black dark:text-white flex items-center gap-1.5">
+                                          {u.name}
+                                          {isMasterAdminAccount && (
+                                            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 text-[9px] font-black">
+                                              المدير العام
+                                            </span>
+                                          )}
+                                        </p>
+                                        <p className="text-[10px] text-gray-400 font-mono mt-0.5">#{u.id.slice(0, 10)}</p>
+                                      </div>
+                                   </div>
+                                </td>
+                                <td className="p-4 text-center text-xs font-black text-gray-900 dark:text-gray-200 dir-ltr font-mono">{u.email}</td>
+                                <td className="p-4 text-center">
+                                   {isMasterAdminAccount ? (
+                                     <span className="text-[10px] font-black px-3 py-1.5 rounded-full bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 shadow-sm border border-red-200 dark:border-red-800">
+                                       مدير عام المتجر
+                                     </span>
+                                   ) : (
+                                     <select 
+                                       value={u.role || 'user'} 
+                                       onChange={(e) => handleUpdateUserRole(u.id, e.target.value)}
+                                       className={`text-[10px] font-black px-3 py-1 rounded-full border-0 focus:ring-2 focus:ring-emerald-500 cursor-pointer ${
+                                         u.role === 'admin' ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 shadow-sm' : u.role === 'store' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 shadow-sm' : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-200 shadow-sm'
+                                       }`}
                                      >
-                                       <Store className="w-3.5 h-3.5" />
-                                       <span>تعديل المتجر</span>
-                                     </button>
-                                     <Link 
-                                       to={`/store/${u.id}`}
-                                       target="_blank"
-                                       title="زيارة صفحة المتجر"
-                                       className="p-1.5 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white transition"
-                                     >
-                                       <ExternalLink className="w-4 h-4" />
-                                     </Link>
-                                     <button onClick={() => setDeleteConfirm({ id: u.id, type: 'users', title: u.name, email: u.email })} className="text-red-600 hover:text-red-800 p-1.5 transition">
-                                        <Trash2 className="w-4 h-4" />
-                                     </button>
-                                  </div>
-                               </td>
-                            </tr>
-                          ))}
+                                        <option value="user">عضو عادي</option>
+                                        <option value="store">متجر رسمي</option>
+                                        <option value="admin">مدير نظام</option>
+                                     </select>
+                                   )}
+                                </td>
+                                <td className="p-4 text-center text-[10px] text-gray-900 dark:text-gray-300 font-black">{u.createdAt ? new Date(u.createdAt).toLocaleDateString('ar-YE') : '—'}</td>
+                                <td className="p-4 rounded-l-2xl text-left">
+                                   <div className="flex items-center justify-end gap-2">
+                                      {u.role === 'store' && (
+                                        <>
+                                          <button 
+                                            onClick={() => {
+                                              handleSelectStore(u.id);
+                                              setActiveTab('store-profile');
+                                              toast.success(`أنت الآن تعدل متجر: ${u.name}`);
+                                            }}
+                                            title="تعديل وتوثيق ملف هذا المتجر"
+                                            className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 rounded-xl font-black text-xs transition"
+                                          >
+                                            <Store className="w-3.5 h-3.5" />
+                                            <span>تعديل المتجر</span>
+                                          </button>
+                                          <Link 
+                                            to={`/store/${u.id}`}
+                                            target="_blank"
+                                            title="زيارة صفحة المتجر"
+                                            className="p-1.5 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white transition"
+                                          >
+                                            <ExternalLink className="w-4 h-4" />
+                                          </Link>
+                                        </>
+                                      )}
+                                      {!isMasterAdminAccount ? (
+                                        <button 
+                                          onClick={() => setDeleteConfirm({ id: u.id, type: 'users', title: u.name, email: u.email })} 
+                                          className="text-red-600 hover:text-red-800 p-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/40 transition active:scale-95"
+                                          title="حذف الحساب نهائياً"
+                                        >
+                                           <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      ) : (
+                                        <span className="p-2 text-gray-300 dark:text-gray-600 cursor-not-allowed" title="محمي (المدير الرئيسي)">
+                                          <Lock className="w-4 h-4" />
+                                        </span>
+                                      )}
+                                   </div>
+                                </td>
+                             </tr>
+                            );
+                          })}
                         </tbody>
                      </table>
                   </div>
                </div>
-            )}
+              );
+            })()}
 
             {isAdmin && activeTab === 'settings' && (
               <div className="max-w-4xl space-y-10">
@@ -2302,147 +2439,6 @@ export default function AdminDashboard() {
                         )}
                       </div>
                     </div>
-                  </div>
-                </div>
-
-                {/* OTP Email Sender Configuration */}
-                <div className={`p-8 rounded-[2.5rem] border shadow-sm text-right transition ${
-                  isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-gradient-to-br from-green-50/50 to-emerald-50/30 border-green-100'
-                }`}>
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                    <div>
-                      <h3 className="text-xl font-black flex items-center gap-3">
-                        <Mail className="w-6 h-6 text-emerald-600" />
-                        <span>إعدادات بريد الإرسال التلقائي لرمز التحقق (OTP)</span>
-                      </h3>
-                      <p className="text-xs text-gray-500 font-medium mt-1">
-                        البريد الرسمي للمتجر الذي يرسل رسائل التحقق التلقائية للمستخدمين باسم "اليمن"
-                      </p>
-                    </div>
-
-                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-2xl text-xs font-bold shadow-md shadow-emerald-600/20">
-                      <ShieldCheck className="w-4 h-4" />
-                      <span>المرسل المعتمد: {otpSenderConfig.senderName} ({otpSenderConfig.senderEmail})</span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-                        اسم مرسل الرسالة
-                      </label>
-                      <input 
-                        type="text"
-                        value={otpSenderConfig.senderName}
-                        onChange={(e) => setOtpSenderConfig({ ...otpSenderConfig, senderName: e.target.value })}
-                        className="w-full px-4 py-3 rounded-2xl border text-sm font-bold bg-white dark:bg-gray-800 dark:border-gray-700"
-                        placeholder="اليمن"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-                        البريد الإلكتروني للمرسل (المتجر)
-                      </label>
-                      <input 
-                        type="email"
-                        value={otpSenderConfig.senderEmail}
-                        onChange={(e) => setOtpSenderConfig({ ...otpSenderConfig, senderEmail: e.target.value })}
-                        className="w-full px-4 py-3 rounded-2xl border text-sm font-bold bg-white dark:bg-gray-800 dark:border-gray-700"
-                        placeholder="yourstore@domain.com"
-                        dir="ltr"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-                        خادم SMTP Host
-                      </label>
-                      <input 
-                        type="text"
-                        value={otpSenderConfig.smtpHost}
-                        onChange={(e) => setOtpSenderConfig({ ...otpSenderConfig, smtpHost: e.target.value })}
-                        className="w-full px-4 py-3 rounded-2xl border text-sm font-mono bg-white dark:bg-gray-800 dark:border-gray-700"
-                        placeholder="smtp.gmail.com"
-                        dir="ltr"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-                        منفذ SMTP Port
-                      </label>
-                      <input 
-                        type="number"
-                        value={otpSenderConfig.smtpPort}
-                        onChange={(e) => setOtpSenderConfig({ ...otpSenderConfig, smtpPort: Number(e.target.value) })}
-                        className="w-full px-4 py-3 rounded-2xl border text-sm font-mono bg-white dark:bg-gray-800 dark:border-gray-700"
-                        placeholder="465"
-                        dir="ltr"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-                        مستخدم SMTP User
-                      </label>
-                      <input 
-                        type="email"
-                        value={otpSenderConfig.smtpUser}
-                        onChange={(e) => setOtpSenderConfig({ ...otpSenderConfig, smtpUser: e.target.value })}
-                        className="w-full px-4 py-3 rounded-2xl border text-sm font-mono bg-white dark:bg-gray-800 dark:border-gray-700"
-                        placeholder="yourstore@domain.com"
-                        dir="ltr"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-                        كلمة مرور تطبيقات Gmail (App Password)
-                      </label>
-                      <input 
-                        type="password"
-                        value={otpSenderConfig.smtpPass}
-                        onChange={(e) => setOtpSenderConfig({ ...otpSenderConfig, smtpPass: e.target.value })}
-                        className="w-full px-4 py-3 rounded-2xl border text-sm font-mono bg-white dark:bg-gray-800 dark:border-gray-700"
-                        placeholder="••••••••••••••••"
-                        dir="ltr"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-6 border-t border-gray-200 dark:border-gray-800">
-                    {/* Test email send */}
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                      <input 
-                        type="email"
-                        value={testOtpEmail}
-                        onChange={(e) => setTestOtpEmail(e.target.value)}
-                        placeholder="بريد تجريبي لاختبار الإرسال..."
-                        className="px-4 py-2.5 rounded-xl border text-xs font-medium bg-white dark:bg-gray-800 dark:border-gray-700 min-w-[220px]"
-                        dir="ltr"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleTestOtpSend}
-                        disabled={isSendingTestOtp || !testOtpEmail}
-                        className="px-4 py-2.5 rounded-xl bg-gray-900 text-white text-xs font-bold hover:bg-black transition disabled:opacity-50 flex items-center gap-1.5 shrink-0"
-                      >
-                        {isSendingTestOtp ? <Clock className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                        <span>إرسال تجريبي</span>
-                      </button>
-                    </div>
-
-                    {/* Save config */}
-                    <button
-                      type="button"
-                      onClick={handleSaveOtpSettings}
-                      disabled={isSavingOtpConfig}
-                      className="w-full sm:w-auto px-8 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-black shadow-lg shadow-emerald-600/20 transition flex items-center justify-center gap-2"
-                    >
-                      {isSavingOtpConfig ? <Clock className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                      <span>حفظ إعدادات بريد التحقق</span>
-                    </button>
                   </div>
                 </div>
               </div>

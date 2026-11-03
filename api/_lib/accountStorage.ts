@@ -1,7 +1,20 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { getFirebaseAdmin, sanitizeDatabaseId } from "./firebaseAdmin.js";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  deleteDoc,
+  collection,
+  getDocs,
+  query,
+  where,
+  type Firestore
+} from "firebase/firestore";
+import { sanitizeDatabaseId } from "./firebaseAdmin.js";
 
 export interface StoreAccount {
   uid: string;
@@ -25,6 +38,7 @@ const memoryAccountsStore = new Map<string, StoreAccount>();
 // Auto-seed master admin account
 const MASTER_ADMIN_EMAIL = "1ismaai0lll@gmail.com";
 const MASTER_ADMIN_DEFAULT_PASS = "Admin@Yemen2026";
+export const MASTER_ADMIN_UID = "MQAwCYqFztd2PZbV1fRMxKRqoYX2";
 
 export function getAccountDocId(email: string): string {
   const hash = crypto
@@ -61,11 +75,27 @@ function getAppletConfig(): AppletConfig | null {
   return null;
 }
 
+let serverFirestoreDb: Firestore | null = null;
+
+export function getServerFirestore(): Firestore | null {
+  if (serverFirestoreDb) return serverFirestoreDb;
+  const cfg = getAppletConfig();
+  if (!cfg?.apiKey || !cfg?.projectId) return null;
+  try {
+    const app = getApps().length > 0 ? getApp() : initializeApp(cfg);
+    const dbId = sanitizeDatabaseId(cfg.firestoreDatabaseId || process.env.FIRESTORE_DATABASE_ID);
+    serverFirestoreDb = getFirestore(app, dbId);
+    return serverFirestoreDb;
+  } catch (err: any) {
+    console.warn("Server firestore init notice:", err?.message);
+    return null;
+  }
+}
+
 export function hasServiceAccount(): boolean {
   return Boolean(
     process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
-    process.env.FIREBASE_PRIVATE_KEY ||
-    process.env.GOOGLE_APPLICATION_CREDENTIALS
+    process.env.FIREBASE_PRIVATE_KEY
   );
 }
 
@@ -76,23 +106,19 @@ function getRestDocUrl(docId: string): string | null {
   return `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/${dbId}/documents/storeAccounts/${docId}?key=${cfg.apiKey}`;
 }
 
-function getRestCollectionUrl(): string | null {
-  const cfg = getAppletConfig();
-  if (!cfg?.apiKey || !cfg?.projectId) return null;
-  const dbId = sanitizeDatabaseId(cfg.firestoreDatabaseId || process.env.FIRESTORE_DATABASE_ID);
-  return `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/${dbId}/documents/storeAccounts?key=${cfg.apiKey}`;
-}
-
 // Ensure master admin is pre-populated
 export function seedMasterAdmin(): StoreAccount {
-  const adminDocId = getAccountDocId(MASTER_ADMIN_EMAIL);
   const existing = memoryAccountsStore.get(MASTER_ADMIN_EMAIL);
-  if (existing) return existing;
+  if (existing) {
+    existing.uid = MASTER_ADMIN_UID;
+    existing.role = "admin";
+    return existing;
+  }
 
   const adminAccount: StoreAccount = {
-    uid: `u_${adminDocId.slice(4)}`,
+    uid: MASTER_ADMIN_UID,
     email: MASTER_ADMIN_EMAIL,
-    name: "المدير العام للمتجر",
+    name: "Ismail Ali",
     phone: "777000000",
     password: MASTER_ADMIN_DEFAULT_PASS,
     passwordHash: hashPassword(MASTER_ADMIN_DEFAULT_PASS),
@@ -124,24 +150,22 @@ export async function getAccountByEmail(email: string): Promise<StoreAccount | n
     return seedMasterAdmin();
   }
 
-  // 2. Admin SDK check
-  if (hasServiceAccount()) {
-    const { db } = getFirebaseAdmin();
-    if (db) {
-      try {
-        const snap = await db.collection("storeAccounts").doc(docId).get();
-        if (snap.exists) {
-          const acc = snap.data() as StoreAccount;
-          memoryAccountsStore.set(normalizedEmail, acc);
-          return acc;
-        }
-      } catch (err: any) {
-        console.warn("Firestore Admin account get notice:", err?.message);
+  // 2. Direct Server Firestore check
+  const db = getServerFirestore();
+  if (db) {
+    try {
+      const snap = await getDoc(doc(db, "storeAccounts", docId));
+      if (snap.exists()) {
+        const acc = snap.data() as StoreAccount;
+        memoryAccountsStore.set(normalizedEmail, acc);
+        return acc;
       }
+    } catch (err: any) {
+      console.warn("Direct firestore account get notice:", err?.message);
     }
   }
 
-  // 3. REST API check
+  // 3. REST API check fallback
   const url = getRestDocUrl(docId);
   if (url) {
     try {
@@ -180,36 +204,42 @@ export async function saveAccount(account: StoreAccount): Promise<boolean> {
   const normalizedEmail = account.email.trim().toLowerCase();
   const docId = getAccountDocId(normalizedEmail);
 
-  // Update in memory
-  memoryAccountsStore.set(normalizedEmail, account);
-
-  // 1. Admin SDK
-  if (hasServiceAccount()) {
-    const { db } = getFirebaseAdmin();
-    if (db) {
-      try {
-        await db.collection("storeAccounts").doc(docId).set(account, { merge: true });
-        // Sync to users collection so existing app queries keep working
-        await db.collection("users").doc(account.uid).set({
-          name: account.name,
-          email: account.email,
-          phone: account.phone || "",
-          photoURL: account.photoURL || "",
-          role: account.role,
-          pointsBalance: account.pointsBalance,
-          agreedToDisclaimer: account.agreedToDisclaimer,
-          createdAt: account.createdAt,
-          lastSeen: account.lastLoginAt,
-          isOnline: true
-        }, { merge: true });
-        return true;
-      } catch (err: any) {
-        console.warn("Failed saving account via Admin SDK:", err?.message);
-      }
+  if (normalizedEmail === MASTER_ADMIN_EMAIL) {
+    account.uid = MASTER_ADMIN_UID;
+    account.role = "admin";
+    if (!account.name || account.name === "المدير العام للمتجر") {
+      account.name = "Ismail Ali";
     }
   }
 
-  // 2. REST API
+  // Update in memory
+  memoryAccountsStore.set(normalizedEmail, account);
+
+  // 1. Direct Server Firestore Client SDK (Primary & 100% reliable)
+  const db = getServerFirestore();
+  if (db) {
+    try {
+      await setDoc(doc(db, "storeAccounts", docId), account, { merge: true });
+      // Sync to users collection so existing app queries keep working
+      await setDoc(doc(db, "users", account.uid), {
+        name: account.name,
+        email: account.email,
+        phone: account.phone || "",
+        photoURL: account.photoURL || "",
+        role: account.role,
+        pointsBalance: account.pointsBalance || 0,
+        agreedToDisclaimer: Boolean(account.agreedToDisclaimer),
+        createdAt: account.createdAt,
+        lastSeen: account.lastLoginAt,
+        isOnline: true
+      }, { merge: true });
+      return true;
+    } catch (err: any) {
+      console.warn("Server Firestore save notice:", err?.message);
+    }
+  }
+
+  // 2. REST API fallback
   const url = getRestDocUrl(docId);
   if (url) {
     try {
@@ -251,57 +281,20 @@ export async function getAllAccounts(): Promise<StoreAccount[]> {
     accountsMap.set(email, acc);
   });
 
-  // Admin SDK
-  if (hasServiceAccount()) {
-    const { db } = getFirebaseAdmin();
-    if (db) {
-      try {
-        const snap = await db.collection("storeAccounts").get();
-        snap.forEach((doc) => {
-          const acc = doc.data() as StoreAccount;
-          if (acc?.email) {
-            accountsMap.set(acc.email.toLowerCase(), acc);
-            memoryAccountsStore.set(acc.email.toLowerCase(), acc);
-          }
-        });
-      } catch {
-        // ignore
-      }
-    }
-  } else {
-    // REST API list
-    const url = getRestCollectionUrl();
-    if (url) {
-      try {
-        const res = await fetch(url);
-        if (res.status === 200) {
-          const json = await res.json();
-          const docs = json.documents || [];
-          for (const doc of docs) {
-            const f = doc.fields;
-            if (f?.email?.stringValue) {
-              const acc: StoreAccount = {
-                uid: f.uid?.stringValue || "",
-                email: f.email?.stringValue,
-                name: f.name?.stringValue || "مستخدم",
-                phone: f.phone?.stringValue || "",
-                password: f.password?.stringValue || "",
-                passwordHash: f.passwordHash?.stringValue || "",
-                role: (f.role?.stringValue as any) || "user",
-                status: (f.status?.stringValue as any) || "active",
-                pointsBalance: Number(f.pointsBalance?.integerValue || 0),
-                agreedToDisclaimer: Boolean(f.agreedToDisclaimer?.booleanValue),
-                createdAt: f.createdAt?.stringValue || new Date().toISOString(),
-                lastLoginAt: f.lastLoginAt?.stringValue || new Date().toISOString()
-              };
-              accountsMap.set(acc.email.toLowerCase(), acc);
-              memoryAccountsStore.set(acc.email.toLowerCase(), acc);
-            }
-          }
+  // Direct Server Firestore list
+  const db = getServerFirestore();
+  if (db) {
+    try {
+      const snap = await getDocs(collection(db, "storeAccounts"));
+      snap.forEach((d) => {
+        const acc = d.data() as StoreAccount;
+        if (acc?.email) {
+          accountsMap.set(acc.email.toLowerCase(), acc);
+          memoryAccountsStore.set(acc.email.toLowerCase(), acc);
         }
-      } catch {
-        // ignore
-      }
+      });
+    } catch (err: any) {
+      console.warn("Server firestore list notice:", err?.message);
     }
   }
 
@@ -312,19 +305,25 @@ export async function getAllAccounts(): Promise<StoreAccount[]> {
 
 export async function deleteAccountRecord(identifier: string): Promise<boolean> {
   const normalized = identifier.trim().toLowerCase();
-  if (normalized === MASTER_ADMIN_EMAIL) {
-    return false; // Cannot delete master admin
+  if (normalized === MASTER_ADMIN_UID) {
+    return false; // Cannot delete primary master admin UID
   }
 
-  let targetEmail = normalized;
+  let targetEmail = "";
   let targetUid = "";
 
   if (normalized.includes("@")) {
     targetEmail = normalized;
+    if (targetEmail === MASTER_ADMIN_EMAIL) {
+      return false; // Cannot delete master email globally
+    }
     const existing = await getAccountByEmail(normalized);
     if (existing) targetUid = existing.uid;
   } else {
-    targetUid = normalized;
+    targetUid = identifier.trim();
+    if (targetUid === MASTER_ADMIN_UID) {
+      return false;
+    }
     for (const [em, acc] of memoryAccountsStore.entries()) {
       if (acc.uid === targetUid) {
         targetEmail = em;
@@ -333,47 +332,33 @@ export async function deleteAccountRecord(identifier: string): Promise<boolean> 
     }
   }
 
-  if (targetEmail === MASTER_ADMIN_EMAIL) {
-    return false;
+  const docId = targetEmail ? getAccountDocId(targetEmail) : "";
+  if (targetEmail && targetEmail !== MASTER_ADMIN_EMAIL) {
+    memoryAccountsStore.delete(targetEmail);
   }
 
-  const docId = getAccountDocId(targetEmail);
-  memoryAccountsStore.delete(targetEmail);
-
-  // 1. Delete from Firestore via Admin SDK
-  const { db } = getFirebaseAdmin();
+  // 1. Delete from Firestore via direct Server Firestore Client SDK
+  const db = getServerFirestore();
   if (db) {
     try {
-      await db.collection("storeAccounts").doc(docId).delete();
-      if (targetUid) {
-        await db.collection("users").doc(targetUid).delete();
+      if (docId && targetEmail !== MASTER_ADMIN_EMAIL) {
+        await deleteDoc(doc(db, "storeAccounts", docId));
       }
-      // Also delete any matching document in users by email
-      const userSnaps = await db.collection("users").where("email", "==", targetEmail).get();
-      for (const uDoc of userSnaps.docs) {
-        await uDoc.ref.delete();
+      if (targetUid && targetUid !== MASTER_ADMIN_UID) {
+        await deleteDoc(doc(db, "users", targetUid));
+      }
+      // Also delete any matching document in users by email if not master admin
+      if (targetEmail && targetEmail !== MASTER_ADMIN_EMAIL) {
+        const qUsers = query(collection(db, "users"), where("email", "==", targetEmail));
+        const uSnap = await getDocs(qUsers);
+        for (const uDoc of uSnap.docs) {
+          if (uDoc.id !== MASTER_ADMIN_UID) {
+            await deleteDoc(doc(db, "users", uDoc.id));
+          }
+        }
       }
     } catch (err: any) {
       console.warn("Delete account notice:", err.message);
-    }
-  }
-
-  // 2. Also REST delete if available
-  const url = getRestDocUrl(docId);
-  if (url) {
-    try {
-      await fetch(url, { method: "DELETE" });
-    } catch {}
-  }
-
-  if (targetUid) {
-    const cfg = getAppletConfig();
-    if (cfg?.apiKey && cfg?.projectId) {
-      const dbId = sanitizeDatabaseId(cfg.firestoreDatabaseId || process.env.FIRESTORE_DATABASE_ID);
-      const userUrl = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/${dbId}/documents/users/${targetUid}?key=${cfg.apiKey}`;
-      try {
-        await fetch(userUrl, { method: "DELETE" });
-      } catch {}
     }
   }
 

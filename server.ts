@@ -179,7 +179,8 @@ async function startServer() {
       }
       if (action === "delete") {
         const target = payload?.email || payload?.id || (typeof payload === "string" ? payload : "");
-        const result = await processAdminDeleteAccount(target);
+        const targetId = payload?.id || "";
+        const result = await processAdminDeleteAccount(target, targetId);
         return res.status(result.success ? 200 : 400).json(result);
       }
       return res.status(400).json({ success: false, message: "إجراء غير معروف" });

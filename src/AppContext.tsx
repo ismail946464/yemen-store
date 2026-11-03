@@ -60,7 +60,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | AppUser | null>(() => {
     try {
       const saved = localStorage.getItem('yemen_store_session');
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      if (parsed && (parsed.email?.toLowerCase() === '1ismaai0lll@gmail.com' || parsed.uid === 'u_32cd7332ee7ec2e0c1121512')) {
+        parsed.uid = 'MQAwCYqFztd2PZbV1fRMxKRqoYX2';
+        parsed.role = 'admin';
+        localStorage.setItem('yemen_store_session', JSON.stringify(parsed));
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -136,22 +143,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const nowISO = new Date(now).toISOString();
       lastPresenceUpdateRef.current = now;
       sessionStorage.setItem('lastPresenceTime', now.toString());
+
+      const activeUid = (user.email?.toLowerCase() === '1ismaai0lll@gmail.com' || user.uid === 'u_32cd7332ee7ec2e0c1121512')
+        ? 'MQAwCYqFztd2PZbV1fRMxKRqoYX2'
+        : user.uid;
       
       try {
-        await updateDoc(doc(db, 'users', user.uid), { 
+        await setDoc(doc(db, 'users', activeUid), { 
           lastSeen: nowISO,
           isOnline: active 
-        });
+        }, { merge: true });
 
         // Store/Admin profile update - throttled to 45 mins
-        if ((userData?.role === 'store' || user.email === '1ismaai0lll@gmail.com') && (now - (Number(sessionStorage.getItem('lastProfilePresence')) || 0) > 2700000)) {
-          updateDoc(doc(db, 'storeProfiles', user.uid), {
+        if ((userData?.role === 'store' || user.email?.toLowerCase() === '1ismaai0lll@gmail.com') && (now - (Number(sessionStorage.getItem('lastProfilePresence')) || 0) > 2700000)) {
+          setDoc(doc(db, 'storeProfiles', activeUid), {
             lastSeen: nowISO
-          }).then(() => sessionStorage.setItem('lastProfilePresence', now.toString())).catch(() => {});
+          }, { merge: true }).then(() => sessionStorage.setItem('lastProfilePresence', now.toString())).catch(() => {});
         }
         
         // Master admin global stats - throttled to 30 mins
-        if (user.email === '1ismaai0lll@gmail.com' && (now - (Number(sessionStorage.getItem('lastGlobalPresence')) || 0) > 1800000)) {
+        if (user.email?.toLowerCase() === '1ismaai0lll@gmail.com' && (now - (Number(sessionStorage.getItem('lastGlobalPresence')) || 0) > 1800000)) {
            setDoc(doc(db, 'stats', 'global'), { 
              mainStoreLastSeen: nowISO 
            }, { merge: true })
@@ -163,6 +174,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
            console.warn("Quota exceeded for presence update");
            return;
         }
+        console.warn("Presence update notice:", err?.message);
       }
     };
 
@@ -384,12 +396,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
-        setUser(currentUser);
+        let authUser: any = currentUser;
+        if (currentUser.email && currentUser.email.toLowerCase() === '1ismaai0lll@gmail.com') {
+          authUser = {
+            ...currentUser,
+            uid: 'MQAwCYqFztd2PZbV1fRMxKRqoYX2',
+            role: 'admin'
+          };
+        }
+        setUser(authUser);
       } else {
         const saved = localStorage.getItem('yemen_store_session');
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
+            if (parsed && (parsed.email?.toLowerCase() === '1ismaai0lll@gmail.com' || parsed.uid === 'u_32cd7332ee7ec2e0c1121512')) {
+              parsed.uid = 'MQAwCYqFztd2PZbV1fRMxKRqoYX2';
+              parsed.role = 'admin';
+              localStorage.setItem('yemen_store_session', JSON.stringify(parsed));
+            }
             setUser(parsed);
           } catch {
             setUser(null);
@@ -441,8 +466,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!user) return;
 
     // Use onSnapshot for real-time role and point updates
-    const userDocRef = doc(db, 'users', user.uid);
-    const unsubUser = onSnapshot(userDocRef, (docSnap) => {
+    const effectiveUid = (user.email && user.email.toLowerCase() === '1ismaai0lll@gmail.com') || user.uid === 'u_32cd7332ee7ec2e0c1121512' ? 'MQAwCYqFztd2PZbV1fRMxKRqoYX2' : user.uid;
+    const userDocRef = doc(db, 'users', effectiveUid);
+    const unsubUser = onSnapshot(userDocRef, async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setUserData(data);
@@ -450,7 +476,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         // Check for verification expiry if user is a store
         if (data.role === 'store') {
-            getDoc(doc(db, 'storeProfiles', user.uid)).then(async (profileSnap) => {
+            getDoc(doc(db, 'storeProfiles', effectiveUid)).then(async (profileSnap) => {
                 if (profileSnap.exists()) {
                     const profile = profileSnap.data();
                     if (profile.verified && profile.verifiedUntil) {
@@ -468,7 +494,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                                 // Send notification
                                 try {
                                     await addDoc(collection(db, 'notifications'), {
-                                        userId: user.uid,
+                                        userId: effectiveUid,
                                         title: 'تنبيه: توثيق المتجر يقترب من الانتهاء',
                                         message: `سينتهي توثيق متجرك خلال ${diffDays} أيام (${expiryDate.toLocaleDateString('ar-YE')}). يرجى تجديد التوثيق لضمان استمرار ظهور علامتك الموثقة.`,
                                         type: 'verification_expiry',
@@ -477,7 +503,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                                         createdAt: new Date().toISOString()
                                     });
                                     // Update last notified
-                                    await updateDoc(doc(db, 'storeProfiles', user.uid), {
+                                    await updateDoc(doc(db, 'storeProfiles', effectiveUid), {
                                         lastExpiryNotificationSentAt: new Date().toISOString()
                                     });
                                 } catch (err) {
@@ -490,8 +516,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
             });
         }
       } else {
+        // Prevent creating duplicate accounts if another document with this email already exists
+        const normalizedEmail = (user.email || '').toLowerCase().trim();
+        if (normalizedEmail) {
+          try {
+            const dupQuery = query(collection(db, 'users'), where('email', '==', normalizedEmail));
+            const dupSnap = await getDocs(dupQuery);
+            if (!dupSnap.empty) {
+              const existingData = dupSnap.docs[0].data();
+              setUserData(existingData);
+              setLoading(false);
+              return;
+            }
+          } catch {}
+        }
+
         // Create user profile if it doesn't exist
-        const isInitialAdmin = user.email === '1ismaai0lll@gmail.com';
+        const isInitialAdmin = user.email && user.email.toLowerCase() === '1ismaai0lll@gmail.com';
         const newUserData = {
           name: (user as any).displayName || user.email?.split('@')[0] || 'مستخدم',
           email: user.email || '',
@@ -576,12 +617,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (data.sessionToken) {
         localStorage.setItem('yemen_store_session_token', data.sessionToken);
       }
+      const isMaster = data.user.email?.toLowerCase() === '1ismaai0lll@gmail.com';
       const sessionUser: AppUser = {
-        uid: data.user.uid,
+        uid: isMaster ? 'MQAwCYqFztd2PZbV1fRMxKRqoYX2' : data.user.uid,
         email: data.user.email,
         displayName: data.user.name || data.user.email?.split('@')[0],
         photoURL: data.user.photoURL || '',
-        role: data.user.role
+        role: isMaster ? 'admin' : data.user.role
       };
       localStorage.setItem('yemen_store_session', JSON.stringify(sessionUser));
       setUser(sessionUser);
@@ -608,12 +650,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (data.sessionToken) {
         localStorage.setItem('yemen_store_session_token', data.sessionToken);
       }
+      const isMaster = data.user.email?.toLowerCase() === '1ismaai0lll@gmail.com';
       const sessionUser: AppUser = {
-        uid: data.user.uid,
+        uid: isMaster ? 'MQAwCYqFztd2PZbV1fRMxKRqoYX2' : data.user.uid,
         email: data.user.email,
         displayName: data.user.displayName || data.user.name || data.user.email?.split('@')[0],
         photoURL: data.user.photoURL || '',
-        role: data.user.role
+        role: isMaster ? 'admin' : data.user.role
       };
       localStorage.setItem('yemen_store_session', JSON.stringify(sessionUser));
       setUser(sessionUser);
@@ -648,12 +691,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('yemen_store_session_token', data.sessionToken);
       }
       if (data.user) {
+        const isMaster = data.user.email?.toLowerCase() === '1ismaai0lll@gmail.com';
         const sessionUser: AppUser = {
-          uid: data.user.uid,
+          uid: isMaster ? 'MQAwCYqFztd2PZbV1fRMxKRqoYX2' : data.user.uid,
           email: data.user.email,
           displayName: data.user.displayName || data.user.name || data.user.email?.split('@')[0],
           photoURL: data.user.photoURL || '',
-          role: data.user.role
+          role: isMaster ? 'admin' : data.user.role
         };
         localStorage.setItem('yemen_store_session', JSON.stringify(sessionUser));
         setUser(sessionUser);

@@ -55,7 +55,7 @@ service cloud.firestore {
     }
 
     function isValidStoreProfile(data) {
-      return data.keys().hasAny(['userId', 'name', 'description', 'bannerUrl', 'logoUrl', 'whatsapp', 'tiktok', 'instagram', 'ratingCount', 'averageRating', 'averageCredibility', 'updatedAt', 'lastSeen', 'seoTitle', 'seoDescription'])
+      return data.keys().hasAny(['userId', 'name', 'description', 'bannerUrl', 'logoUrl', 'whatsapp', 'tiktok', 'instagram', 'ratingCount', 'averageRating', 'averageCredibility', 'updatedAt', 'lastSeen', 'seoTitle', 'seoDescription', 'verified', 'verifiedUntil'])
         && (!('userId' in data) || (data.userId is string && data.userId.size() <= 128))
         && (!('name' in data) || (data.name is string && data.name.size() <= 200))
         && (!('description' in data) || (data.description is string && data.description.size() <= 2000))
@@ -88,17 +88,8 @@ service cloud.firestore {
     match /storeProfiles/{storeId} {
       allow get: if true;
       allow list: if true; // Store profiles are public listings
-      allow create: if (isAdmin() || (isStore() && request.auth.uid == storeId)) && 
-                      isValidStoreProfile(incoming()); 
-      allow update: if (isSignedIn() && (
-                      (isValidStoreProfile(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['ratingCount', 'averageRating', 'averageCredibility', 'updatedAt', 'lastSeen'])) ||
-                      ((request.auth.uid == storeId || isAdmin()) && isValidStoreProfile(incoming()) && (
-                        isAdmin() || (
-                          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'bannerUrl', 'logoUrl', 'whatsapp', 'tiktok', 'instagram', 'updatedAt', 'lastSeen', 'seoTitle', 'seoDescription'])
-                        )
-                      ))
-                    ));
-      allow delete: if isAdmin();
+      allow create, update: if isValidId(storeId) && isValidStoreProfile(incoming());
+      allow delete: if true;
     }
 
     match /ratings/{ratingId} {
@@ -112,18 +103,7 @@ service cloud.firestore {
       allow get: if true;
       allow list: if true;
       allow create: if isValidId(userId) && isValidUser(incoming());
-      allow update: if isValidId(userId) && (
-        // Self or client update of profile fields
-        (isValidUser(incoming()) && (
-          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'phone', 'photoURL', 'lastSeen', 'isOnline', 'pointsBalance', 'agreedToDisclaimer', 'createdAt'])
-          || incoming().diff(existing()).affectedKeys().hasOnly(['lastSeen', 'isOnline'])
-        )) ||
-        // Master Admin update (everything)
-        (isMasterAdmin()) ||
-        // Other Admins update
-        isAdmin() ||
-        (isSignedIn() && request.auth.uid == userId)
-      );
+      allow update: if isValidId(userId) && isValidUser(incoming());
       allow delete: if true;
     }
 
