@@ -18,7 +18,7 @@ import {
   DollarSign, Package, Eye, ChevronLeft, ChevronRight, 
   Twitter, Instagram, Facebook, Mail, Phone,
   BarChart3, LayoutDashboard, Layout, Sun, Moon, Server, Activity,
-  Upload, Palette, Wallet, KeyRound, Lock
+  Upload, Palette, Wallet, KeyRound, Lock, BookmarkCheck
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -467,14 +467,22 @@ export default function AdminDashboard() {
     if (!productForm) return;
     setIsSaving(true);
     try {
-      const data = { 
+      const data: any = { 
         ...productForm, 
         image: productForm.images?.[0] || '', // Sync main image field
         price: Number(productForm.price),
         stock: productForm.stock === '' || productForm.stock === undefined || productForm.stock === null ? null : Number(productForm.stock),
+        isPreOrderEnabled: productForm.isPreOrderEnabled ?? true,
+        reservationDurationDays: Number(productForm.reservationDurationDays) || 3,
         ownerId: productForm.ownerId || user?.uid,
         updatedAt: new Date().toISOString()
       };
+
+      if (productForm.depositAmount !== '' && productForm.depositAmount !== null && productForm.depositAmount !== undefined) {
+        data.depositAmount = Number(productForm.depositAmount);
+      } else {
+        delete data.depositAmount;
+      }
 
       // Size check (Firestore limit is 1MB)
       const estimatedSize = JSON.stringify(data).length;
@@ -2928,6 +2936,71 @@ export default function AdminDashboard() {
                   onChange={v => setProductForm({...productForm, description: v})} 
                   placeholder="اكتب مواصفات وتفاصيل المنتج هنا..." 
                 />
+
+                {/* Pre-Order / Reservation Configuration */}
+                <div className="p-6 rounded-[2rem] bg-amber-50/70 border-2 border-amber-300 space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md">
+                        <BookmarkCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-black">إعدادات الحجز المسبق (دفع عربون)</h4>
+                        <p className="text-[11px] text-gray-500 font-bold">تحديد مبلغ العربون ومدة الحجز ومصادرة العربون عند فوات المدة</p>
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={productForm.isPreOrderEnabled ?? true}
+                        onChange={(e) => setProductForm({ ...productForm, isPreOrderEnabled: e.target.checked })}
+                        className="w-5 h-5 rounded-lg border-2 border-amber-400 text-amber-600 focus:ring-amber-500"
+                      />
+                      <span className="text-xs font-black text-black">تفعيل ميزة الحجز</span>
+                    </label>
+                  </div>
+
+                  {(productForm.isPreOrderEnabled ?? true) && (
+                    <div className="space-y-4 pt-2">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <AdminInput
+                            label="مبلغ العربون المطلوب (ريال)"
+                            type="number"
+                            value={productForm.depositAmount === undefined || productForm.depositAmount === null ? '' : productForm.depositAmount.toString()}
+                            onChange={(v: string) => setProductForm({ ...productForm, depositAmount: v === '' ? null : Number(v) })}
+                            placeholder="مثال: 5000 (افتراضياً 20%)"
+                            extra="اتركه فارغاً لاحتساب 20% تلقائياً من السعر"
+                          />
+                        </div>
+                        <div className="space-y-3">
+                          <label className="text-sm font-black text-black uppercase tracking-widest px-1 block">
+                            مدة صلاحية الحجز (المحددة من المتجر)
+                          </label>
+                          <select
+                            value={productForm.reservationDurationDays || 3}
+                            onChange={(e) => setProductForm({ ...productForm, reservationDurationDays: Number(e.target.value) })}
+                            className="w-full bg-white border-2 border-gray-100 rounded-[1.5rem] p-5 font-black text-base focus:ring-4 focus:ring-black/5 focus:border-black transition-all shadow-md active:scale-[0.99]"
+                          >
+                            <option value={1}>يوم واحد (24 ساعة)</option>
+                            <option value={2}>يومان (48 ساعة)</option>
+                            <option value={3}>3 أيام (72 ساعة - موصى به)</option>
+                            <option value={5}>5 أيام</option>
+                            <option value={7}>أسبوع كامل (7 أيام)</option>
+                            <option value={10}>10 أيام</option>
+                            <option value={14}>أسبوعان (14 يوماً)</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="p-3 bg-red-100/70 rounded-2xl border border-red-200">
+                        <p className="text-[11px] text-red-800 font-black leading-relaxed flex items-center gap-1.5">
+                          <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+                          <span>شرط النظام المعتمد: في حال لم يقم الزبون بإتمام شراء المنتج وسداد باقي المبلغ خلال المدة المحددة، يُعتبر الحجز لاغياً تلقائياً ويذهب مبلغ العربون للمتجر.</span>
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <div className="space-y-6">
                   <div className="flex justify-between items-end px-1">

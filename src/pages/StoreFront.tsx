@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { ShoppingCart, CheckCircle, Image as ImageIcon, ShieldAlert } from 'lucide-react';
+import { ShoppingCart, CheckCircle, Image as ImageIcon, ShieldAlert, BookmarkCheck } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
+import PreOrderModal from '../components/PreOrderModal';
 
 export default function StoreFront() {
   const [activeTab, setActiveTab] = useState('all');
@@ -16,6 +17,7 @@ export default function StoreFront() {
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedPreOrderProduct, setSelectedPreOrderProduct] = useState<any | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'products'), where('status', '==', 'active'));
@@ -245,6 +247,7 @@ export default function StoreFront() {
                        }}
                        disabled={product.stock !== undefined && Number(product.stock) <= 0}
                        className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-xl transition-all disabled:opacity-30 ${isDarkMode ? 'bg-blue-600 text-white shadow-blue-950/40 hover:scale-110' : 'bg-black text-white shadow-black/10 hover:scale-110'}`}
+                       title="إضافة للسلة للشراء الفوري"
                      >
                        <ShoppingCart className="h-6 w-6" />
                      </button>
@@ -256,6 +259,33 @@ export default function StoreFront() {
                        دخول للشراء
                      </button>
                    )}
+                </div>
+
+                {/* Pre-Order (حجز مسبق) Button Under Product */}
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!user) {
+                        login();
+                        return;
+                      }
+                      setSelectedPreOrderProduct(product);
+                    }}
+                    className="w-full py-3 px-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-black text-xs flex items-center justify-between transition-all duration-200 active:scale-95 group/preorder shadow-sm"
+                  >
+                    <div className="flex items-center gap-2">
+                      <BookmarkCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 group-hover/preorder:scale-110 transition-transform" />
+                      <span className="font-black text-sm">حجز مسبق</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold">
+                      <span>عربون: {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ريال</span>
+                      <span className="text-gray-300 dark:text-gray-600">•</span>
+                      <span className="text-amber-800 dark:text-amber-400">مهلة {product.reservationDurationDays || 3} أيام</span>
+                    </div>
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -280,6 +310,15 @@ export default function StoreFront() {
           اضغط هنا لفتح صفحة التنبيهات والإرشادات الأمنية وشروط الحماية الرسمية
         </span>
       </div>
+
+      {/* Pre-Order Reservation Modal */}
+      {selectedPreOrderProduct && (
+        <PreOrderModal
+          product={selectedPreOrderProduct}
+          isOpen={!!selectedPreOrderProduct}
+          onClose={() => setSelectedPreOrderProduct(null)}
+        />
+      )}
     </div>
   );
 }

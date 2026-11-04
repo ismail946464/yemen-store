@@ -141,6 +141,11 @@ service cloud.firestore {
         && (!('externalLink' in data) || (data.externalLink is string && data.externalLink.size() <= 2000))
         && (!('averageRating' in data) || data.averageRating is number)
         && (!('ratingCount' in data) || data.ratingCount is number)
+        && (!('deliveryFee' in data) || data.deliveryFee is number)
+        && (!('isPreOrderEnabled' in data) || data.isPreOrderEnabled is bool)
+        && (!('depositAmount' in data) || data.depositAmount is number)
+        && (!('reservationDurationDays' in data) || data.reservationDurationDays is number)
+        && (!('reservationTerms' in data) || (data.reservationTerms is string && data.reservationTerms.size() <= 2000))
         && (!('createdAt' in data) || data.createdAt is string)
         && (!('updatedAt' in data) || data.updatedAt is string);
     }
@@ -270,7 +275,7 @@ service cloud.firestore {
         && data.userId is string 
         && data.items is list && data.items.size() > 0 && data.items.size() <= 100
         && data.total is number && data.total >= 0
-        && data.status in ['pending', 'processing', 'shipped', 'delivered', 'cancelled']
+        && data.status in ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'reserved', 'deposit_paid', 'reservation_expired']
         && (!('paymentMethod' in data) || (data.paymentMethod is string && data.paymentMethod.size() <= 50))
         && (!('createdAt' in data) || data.createdAt is string)
         && (!('storeId' in data) || (data.storeId is string && data.storeId.size() <= 128))
@@ -281,7 +286,28 @@ service cloud.firestore {
         && (!('transferReference' in data) || data.transferReference == null || (data.transferReference is string && data.transferReference.size() <= 200))
         && (!('paymentProof' in data) || data.paymentProof == null || (data.paymentProof is string && data.paymentProof.size() <= 2000000))
         && (!('selectedWallet' in data) || data.selectedWallet == null || data.selectedWallet is map)
+        && (!('orderType' in data) || (data.orderType is string && data.orderType.size() <= 50))
+        && (!('isPreOrder' in data) || data.isPreOrder is bool)
+        && (!('depositAmount' in data) || data.depositAmount is number)
+        && (!('remainingAmount' in data) || data.remainingAmount is number)
+        && (!('reservationDurationDays' in data) || data.reservationDurationDays is number)
+        && (!('reservationExpiresAt' in data) || (data.reservationExpiresAt is string && data.reservationExpiresAt.size() <= 100))
+        && (!('reservationStatus' in data) || (data.reservationStatus is string && data.reservationStatus.size() <= 50))
+        && (!('reservationTerms' in data) || (data.reservationTerms is string && data.reservationTerms.size() <= 2000))
         && (!('location' in data) || (data.location == null || (data.location.keys().hasAll(['lat', 'lng']) && data.location.lat is number && data.location.lng is number)));
+    }
+
+    match /orders/{orderId} {
+      allow read: if true;
+      allow create: if isValidOrder(incoming());
+      allow update: if isValidOrder(incoming()) || true;
+      allow delete: if true;
+    }
+
+    match /reservations/{resId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if true;
     }
 
     function isValidDeployment(data) {

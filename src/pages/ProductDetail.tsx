@@ -3,9 +3,10 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc, collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, updateDoc, increment } from 'firebase/firestore';
 import { useAppContext } from '../AppContext';
-import { ShoppingCart, ArrowRight, Share2, ShieldCheck, Truck, CheckCircle, Store, MessageCircle, Phone, MessageSquare, Star, Send, User, Image as ImageIcon, PackageX } from 'lucide-react';
+import { ShoppingCart, ArrowRight, Share2, ShieldCheck, Truck, CheckCircle, Store, MessageCircle, Phone, MessageSquare, Star, Send, User, Image as ImageIcon, PackageX, BookmarkCheck } from 'lucide-react';
 import { motion } from 'motion/react';
 import toast from 'react-hot-toast';
+import PreOrderModal from '../components/PreOrderModal';
 
 export default function ProductDetail() {
   const { productId } = useParams<{ productId: string }>();
@@ -19,6 +20,7 @@ export default function ProductDetail() {
   const [newRating, setNewRating] = useState(5);
   const [newComment, setNewComment] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [showPreOrderModal, setShowPreOrderModal] = useState(false);
   const themeColor = settings?.storeTheme || 'green';
 
   useEffect(() => {
@@ -358,10 +360,73 @@ export default function ProductDetail() {
                       مراسلة البائع فوراً
                    </Link>
                 )}
+
+                {/* Pre-Order / Reservation Card with Deposit */}
+                <div className="bg-amber-50/70 dark:bg-amber-950/30 rounded-[2.5rem] p-6 border-2 border-amber-300 dark:border-amber-800/60 space-y-4 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-700 dark:text-amber-400 flex items-center justify-center">
+                        <BookmarkCheck className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-base text-gray-900 dark:text-white">حجز مسبق مع دفع عربون</h4>
+                        <span className="text-[11px] text-gray-500 dark:text-gray-400 font-bold">احجز السلعة باسمك لضمان عدم بيعها لغيرك</span>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-black px-3 py-1 rounded-full bg-amber-500 text-white shadow-sm">
+                      حجز مؤكد
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-center bg-white/90 dark:bg-gray-800/90 p-4 rounded-2xl border border-amber-200/60 dark:border-amber-800/40">
+                    <div>
+                      <span className="text-[10px] text-gray-400 font-bold block mb-0.5">مبلغ العربون المطلوب</span>
+                      <span className="text-lg font-black text-amber-600 dark:text-amber-400">
+                        {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ريال
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-gray-400 font-bold block mb-0.5">صلاحية مدة الحجز</span>
+                      <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                        {product.reservationDurationDays || 3} أيام
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/40 space-y-1">
+                    <p className="text-[11px] text-red-700 dark:text-red-400 font-black leading-relaxed">
+                      ⚠️ شرط الحجز المعتمد:
+                    </p>
+                    <p className="text-[10px] text-red-800 dark:text-red-300 font-bold leading-relaxed">
+                      مالم يتم إتمام شراء السلعة وسداد باقي المبلغ قبل انتهاء مدة الحجز ({product.reservationDurationDays || 3} أيام)، يعتبر الحجز لاغياً تلقائياً ويذهب مبلغ العربون للمتجر تعويضاً عن فوات فرصة البيع.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!user) { login(); return; }
+                      setShowPreOrderModal(true);
+                    }}
+                    className="w-full bg-amber-600 hover:bg-amber-700 text-white py-4 rounded-2xl font-black text-base shadow-lg shadow-amber-600/25 active:scale-95 transition flex items-center justify-center gap-2"
+                  >
+                    <BookmarkCheck className="w-5 h-5" />
+                    <span>حجز مسبق للسلعة الآن</span>
+                  </button>
+                </div>
              </div>
           </div>
         </div>
       </div>
+
+      {/* Pre-Order Modal */}
+      {showPreOrderModal && (
+        <PreOrderModal
+          product={product}
+          isOpen={showPreOrderModal}
+          onClose={() => setShowPreOrderModal(false)}
+        />
+      )}
 
       {/* Reviews Section */}
       <div className="mt-32 border-t border-gray-50 pt-20">

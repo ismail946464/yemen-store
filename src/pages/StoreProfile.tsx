@@ -3,9 +3,10 @@ import { useParams, Link } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { useAppContext } from '../AppContext';
-import { CheckCircle, ShoppingCart, ArrowRight, Store as StoreIcon, Phone, MessageCircle, MessageSquare, Instagram, ExternalLink, X, Music, Edit, Star, ShieldCheck, ThumbsUp } from 'lucide-react';
+import { CheckCircle, ShoppingCart, ArrowRight, Store as StoreIcon, Phone, MessageCircle, MessageSquare, Instagram, ExternalLink, X, Music, Edit, Star, ShieldCheck, ThumbsUp, BookmarkCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
+import PreOrderModal from '../components/PreOrderModal';
 
 export default function StoreProfile() {
   const userId = useParams().userId;
@@ -13,6 +14,7 @@ export default function StoreProfile() {
   const [profile, setProfile] = useState<any>(null);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPreOrderProduct, setSelectedPreOrderProduct] = useState<any | null>(null);
   const [showLinks, setShowLinks] = useState(false);
   const [showRatingModal, setShowRatingModal] = useState(false);
   
@@ -587,6 +589,25 @@ export default function StoreProfile() {
                          {product.price.toLocaleString()} <span className="text-xs font-black text-gray-500 mr-0.5">ر.ي</span>
                        </span>
                      </div>
+                   {/* Pre-Order button */}
+                   <div className="pt-3 mt-3 border-t border-gray-100">
+                     <button
+                       type="button"
+                       onClick={(e) => {
+                         e.preventDefault();
+                         e.stopPropagation();
+                         if (!user) { login(); return; }
+                         setSelectedPreOrderProduct(product);
+                       }}
+                       className="w-full py-2.5 px-3 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 font-black text-xs flex items-center justify-between border border-amber-500/30 transition active:scale-95 shadow-sm"
+                     >
+                       <div className="flex items-center gap-1.5">
+                         <BookmarkCheck className="w-4 h-4 text-amber-600" />
+                         <span>حجز مسبق</span>
+                       </div>
+                       <span className="text-[10px] font-bold">عربون: {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ريال</span>
+                     </button>
+                   </div>
                    </div>
                  </div>
               </motion.div>
@@ -594,6 +615,14 @@ export default function StoreProfile() {
           </div>
         )}
       </div>
+      {/* Pre-Order Reservation Modal */}
+      {selectedPreOrderProduct && (
+        <PreOrderModal
+          product={selectedPreOrderProduct}
+          isOpen={!!selectedPreOrderProduct}
+          onClose={() => setSelectedPreOrderProduct(null)}
+        />
+      )}
     </div>
   );
 }
