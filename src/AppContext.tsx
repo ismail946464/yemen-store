@@ -204,7 +204,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('keypress', handleActivity);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [user]);
+  }, [user?.uid, user?.email]);
 
   // Fetch Global Stats
   useEffect(() => {
@@ -230,47 +230,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
     
     if (!isMasterAdminUser || !auth.currentUser) return () => statsUnsubscribe();
 
-    // Calculate Online Count (Admin only sync) - throttled to 20 mins
+    // Calculate Online Count (Admin only sync) - real-time active users
     const updateOnlineCount = async () => {
       if (!auth.currentUser) return;
       try {
-        const twentyMinutesAgo = new Date(Date.now() - 20 * 60000).toISOString();
-        const qOnline = query(collection(db, 'users'), where('lastSeen', '>=', twentyMinutesAgo));
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60000).toISOString();
+        const qOnline = query(collection(db, 'users'), where('lastSeen', '>=', tenMinutesAgo));
         const snap = await getDocs(qOnline);
-        const count = snap.size;
+        const count = Math.max(1, snap.size);
         
-        // Only update global doc if count changed significantly to save writes
-        if (Math.abs(count - globalStats.onlineCount) > 2 || (count > 0 && globalStats.onlineCount === 0)) {
-          setGlobalStats(prev => ({ ...prev, onlineCount: count }));
-          updateDoc(doc(db, 'stats', 'global'), { onlineCount: count }).catch(() => {});
-        }
+        setGlobalStats(prev => {
+          if (prev.onlineCount !== count) {
+            updateDoc(doc(db, 'stats', 'global'), { onlineCount: count }).catch(() => {});
+            return { ...prev, onlineCount: count };
+          }
+          return prev;
+        });
       } catch (error) {
-        console.warn("Failed to fetch online users (possibly quota)", error);
+        console.warn("Notice updating online users count:", error);
       }
     };
 
     updateOnlineCount();
-    const onlineInterval = setInterval(updateOnlineCount, 1200000); // 20 mins
+    const onlineInterval = setInterval(updateOnlineCount, 30000); // 30 seconds
 
-    // One-time total registered count update (Admin only)
+    // Accurate total registered count update (Admin only sync)
     if (auth.currentUser) {
-      const lastCountUpdate = sessionStorage.getItem('registeredCountUpdated');
-      if (!lastCountUpdate) {
-        getDocs(collection(db, 'users')).then(async snap => {
-          const count = snap.size;
-          setGlobalStats(prev => ({ ...prev, totalRegistered: count }));
-          updateDoc(doc(db, 'stats', 'global'), { totalRegistered: count })
-            .then(() => sessionStorage.setItem('registeredCountUpdated', 'true'))
-            .catch(() => {});
-        }).catch(() => {});
-      }
+      getDocs(collection(db, 'users')).then(snap => {
+        const count = snap.size;
+        setGlobalStats(prev => {
+          if (prev.totalRegistered !== count) {
+            updateDoc(doc(db, 'stats', 'global'), { totalRegistered: count }).catch(() => {});
+            return { ...prev, totalRegistered: count };
+          }
+          return prev;
+        });
+      }).catch(() => {});
     }
 
     return () => {
       statsUnsubscribe();
       clearInterval(onlineInterval);
     };
-  }, [user, userData?.role]);
+  }, [user?.uid, user?.email, userData?.role]);
 
   useEffect(() => {
     if (!user) {
@@ -338,7 +340,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user?.uid]);
 
   const markMessagesAsRead = async () => {
     if (!user) return;
@@ -474,6 +476,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setUserData(data);
         setLoading(false);
 
+        // Keep session and local user in sync with Firestore data only if values actually changed
+        if (data) {
+          setUser((prev: any) => {
+            if (!prev) return prev;
+            const newName = data.name || prev.displayName;
+            const newPhoto = data.photoURL !== undefined ? data.photoURL : (prev.photoURL || '');
+            const newRole = data.role || prev.role;
+            if (prev.displayName === newName && prev.photoURL === newPhoto && prev.role === newRole) {
+              return prev;
+            }
+            const updated = {
+              ...prev,
+              displayName: newName,
+              photoURL: newPhoto,
+              role: newRole
+            };
+            try {
+              localStorage.setItem('yemen_store_session', JSON.stringify(updated));
+            } catch {}
+            return updated;
+          });
+        }
+
         // Check for verification expiry if user is a store
         if (data.role === 'store') {
             getDoc(doc(db, 'storeProfiles', effectiveUid)).then(async (profileSnap) => {
@@ -559,7 +584,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
 
     return () => unsubUser();
-  }, [user]);
+  }, [user?.uid, user?.email]);
 
   const openLoginModal = (initialEmail?: string) => {
     if (initialEmail) setLoginModalInitialEmail(initialEmail);

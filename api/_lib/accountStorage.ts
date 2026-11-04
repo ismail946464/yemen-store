@@ -142,12 +142,12 @@ export async function getAccountByEmail(email: string): Promise<StoreAccount | n
 
   // 1. In-memory check
   if (memoryAccountsStore.has(normalizedEmail)) {
-    return memoryAccountsStore.get(normalizedEmail)!;
-  }
-
-  // If master admin, guarantee existence
-  if (normalizedEmail === MASTER_ADMIN_EMAIL) {
-    return seedMasterAdmin();
+    const cached = memoryAccountsStore.get(normalizedEmail)!;
+    if (normalizedEmail === MASTER_ADMIN_EMAIL) {
+      cached.uid = MASTER_ADMIN_UID;
+      cached.role = "admin";
+    }
+    return cached;
   }
 
   // 2. Direct Server Firestore check
@@ -157,12 +157,45 @@ export async function getAccountByEmail(email: string): Promise<StoreAccount | n
       const snap = await getDoc(doc(db, "storeAccounts", docId));
       if (snap.exists()) {
         const acc = snap.data() as StoreAccount;
+        if (normalizedEmail === MASTER_ADMIN_EMAIL) {
+          acc.uid = MASTER_ADMIN_UID;
+          acc.role = "admin";
+        }
+        memoryAccountsStore.set(normalizedEmail, acc);
+        return acc;
+      }
+
+      // Also check users collection to preserve profile modifications
+      const targetUid = normalizedEmail === MASTER_ADMIN_EMAIL ? MASTER_ADMIN_UID : `u_${docId.slice(4)}`;
+      const userSnap = await getDoc(doc(db, "users", targetUid));
+      if (userSnap.exists()) {
+        const u = userSnap.data();
+        const acc: StoreAccount = {
+          uid: targetUid,
+          email: normalizedEmail,
+          name: u.name || "مستخدم",
+          phone: u.phone || "",
+          photoURL: u.photoURL || "",
+          password: MASTER_ADMIN_DEFAULT_PASS,
+          passwordHash: hashPassword(MASTER_ADMIN_DEFAULT_PASS),
+          role: normalizedEmail === MASTER_ADMIN_EMAIL ? "admin" : (u.role || "user"),
+          status: "active",
+          pointsBalance: u.pointsBalance || 0,
+          agreedToDisclaimer: true,
+          createdAt: u.createdAt || new Date().toISOString(),
+          lastLoginAt: new Date().toISOString()
+        };
         memoryAccountsStore.set(normalizedEmail, acc);
         return acc;
       }
     } catch (err: any) {
       console.warn("Direct firestore account get notice:", err?.message);
     }
+  }
+
+  // If master admin and not found yet in Firestore, guarantee existence
+  if (normalizedEmail === MASTER_ADMIN_EMAIL) {
+    return seedMasterAdmin();
   }
 
   // 3. REST API check fallback
@@ -207,7 +240,7 @@ export async function saveAccount(account: StoreAccount): Promise<boolean> {
   if (normalizedEmail === MASTER_ADMIN_EMAIL) {
     account.uid = MASTER_ADMIN_UID;
     account.role = "admin";
-    if (!account.name || account.name === "المدير العام للمتجر") {
+    if (!account.name) {
       account.name = "Ismail Ali";
     }
   }

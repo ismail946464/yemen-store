@@ -934,69 +934,112 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <StatCard label="إجمالي الزيارات" value={globalStats.totalVisitors} icon={<Eye className="w-6 h-6 text-blue-500"/>} trend="+12%" />
-                  <StatCard label="المستخدمين" value={globalStats.totalRegistered} icon={<Users className="w-6 h-6 text-green-500"/>} trend="+5%" />
-                  <StatCard label="طلبات اليوم" value={orders.filter(o => {
-                    const date = new Date(o.createdAt);
-                    const today = new Date();
-                    return date.toDateString() === today.toDateString();
-                  }).length} icon={<ShoppingCart className="w-6 h-6 text-orange-500"/>} trend="+8%" />
-                  <StatCard label="المنتجات النشطة" value={products.length} icon={<Package className="w-6 h-6 text-purple-500"/>} trend="+2" />
-                </div>
+                {(() => {
+                  const totalRevenue = orders
+                    .filter(o => o.status !== 'cancelled')
+                    .reduce((sum, o) => sum + (Number(o.total) || 0), 0);
 
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                  <div className="bg-gray-50 rounded-3xl p-8 border border-gray-100">
-                    <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-black">
-                      <Clock className="w-5 h-5 text-gray-900" />
-                      أحدث الطلبات
-                    </h3>
-                    <div className="space-y-4">
-                      {orders.slice(0, 5).map(order => (
-                        <div key={order.id} className="bg-white p-4 rounded-2xl flex justify-between items-center border border-gray-100 hover:shadow-md transition cursor-pointer">
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center font-mono text-[10px] font-bold">
-                              #{order.id.slice(-4)}
-                            </div>
-                            <div>
-                              <p className="font-bold text-sm">{order.customerName}</p>
-                              <p className="text-[10px] text-gray-900 font-black">{new Date(order.createdAt).toLocaleDateString('ar-YE')}</p>
-                            </div>
-                          </div>
-                          <div className="text-left">
-                            <p className="font-black text-sm">{order.total} ريال</p>
-                            <span className={`text-[10px] font-black px-3 py-1 rounded-full border ${statusColors[order.status]}`}>
-                              {statusArabic[order.status]}
-                            </span>
+                  const todayOrders = orders.filter(o => {
+                    try {
+                      const date = new Date(o.createdAt);
+                      const today = new Date();
+                      return date.toDateString() === today.toDateString();
+                    } catch {
+                      return false;
+                    }
+                  });
+
+                  // Calculate actual product sales counts from real orders
+                  const productSalesMap: Record<string, number> = {};
+                  orders.forEach(o => {
+                    if (o.status !== 'cancelled' && Array.isArray(o.items)) {
+                      o.items.forEach((item: any) => {
+                        const pid = item.productId || item.id;
+                        if (pid) {
+                          productSalesMap[pid] = (productSalesMap[pid] || 0) + (Number(item.quantity) || 1);
+                        }
+                      });
+                    }
+                  });
+
+                  const bestSellers = [...products]
+                    .map(p => ({ ...p, soldCount: productSalesMap[p.id] || 0 }))
+                    .sort((a, b) => b.soldCount - a.soldCount);
+
+                  return (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <StatCard label="إجمالي الزيارات" value={globalStats.totalVisitors} icon={<Eye className="w-6 h-6 text-blue-500"/>} trend={`${globalStats.onlineCount} متصل الآن`} />
+                        <StatCard label="المستخدمين المسجلين" value={globalStats.totalRegistered || users.length} icon={<Users className="w-6 h-6 text-green-500"/>} trend={`${users.filter(u => u.role === 'store').length} متجر`} />
+                        <StatCard label="طلبات اليوم" value={`${todayOrders.length} طلب`} icon={<ShoppingCart className="w-6 h-6 text-orange-500"/>} trend={todayOrders.length > 0 ? "نشط" : undefined} />
+                        <StatCard label="إجمالي المبيعات" value={`${totalRevenue.toLocaleString()} ريال`} icon={<DollarSign className="w-6 h-6 text-emerald-500"/>} trend={`${orders.length} طلب مسجل`} />
+                      </div>
+
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                        <div className="bg-gray-50 rounded-3xl p-8 border border-gray-100">
+                          <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-black">
+                            <Clock className="w-5 h-5 text-gray-900" />
+                            أحدث الطلبات الفعلية
+                          </h3>
+                          <div className="space-y-4">
+                            {orders.length === 0 ? (
+                              <p className="text-xs text-gray-400 font-bold py-6 text-center">لا توجد طلبات مسجلة بعد</p>
+                            ) : (
+                              orders.slice(0, 5).map(order => (
+                                <div key={order.id} className="bg-white p-4 rounded-2xl flex justify-between items-center border border-gray-100 hover:shadow-md transition cursor-pointer">
+                                  <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center font-mono text-[10px] font-bold">
+                                      #{order.id.slice(-4)}
+                                    </div>
+                                    <div>
+                                      <p className="font-bold text-sm">{order.customerName}</p>
+                                      <p className="text-[10px] text-gray-900 font-black">{new Date(order.createdAt).toLocaleDateString('ar-YE')}</p>
+                                    </div>
+                                  </div>
+                                  <div className="text-left">
+                                    <p className="font-black text-sm">{order.total} ريال</p>
+                                    <span className={`text-[10px] font-black px-3 py-1 rounded-full border ${statusColors[order.status]}`}>
+                                      {statusArabic[order.status]}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))
+                            )}
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
 
-                  <div className="bg-gray-50 rounded-3xl p-8 border border-gray-100">
-                    <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-black">
-                       <TrendingUp className="w-5 h-5 text-gray-900" />
-                       المنتجات الأكثر مبيعاً
-                    </h3>
-                    <div className="space-y-4">
-                      {products.slice(0, 5).map((product, idx) => (
-                        <div key={idx} className="bg-white p-4 rounded-2xl flex items-center gap-4 border border-gray-100">
-                           <div className="w-16 h-16 bg-gray-100 rounded-xl overflow-hidden shrink-0">
-                             {product.images?.[0] && <img src={product.images[0]} className="w-full h-full object-cover" />}
-                           </div>
-                           <div className="flex-1">
-                             <p className="font-bold text-sm mb-1 text-black">{product.title}</p>
-                             <div className="flex justify-between items-center">
-                               <span className="text-xs font-black text-green-700">{product.price} ريال</span>
-                               <span className="text-[10px] text-gray-900 font-black uppercase">{product.category}</span>
-                             </div>
-                           </div>
+                        <div className="bg-gray-50 rounded-3xl p-8 border border-gray-100">
+                          <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-black">
+                             <TrendingUp className="w-5 h-5 text-gray-900" />
+                             المنتجات الأكثر مبيعاً (إحصاءات فعلية)
+                          </h3>
+                          <div className="space-y-4">
+                            {bestSellers.length === 0 ? (
+                              <p className="text-xs text-gray-400 font-bold py-6 text-center">لا توجد منتجات مسجلة بعد</p>
+                            ) : (
+                              bestSellers.slice(0, 5).map((product, idx) => (
+                                <div key={idx} className="bg-white p-4 rounded-2xl flex items-center gap-4 border border-gray-100">
+                                   <div className="w-16 h-16 bg-gray-100 rounded-xl overflow-hidden shrink-0">
+                                     {product.images?.[0] && <img src={product.images[0]} className="w-full h-full object-cover" />}
+                                   </div>
+                                   <div className="flex-1">
+                                     <p className="font-bold text-sm mb-1 text-black">{product.title}</p>
+                                     <div className="flex justify-between items-center">
+                                       <span className="text-xs font-black text-green-700">{product.price} ريال</span>
+                                       <span className="text-[10px] text-blue-600 font-black">
+                                         {product.soldCount > 0 ? `${product.soldCount} مبيعة` : (product.category || 'متوفر')}
+                                       </span>
+                                     </div>
+                                   </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
 
@@ -2408,8 +2451,8 @@ export default function AdminDashboard() {
                           <span className="text-sm font-black">{new Date().toLocaleString('ar-YE')}</span>
                         </div>
                         <div className="flex justify-between items-center py-2 flex-row-reverse">
-                          <span className="text-sm font-medium opacity-80">عناوين IP النشطة</span>
-                          <span className="text-sm font-black">{Math.floor(Math.random() * 50) + 1} مستخدم</span>
+                          <span className="text-sm font-medium opacity-80">المستخدمين المتصلين حالياً</span>
+                          <span className="text-sm font-black">{globalStats.onlineCount || 1} متصل</span>
                         </div>
                       </div>
                     </div>
@@ -3005,7 +3048,7 @@ function NavItem({ active, onClick, icon, label, count, extra }: { active: boole
   );
 }
 
-function StatCard({ label, value, icon, trend }: { label: string, value: any, icon: any, trend: string }) {
+function StatCard({ label, value, icon, trend }: { label: string, value: any, icon: any, trend?: string }) {
   const { isDarkMode } = useAppContext();
   return (
     <div className={`rounded-[2.5rem] p-8 border hover:shadow-xl transition-all group relative overflow-hidden ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-100'}`}>
@@ -3016,10 +3059,12 @@ function StatCard({ label, value, icon, trend }: { label: string, value: any, ic
         <div className={`w-12 h-12 rounded-2xl shadow-sm border flex items-center justify-center mb-6 transition-colors ${isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-300' : 'bg-white border-gray-100 text-gray-500'}`}>
            {icon}
         </div>
-        <p className={`font-bold text-xs mb-1 uppercase tracking-wider ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>{label}</p>
-        <div className="flex items-end gap-3">
-          <h3 className={`text-4xl font-black ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{value}</h3>
-          <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${isDarkMode ? 'text-green-400 bg-green-900/20' : 'text-green-600 bg-green-50'}`}>{trend}</span>
+        <p className={`font-bold text-xs mb-1 uppercase tracking-wider ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{label}</p>
+        <div className="flex items-end gap-3 flex-wrap">
+          <h3 className={`text-3xl lg:text-4xl font-black ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{value}</h3>
+          {trend && (
+            <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${isDarkMode ? 'text-green-400 bg-green-900/20' : 'text-green-600 bg-green-50'}`}>{trend}</span>
+          )}
         </div>
       </div>
     </div>

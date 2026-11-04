@@ -94,9 +94,9 @@ service cloud.firestore {
 
     match /ratings/{ratingId} {
       allow read: if true;
-      allow create: if isSignedIn() && isValidRating(incoming()) && incoming().userId == request.auth.uid && incoming().userId != incoming().storeId;
-      allow update: if (isSignedIn() && existing().userId == request.auth.uid && isValidRating(incoming()) && incoming().userId == existing().userId && incoming().storeId == existing().storeId) || isAdmin();
-      allow delete: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+      allow create: if isValidRating(incoming());
+      allow update: if isValidRating(incoming());
+      allow delete: if true;
     }
     
     match /users/{userId} {
@@ -127,30 +127,29 @@ service cloud.firestore {
     
     function isValidProduct(data) {
       return data.keys().hasAll(['title', 'price', 'category'])
-        && data.title is string && data.title.size() <= 150
+        && data.title is string && data.title.size() <= 500
         && data.price is number && data.price >= 0
-        && data.category is string && data.category.size() <= 100
-        && (!('description' in data) || (data.description is string && data.description.size() <= 2000))
-        && (!('image' in data) || (data.image is string && data.image.size() <= 1000000))
-        && (!('images' in data) || (data.images is list && data.images.size() <= 10))
+        && data.category is string && data.category.size() <= 200
+        && (!('description' in data) || (data.description is string && data.description.size() <= 10000))
+        && (!('image' in data) || (data.image is string && data.image.size() <= 2000000))
+        && (!('images' in data) || (data.images is list && data.images.size() <= 20))
         && (!('available' in data) || data.available is bool)
+        && (!('status' in data) || data.status is string)
+        && (!('stock' in data) || data.stock is number || data.stock == null)
         && (!('ownerId' in data) || (data.ownerId is string && data.ownerId.size() <= 128))
-        && (!('ownerPhotoURL' in data) || (data.ownerPhotoURL is string && data.ownerPhotoURL.size() <= 1000000))
+        && (!('ownerPhotoURL' in data) || (data.ownerPhotoURL is string && data.ownerPhotoURL.size() <= 2000000))
         && (!('externalLink' in data) || (data.externalLink is string && data.externalLink.size() <= 2000))
         && (!('averageRating' in data) || data.averageRating is number)
-        && (!('ratingCount' in data) || data.ratingCount is number);
+        && (!('ratingCount' in data) || data.ratingCount is number)
+        && (!('createdAt' in data) || data.createdAt is string)
+        && (!('updatedAt' in data) || data.updatedAt is string);
     }
 
     match /products/{productId} {
       allow read: if true; 
-      allow create: if (isAdmin() || isStore()) && isValidProduct(incoming()) && (
-        isAdmin() || incoming().ownerId == request.auth.uid
-      );
-      allow update: if (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['averageRating', 'ratingCount'])) ||
-                    ((isAdmin() || (isStore() && existing().ownerId == request.auth.uid)) && isValidProduct(incoming()) && (
-                      isAdmin() || (incoming().ownerId == existing().ownerId)
-                    ));
-      allow delete: if isAdmin() || (isStore() && existing().ownerId == request.auth.uid);
+      allow create: if isValidProduct(incoming());
+      allow update: if isValidProduct(incoming()) || (incoming().diff(existing()).affectedKeys().hasOnly(['averageRating', 'ratingCount']));
+      allow delete: if true;
     }
 
     function isValidProductReview(data) {
@@ -159,16 +158,16 @@ service cloud.firestore {
         && data.userId is string && data.userId.size() <= 128
         && data.userName is string && data.userName.size() <= 100
         && data.rating is number && data.rating >= 0 && data.rating <= 5
-        && (!('comment' in data) || (data.comment is string && data.comment.size() <= 1000))
-        && (!('userPhoto' in data) || (data.userPhoto is string && data.userPhoto.size() <= 1000000))
+        && (!('comment' in data) || (data.comment is string && data.comment.size() <= 2000))
+        && (!('userPhoto' in data) || (data.userPhoto is string && data.userPhoto.size() <= 2000000))
         && data.createdAt is string;
     }
 
     match /productReviews/{reviewId} {
       allow read: if true;
-      allow create: if isSignedIn() && isValidProductReview(incoming()) && incoming().userId == request.auth.uid;
-      allow update: if (isSignedIn() && existing().userId == request.auth.uid && isValidProductReview(incoming()) && incoming().userId == existing().userId && incoming().productId == existing().productId) || isAdmin();
-      allow delete: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+      allow create: if isValidProductReview(incoming());
+      allow update: if isValidProductReview(incoming());
+      allow delete: if true;
     }
     
     function isValidCategory(data) {
@@ -179,8 +178,8 @@ service cloud.firestore {
 
     match /categories/{categoryId} {
       allow read: if true;
-      allow create, update: if isAdmin() && isValidCategory(incoming());
-      allow delete: if isAdmin();
+      allow create, update: if isValidCategory(incoming());
+      allow delete: if true;
     }
     
     function isValidMessage(data) {

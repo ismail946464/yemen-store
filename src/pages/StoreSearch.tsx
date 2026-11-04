@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useAppContext } from '../AppContext';
-import { Search, Store, ArrowRight, CheckCircle, MapPin, Star } from 'lucide-react';
+import { Search, Store, ArrowRight, CheckCircle, MapPin, Star, PackageCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -21,17 +21,49 @@ export default function StoreSearch() {
         const querySnapshot = await getDocs(q);
         const storeUsers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         
-        // Also fetch specific store profiles to get banners/descriptions
+        // Fetch specific store profiles to get banners/descriptions/ratings
         const profilesSnap = await getDocs(collection(db, 'storeProfiles'));
         const profiles = profilesSnap.docs.reduce((acc: any, doc) => {
           acc[doc.id] = doc.data();
           return acc;
         }, {});
 
-        const combined = storeUsers.map(user => ({
-          ...user,
-          profile: profiles[user.id] || {}
-        }));
+        // Fetch products to compute real active product count for each store
+        const productsSnap = await getDocs(collection(db, 'products'));
+        const productCounts: Record<string, number> = {};
+        productsSnap.docs.forEach(doc => {
+          const p = doc.data();
+          if (p.ownerId && p.status !== 'inactive' && p.status !== 'deleted') {
+            productCounts[p.ownerId] = (productCounts[p.ownerId] || 0) + 1;
+          }
+        });
+
+        // Fetch orders to compute real completed sales count for each store
+        const ordersSnap = await getDocs(collection(db, 'orders'));
+        const salesCounts: Record<string, number> = {};
+        ordersSnap.docs.forEach(doc => {
+          const order = doc.data();
+          if (order.status !== 'cancelled' && Array.isArray(order.items)) {
+            order.items.forEach((item: any) => {
+              const owner = item.ownerId || item.storeId;
+              if (owner) {
+                salesCounts[owner] = (salesCounts[owner] || 0) + (Number(item.quantity) || 1);
+              }
+            });
+          }
+        });
+
+        const combined = storeUsers.map(user => {
+          const profile = profiles[user.id] || {};
+          const isVerified = Boolean(profile.verified) && (!profile.verifiedUntil || profile.verifiedUntil === '' || new Date(profile.verifiedUntil).getTime() >= Date.now());
+          return {
+            ...user,
+            profile,
+            isVerified,
+            productCount: productCounts[user.id] || 0,
+            salesCount: salesCounts[user.id] || 0
+          };
+        });
 
         setStores(combined);
         setResults(combined);
@@ -64,7 +96,7 @@ export default function StoreSearch() {
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="text-center space-y-4">
         <h1 className="text-3xl md:text-5xl font-black text-gray-900 tracking-tight">ابحث عن متجرك المفضل</h1>
-        <p className="text-gray-900 font-black max-w-2xl mx-auto">تصفح مئات المتاجر الموثقة في منصتنا واحصل على أفضل المنتجات والخدمات</p>
+        <p className="text-gray-900 font-black max-w-2xl mx-auto">تصفح المتاجر المعتمدة في منصتنا واحصل على أفضل المنتجات والخدمات الحقيقية</p>
       </div>
 
       <div className="relative max-w-2xl mx-auto">
@@ -117,14 +149,6 @@ export default function StoreSearch() {
                     </div>
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                  <div className="absolute bottom-4 right-4 flex items-center gap-2">
-                     {store.profile?.verified && (!store.profile?.verifiedUntil || store.profile?.verifiedUntil === '' || new Date(store.profile.verifiedUntil).getTime() >= Date.now()) && (
-                       <span className="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
-                         <CheckCircle className="w-3 h-3" />
-                         موثق
-                       </span>
-                     )}
-                  </div>
                 </div>
 
                 <div className="p-6 pt-0 relative flex-1 flex flex-col">
@@ -139,26 +163,54 @@ export default function StoreSearch() {
                          </div>
                        )}
                     </div>
-                    <div className="pt-10 flex items-center gap-1 text-yellow-500 bg-yellow-50 px-3 py-1 rounded-full shadow-sm border border-yellow-100">
-                      <Star className="w-3 h-3 fill-yellow-500" />
-                      <span className="text-xs font-black">4.9</span>
+                    {/* Actual Rating or 'جديد' */}
+                    <div className="pt-10 flex items-center gap-1.5 text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded-full shadow-sm border border-yellow-200">
+                      <Star className="w-3.5 h-3.5 fill-yellow-500 text-yellow-500" />
+                      <span className="text-xs font-black">
+                        {store.profile?.averageRating && Number(store.profile.averageRating) > 0 
+                          ? Number(store.profile.averageRating).toFixed(1) 
+                          : 'جديد'}
+                      </span>
+                      {store.profile?.ratingCount && Number(store.profile.ratingCount) > 0 ? (
+                        <span className="text-[10px] text-gray-400 font-bold">({store.profile.ratingCount})</span>
+                      ) : null}
                     </div>
                   </div>
 
-                  <h3 className="text-xl font-black text-gray-900 mb-2 group-hover:text-blue-600 transition">{store.profile?.name || store.name}</h3>
+                  {/* Store Name & Verification Badge SIDE BY SIDE */}
+                  <div className="flex items-center gap-2 mb-2 flex-wrap" dir="rtl">
+                    <h3 className="text-xl font-black text-gray-900 group-hover:text-blue-600 transition">
+                      {store.profile?.name || store.name}
+                    </h3>
+                    {store.isVerified && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-600 text-white text-[11px] font-black shrink-0 shadow-sm" title="متجر موثق ومعتمد رسمياً">
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        <span>موثق</span>
+                      </span>
+                    )}
+                  </div>
+
                   <p className="text-gray-900 text-sm leading-relaxed mb-6 line-clamp-2 italic font-bold">
                     {store.profile?.description || 'هذا المتجر لم يقم بإضافة وصف بعد، لكنه يقدم أفضل المنتجات والخدمات للعملاء.'}
                   </p>
 
                   <div className="mt-auto space-y-4">
-                    <div className="flex items-center gap-4 text-[10px] font-black text-gray-900 border-t border-gray-50 pt-4">
-                       <div className="flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          <span>اليمن، صنعاء</span>
+                    <div className="flex items-center justify-between text-[11px] font-black text-gray-700 border-t border-gray-100 pt-4 flex-wrap gap-2">
+                       <div className="flex items-center gap-1 text-gray-600">
+                          <MapPin className="w-3.5 h-3.5 text-gray-500" />
+                          <span>{store.profile?.address || store.profile?.city || 'اليمن'}</span>
                        </div>
-                       <div className="flex items-center gap-1">
-                          <Store className="w-3 h-3" />
-                          <span>125 منتج</span>
+                       <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1 text-purple-700 bg-purple-50 px-2 py-0.5 rounded-lg border border-purple-100">
+                             <Store className="w-3 h-3 text-purple-600" />
+                             <span>{store.productCount || 0} منتج</span>
+                          </div>
+                          {store.salesCount > 0 && (
+                            <div className="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100">
+                               <PackageCheck className="w-3 h-3 text-emerald-600" />
+                               <span>{store.salesCount} مبيعة</span>
+                            </div>
+                          )}
                        </div>
                     </div>
 

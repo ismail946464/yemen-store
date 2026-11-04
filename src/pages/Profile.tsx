@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 export default function Profile() {
-  const { user, userData, isAdmin, isStore, settings, logout, getThemeClasses, isDarkMode, toggleDarkMode } = useAppContext();
+  const { user, userData, isAdmin, isStore, settings, logout, getThemeClasses, isDarkMode, toggleDarkMode, updateUserProfile } = useAppContext();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [photoURL, setPhotoURL] = useState('');
@@ -61,13 +61,28 @@ export default function Profile() {
       const targetUid = (user.email?.toLowerCase() === '1ismaai0lll@gmail.com' || user.uid === 'u_32cd7332ee7ec2e0c1121512')
         ? 'MQAwCYqFztd2PZbV1fRMxKRqoYX2'
         : user.uid;
+
+      // 1. Direct Firestore user doc update
       await setDoc(doc(db, 'users', targetUid), {
         name,
         phone,
         photoURL
       }, { merge: true });
+
+      // 2. Call backend update-profile to update storeAccounts
+      await updateUserProfile({ name, phone, photoURL });
+
+      // 3. If user is store/admin, also update storeProfiles doc
+      if (isAdmin || isStore) {
+        await setDoc(doc(db, 'storeProfiles', targetUid), {
+          name,
+          logoUrl: photoURL,
+          whatsapp: phone
+        }, { merge: true }).catch(() => {});
+      }
+
       setMessage('تم التحديث بنجاح!');
-      toast.success("تم تحديث الملف الشخصي");
+      toast.success("تم تحديث وحفظ الملف الشخصي بنجاح");
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       console.error(error);

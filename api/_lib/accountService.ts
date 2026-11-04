@@ -225,6 +225,7 @@ export async function processLoginStoreAccount(input: {
       email: account.email,
       displayName: account.name,
       phone: account.phone || "",
+      photoURL: account.photoURL || "",
       role: account.role,
       pointsBalance: account.pointsBalance || 0,
       agreedToDisclaimer: Boolean(account.agreedToDisclaimer),
