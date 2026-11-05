@@ -467,12 +467,18 @@ export default function AdminDashboard() {
     if (!productForm) return;
     setIsSaving(true);
     try {
+      const targetOwnerId = productForm.ownerId || currentTargetStoreId || user?.uid;
+      const targetStoreObj = (targetOwnerId === currentTargetStoreId && storeProfile) ? storeProfile : allStoreProfiles.find(sp => sp.id === targetOwnerId || sp.userId === targetOwnerId);
+      const isTargetStoreVerified = targetStoreObj 
+        ? Boolean(targetStoreObj.verified) && (!targetStoreObj.verifiedUntil || targetStoreObj.verifiedUntil === '' || new Date(targetStoreObj.verifiedUntil).getTime() >= Date.now())
+        : (Boolean(storeProfile?.verified) && (!storeProfile?.verifiedUntil || storeProfile?.verifiedUntil === '' || new Date(storeProfile.verifiedUntil).getTime() >= Date.now()));
+
       const data: any = { 
         ...productForm, 
         image: productForm.images?.[0] || '', // Sync main image field
         price: Number(productForm.price),
         stock: productForm.stock === '' || productForm.stock === undefined || productForm.stock === null ? null : Number(productForm.stock),
-        isPreOrderEnabled: productForm.isPreOrderEnabled ?? true,
+        isPreOrderEnabled: isTargetStoreVerified ? (productForm.isPreOrderEnabled ?? true) : false,
         reservationDurationDays: Number(productForm.reservationDurationDays) || 3,
         ownerId: productForm.ownerId || user?.uid,
         updatedAt: new Date().toISOString()
@@ -504,6 +510,74 @@ export default function AdminDashboard() {
     } catch (err) {
       toast.error("فشل الحفظ");
       console.error(err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!categoryForm || !categoryForm.name?.trim()) {
+      toast.error("يرجى إدخال اسم القسم");
+      return;
+    }
+    const name = categoryForm.name.trim();
+    const slug = (categoryForm.slug?.trim() || name.replace(/\s+/g, '-')).toLowerCase();
+
+    setIsSaving(true);
+    try {
+      const data = {
+        name,
+        slug,
+        icon: categoryForm.icon || 'tag',
+        order: Number(categoryForm.order) || (categories.length + 1),
+        updatedAt: new Date().toISOString()
+      };
+
+      if (categoryForm.id) {
+        await updateDoc(doc(db, 'categories', categoryForm.id), data);
+        toast.success("تم تحديث القسم بنجاح");
+      } else {
+        await addDoc(collection(db, 'categories'), data);
+        toast.success("تم إضافة القسم بنجاح");
+      }
+      setCategoryForm(null);
+    } catch (err: any) {
+      console.error(err);
+      toast.error("فشل حفظ القسم: " + (err.message || "حدث خطأ"));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleResetDefaultCategories = async () => {
+    if (!window.confirm("هل تريد استعادة وتهيئة جميع الأقسام الافتراضية (الإلكترونيات، الهواتف، الأزياء، العطور، المنتجات المحلية، وغيرها)؟")) {
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const DEFAULT_CATS = [
+        { name: 'الإلكترونيات والأجهزة', slug: 'electronics', icon: 'laptop', order: 1 },
+        { name: 'الهواتف والملحقات', slug: 'phones', icon: 'smartphone', order: 2 },
+        { name: 'الأزياء والملابس', slug: 'fashion', icon: 'shirt', order: 3 },
+        { name: 'العطور والبخور', slug: 'perfumes', icon: 'sparkles', order: 4 },
+        { name: 'منتجات محلية يمنية', slug: 'local', icon: 'map-pin', order: 5 },
+        { name: 'الساعات والإكسسوارات', slug: 'watches', icon: 'watch', order: 6 },
+        { name: 'الأحذية والحقائب', slug: 'shoes-bags', icon: 'shopping-bag', order: 7 },
+        { name: 'العناية والجمال', slug: 'beauty', icon: 'heart', order: 8 },
+        { name: 'المنزل والمطبخ', slug: 'home', icon: 'home', order: 9 },
+        { name: 'ألعاب وترفيه', slug: 'gaming', icon: 'gamepad', order: 10 }
+      ];
+
+      const currentSlugs = categories.map(c => c.slug);
+      for (const cat of DEFAULT_CATS) {
+        if (!currentSlugs.includes(cat.slug)) {
+          await addDoc(collection(db, 'categories'), cat);
+        }
+      }
+      toast.success("تم استعادة وتحديث جميع الأقسام بنجاح!");
+    } catch (err: any) {
+      toast.error("فشل استعادة الأقسام");
     } finally {
       setIsSaving(false);
     }
@@ -816,7 +890,10 @@ export default function AdminDashboard() {
     processing: 'bg-blue-100 text-blue-700 border-blue-200',
     shipped: 'bg-purple-100 text-purple-700 border-purple-200',
     delivered: 'bg-green-100 text-green-700 border-green-200',
-    cancelled: 'bg-red-100 text-red-700 border-red-200'
+    cancelled: 'bg-red-100 text-red-700 border-red-200',
+    reserved: 'bg-amber-100 text-amber-800 border-amber-300',
+    deposit_paid: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    reservation_expired: 'bg-rose-100 text-rose-800 border-rose-300'
   };
 
   const statusArabic: any = {
@@ -824,7 +901,10 @@ export default function AdminDashboard() {
     processing: 'جاري التجهيز',
     shipped: 'تم الشحن',
     delivered: 'تم التسليم',
-    cancelled: 'ملغي'
+    cancelled: 'ملغي',
+    reserved: 'حجز مسبق مؤكد',
+    deposit_paid: 'تم استلام العربون',
+    reservation_expired: 'انتهت مدة الحجز (مُصادر)'
   };
 
   // Computed list of all registered stores in the platform
@@ -1457,7 +1537,15 @@ export default function AdminDashboard() {
                       {orders.map(order => (
                         <tr key={order.id} className="bg-gray-50/50 hover:bg-white transition hover:shadow-lg rounded-2xl group">
                           <td className="p-4 rounded-r-2xl border-y border-r border-transparent group-hover:border-gray-100 whitespace-nowrap">
-                            <span className="font-mono text-xs font-black text-gray-900">#{order.id.slice(-6).toUpperCase()}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono text-xs font-black text-gray-900">#{order.id.slice(-6).toUpperCase()}</span>
+                              {(order.isPreOrder || order.orderType === 'preorder') && (
+                                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[9px] font-black inline-flex items-center gap-1">
+                                  <BookmarkCheck className="w-3 h-3 text-amber-600" />
+                                  عربون
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="p-4 border-y border-transparent group-hover:border-gray-100 whitespace-nowrap text-center">
                             <p className="font-black text-sm text-black">{order.customerName}</p>
@@ -1469,6 +1557,11 @@ export default function AdminDashboard() {
                           </td>
                           <td className="p-4 border-y border-transparent group-hover:border-gray-100 whitespace-nowrap text-center">
                              <span className="font-black text-green-700">{order.total} ريال</span>
+                             {(order.isPreOrder || order.orderType === 'preorder') && (
+                               <p className="text-[9px] font-black text-amber-700 mt-0.5">
+                                 عربون: {(order.depositAmount || 0).toLocaleString()} | متبقي: {(order.remainingAmount || 0).toLocaleString()}
+                               </p>
+                             )}
                           </td>
                           <td className="p-4 border-y border-transparent group-hover:border-gray-100 whitespace-nowrap text-center">
                              <select 
@@ -1477,10 +1570,13 @@ export default function AdminDashboard() {
                                className={`border-0 rounded-lg p-2 text-[10px] font-black cursor-pointer focus:ring-0 ${statusColors[order.status]}`}
                              >
                                <option value="pending">قيد الانتظار</option>
+                               <option value="reserved">حجز مسبق مؤكد</option>
+                               <option value="deposit_paid">تم استلام العربون</option>
                                <option value="processing">جاري التجهيز</option>
                                <option value="shipped">تم الشحن</option>
                                <option value="delivered">تم التسليم</option>
                                <option value="cancelled">ملغي</option>
+                               <option value="reservation_expired">انتهت مدة الحجز (مُصادر)</option>
                              </select>
                           </td>
                           <td className="p-4 rounded-l-2xl border-y border-l border-transparent group-hover:border-gray-100 text-left whitespace-nowrap">
@@ -2373,6 +2469,97 @@ export default function AdminDashboard() {
                   </div>
               </div>
             )}
+            {/* TAB: CATEGORIES */}
+            {activeTab === 'categories' && (
+              <div className="space-y-8" dir="rtl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-3xl font-black mb-1 text-black">أقسام وتصنيفات النظام</h2>
+                    <p className="text-gray-600 font-bold">إدارة تصنيفات المنتجات (مثل الإلكترونيات، الهواتف، الأزياء، المنتجات المحلية) وترتيبها في المتجر</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleResetDefaultCategories}
+                      disabled={isSaving}
+                      className="px-5 py-3 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-black transition active:scale-95 shadow-sm"
+                    >
+                      إعادة الأقسام الافتراضية
+                    </button>
+                    <button
+                      onClick={() => setCategoryForm({ name: '', slug: '', icon: 'tag', order: categories.length + 1 })}
+                      className="px-6 py-3 rounded-2xl bg-black hover:bg-gray-800 text-white text-xs font-black transition active:scale-95 shadow-md flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      إضافة قسم جديد
+                    </button>
+                  </div>
+                </div>
+
+                {/* Categories Table / Grid */}
+                <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-right border-separate border-spacing-y-3">
+                      <thead>
+                        <tr className="text-gray-400 text-[10px] font-black uppercase tracking-widest px-4">
+                          <th className="p-3">القسم</th>
+                          <th className="p-3 text-center">المعرّف (Slug)</th>
+                          <th className="p-3 text-center">المنتجات المرتبطة</th>
+                          <th className="p-3 text-left">إجراءات</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {categories.map((c) => {
+                          const productCount = products.filter(p => 
+                            p.category === c.name || p.category === c.slug || p.categorySlug === c.slug
+                          ).length;
+
+                          return (
+                            <tr key={c.id} className="bg-gray-50/60 hover:bg-gray-100/60 transition rounded-2xl group">
+                              <td className="p-4 rounded-r-2xl font-black text-sm text-gray-900 flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 shadow-sm flex items-center justify-center text-emerald-600">
+                                  <ListFilter className="w-5 h-5" />
+                                </div>
+                                <div>
+                                  <p className="font-black text-gray-900">{c.name}</p>
+                                  <span className="text-[10px] font-bold text-gray-400">الترتيب: {c.order || 1}</span>
+                                </div>
+                              </td>
+                              <td className="p-4 text-center font-mono text-xs font-bold text-blue-600">
+                                {c.slug}
+                              </td>
+                              <td className="p-4 text-center">
+                                <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-black border border-emerald-200/60">
+                                  {productCount} منتج
+                                </span>
+                              </td>
+                              <td className="p-4 rounded-l-2xl text-left">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={() => setCategoryForm({ ...c })}
+                                    className="p-2 rounded-xl bg-white hover:bg-blue-50 text-blue-600 transition shadow-sm border border-gray-100"
+                                    title="تعديل القسم"
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteConfirm({ id: c.id, type: 'categories', title: c.name })}
+                                    className="p-2 rounded-xl bg-white hover:bg-red-50 text-red-600 transition shadow-sm border border-gray-100"
+                                    title="حذف القسم"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {activeTab === 'server' && isAdmin && (
               <div className="space-y-10">
                 <div className="flex justify-between items-center text-right">
@@ -2538,6 +2725,78 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* Category Modal (Add / Edit) */}
+      {categoryForm && (
+        <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-md flex items-center justify-center p-4" dir="rtl">
+          <motion.div 
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-[2.5rem] p-8 max-w-lg w-full shadow-2xl space-y-6 relative border border-gray-100 text-right"
+          >
+            <div className="flex justify-between items-center pb-4 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <ListFilter className="w-5 h-5" />
+                </div>
+                <h3 className="text-xl font-black text-gray-900">
+                  {categoryForm.id ? 'تعديل بيانات القسم' : 'إضافة قسم جديد'}
+                </h3>
+              </div>
+              <button 
+                onClick={() => setCategoryForm(null)}
+                className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500 flex items-center justify-center transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCategory} className="space-y-4">
+              <AdminInput 
+                label="اسم القسم بالعربية"
+                value={categoryForm.name || ''}
+                onChange={(v: string) => setCategoryForm({ ...categoryForm, name: v })}
+                placeholder="مثال: الإلكترونيات والأجهزة"
+                required
+              />
+
+              <AdminInput 
+                label="معرّف القسم (Slug بالإنجليزية)"
+                value={categoryForm.slug || ''}
+                onChange={(v: string) => setCategoryForm({ ...categoryForm, slug: v })}
+                placeholder="مثال: electronics"
+                extra="يُستخدم في الرابط والفلترة السريعة للمنتجات"
+                required
+              />
+
+              <AdminInput 
+                label="ترتيب ظهور القسم"
+                type="number"
+                value={(categoryForm.order || 1).toString()}
+                onChange={(v: string) => setCategoryForm({ ...categoryForm, order: Number(v) })}
+                placeholder="1"
+              />
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setCategoryForm(null)}
+                  className="px-6 py-3 rounded-2xl bg-gray-100 text-gray-700 font-black text-xs hover:bg-gray-200 transition"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="px-8 py-3 rounded-2xl bg-emerald-600 text-white font-black text-xs hover:bg-emerald-700 transition shadow-lg shadow-emerald-600/20"
+                >
+                  {isSaving ? 'جاري الحفظ...' : (categoryForm.id ? 'حفظ التعديلات' : 'إضافة القسم')}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
       {/* Order Details & Payment Modal */}
       {viewingOrder && (
         <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto" dir="rtl">
@@ -2585,10 +2844,13 @@ export default function AdminDashboard() {
                   className={`text-xs font-black rounded-xl p-2 border-0 cursor-pointer shadow-sm ${statusColors[viewingOrder.status]}`}
                 >
                   <option value="pending">قيد الانتظار</option>
+                  <option value="reserved">حجز مسبق مؤكد</option>
+                  <option value="deposit_paid">تم استلام العربون</option>
                   <option value="processing">جاري التجهيز</option>
                   <option value="shipped">تم الشحن</option>
                   <option value="delivered">تم التسليم</option>
                   <option value="cancelled">ملغي</option>
+                  <option value="reservation_expired">انتهت مدة الحجز (مُصادر)</option>
                 </select>
               </div>
 
@@ -2599,6 +2861,41 @@ export default function AdminDashboard() {
                 </span>
               </div>
             </div>
+
+            {/* Pre-Order Details Card */}
+            {(viewingOrder.isPreOrder || viewingOrder.orderType === 'preorder') && (
+              <div className="p-4 rounded-2xl bg-amber-50/80 border-2 border-amber-300 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <BookmarkCheck className="w-5 h-5 text-amber-600" />
+                    <h4 className="text-xs font-black text-amber-900 uppercase">بيانات الحجز المسبق والعربون</h4>
+                  </div>
+                  <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-amber-200 text-amber-800">
+                    مدة الحجز: {viewingOrder.reservationDurationDays || 3} أيام
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+                  <div className="bg-white p-2.5 rounded-xl border border-amber-200">
+                    <span className="text-[10px] text-gray-500 font-bold block">مبلغ العربون المدفوع:</span>
+                    <span className="font-black text-amber-700 text-sm">{(viewingOrder.depositAmount || 0).toLocaleString()} ريال</span>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-xl border border-amber-200">
+                    <span className="text-[10px] text-gray-500 font-bold block">المتبقي المطلوب سداده:</span>
+                    <span className="font-black text-blue-700 text-sm">{(viewingOrder.remainingAmount || 0).toLocaleString()} ريال</span>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-xl border border-amber-200 col-span-2 sm:col-span-1">
+                    <span className="text-[10px] text-gray-500 font-bold block">تاريخ انتهاء مهلة الحجز:</span>
+                    <span className="font-black text-gray-900 text-[11px]">
+                      {viewingOrder.reservationExpiresAt ? new Date(viewingOrder.reservationExpiresAt).toLocaleString('ar-YE') : 'غير محدد'}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-2.5 bg-red-50 rounded-xl border border-red-200 text-[11px] text-red-800 font-black flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>شرط النظام: إذا لم يقم العميل بالشراء خلال المهلة، يذهب العربون للمتجر تعويضاً عن حجز السلعة.</span>
+                </div>
+              </div>
+            )}
 
             {/* Customer Details */}
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
@@ -2938,69 +3235,106 @@ export default function AdminDashboard() {
                 />
 
                 {/* Pre-Order / Reservation Configuration */}
-                <div className="p-6 rounded-[2rem] bg-amber-50/70 border-2 border-amber-300 space-y-4">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md">
-                        <BookmarkCheck className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-black text-black">إعدادات الحجز المسبق (دفع عربون)</h4>
-                        <p className="text-[11px] text-gray-500 font-bold">تحديد مبلغ العربون ومدة الحجز ومصادرة العربون عند فوات المدة</p>
-                      </div>
-                    </div>
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={productForm.isPreOrderEnabled ?? true}
-                        onChange={(e) => setProductForm({ ...productForm, isPreOrderEnabled: e.target.checked })}
-                        className="w-5 h-5 rounded-lg border-2 border-amber-400 text-amber-600 focus:ring-amber-500"
-                      />
-                      <span className="text-xs font-black text-black">تفعيل ميزة الحجز</span>
-                    </label>
-                  </div>
+                {(() => {
+                  const targetOwnerId = productForm.ownerId || currentTargetStoreId || user?.uid;
+                  const targetStoreObj = (targetOwnerId === currentTargetStoreId && storeProfile) ? storeProfile : allStoreProfiles.find(sp => sp.id === targetOwnerId || sp.userId === targetOwnerId);
+                  const isVerifiedForPreOrder = targetStoreObj 
+                    ? Boolean(targetStoreObj.verified) && (!targetStoreObj.verifiedUntil || targetStoreObj.verifiedUntil === '' || new Date(targetStoreObj.verifiedUntil).getTime() >= Date.now())
+                    : (Boolean(storeProfile?.verified) && (!storeProfile?.verifiedUntil || storeProfile?.verifiedUntil === '' || new Date(storeProfile.verifiedUntil).getTime() >= Date.now()));
 
-                  {(productForm.isPreOrderEnabled ?? true) && (
-                    <div className="space-y-4 pt-2">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <AdminInput
-                            label="مبلغ العربون المطلوب (ريال)"
-                            type="number"
-                            value={productForm.depositAmount === undefined || productForm.depositAmount === null ? '' : productForm.depositAmount.toString()}
-                            onChange={(v: string) => setProductForm({ ...productForm, depositAmount: v === '' ? null : Number(v) })}
-                            placeholder="مثال: 5000 (افتراضياً 20%)"
-                            extra="اتركه فارغاً لاحتساب 20% تلقائياً من السعر"
-                          />
+                  if (!isVerifiedForPreOrder) {
+                    return (
+                      <div className="p-6 rounded-[2rem] bg-gray-50 border-2 border-dashed border-gray-300 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                            <BookmarkCheck className="w-5 h-5 text-amber-600" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-black text-black">ميزة الحجز المسبق (دفع عربون)</h4>
+                            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                              خاصة بالمتاجر الموثقة والمعتمدة فقط 🛡️
+                            </span>
+                          </div>
                         </div>
-                        <div className="space-y-3">
-                          <label className="text-sm font-black text-black uppercase tracking-widest px-1 block">
-                            مدة صلاحية الحجز (المحددة من المتجر)
-                          </label>
-                          <select
-                            value={productForm.reservationDurationDays || 3}
-                            onChange={(e) => setProductForm({ ...productForm, reservationDurationDays: Number(e.target.value) })}
-                            className="w-full bg-white border-2 border-gray-100 rounded-[1.5rem] p-5 font-black text-base focus:ring-4 focus:ring-black/5 focus:border-black transition-all shadow-md active:scale-[0.99]"
-                          >
-                            <option value={1}>يوم واحد (24 ساعة)</option>
-                            <option value={2}>يومان (48 ساعة)</option>
-                            <option value={3}>3 أيام (72 ساعة - موصى به)</option>
-                            <option value={5}>5 أيام</option>
-                            <option value={7}>أسبوع كامل (7 أيام)</option>
-                            <option value={10}>10 أيام</option>
-                            <option value={14}>أسبوعان (14 يوماً)</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="p-3 bg-red-100/70 rounded-2xl border border-red-200">
-                        <p className="text-[11px] text-red-800 font-black leading-relaxed flex items-center gap-1.5">
-                          <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
-                          <span>شرط النظام المعتمد: في حال لم يقم الزبون بإتمام شراء المنتج وسداد باقي المبلغ خلال المدة المحددة، يُعتبر الحجز لاغياً تلقائياً ويذهب مبلغ العربون للمتجر.</span>
+                        <p className="text-xs text-gray-600 font-bold leading-relaxed">
+                          حسب سياسة المنصة لحماية حقوق المشترين وضمان جدية العمليات المالية، يُسمح بتفعيل ميزة الحجز المسبق ودفع العربون فقط للمتاجر الموثقة التي تحمل شارة التوثيق الزرقاء.
                         </p>
+                        <div className="p-3 bg-white rounded-xl border border-gray-200 text-xs text-gray-500 font-bold flex items-center justify-between">
+                          <span>حالة المتجر: غير موثق حالياً</span>
+                          {isAdmin && (
+                            <span className="text-blue-600 font-black">يمكنك توثيق المتجر من تبويب المتاجر</span>
+                          )}
+                        </div>
                       </div>
+                    );
+                  }
+
+                  return (
+                    <div className="p-6 rounded-[2rem] bg-amber-50/70 border-2 border-amber-300 space-y-4">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md">
+                            <BookmarkCheck className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-black text-black">إعدادات الحجز المسبق (دفع عربون)</h4>
+                            <p className="text-[11px] text-gray-500 font-bold">تحديد مبلغ العربون ومدة الحجز ومصادرة العربون عند فوات المدة</p>
+                          </div>
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={productForm.isPreOrderEnabled ?? true}
+                            onChange={(e) => setProductForm({ ...productForm, isPreOrderEnabled: e.target.checked })}
+                            className="w-5 h-5 rounded-lg border-2 border-amber-400 text-amber-600 focus:ring-amber-500"
+                          />
+                          <span className="text-xs font-black text-black">تفعيل ميزة الحجز</span>
+                        </label>
+                      </div>
+
+                      {(productForm.isPreOrderEnabled ?? true) && (
+                        <div className="space-y-4 pt-2">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <AdminInput
+                                label="مبلغ العربون المطلوب (ريال)"
+                                type="number"
+                                value={productForm.depositAmount === undefined || productForm.depositAmount === null ? '' : productForm.depositAmount.toString()}
+                                onChange={(v: string) => setProductForm({ ...productForm, depositAmount: v === '' ? null : Number(v) })}
+                                placeholder="مثال: 5000 (افتراضياً 20%)"
+                                extra="اتركه فارغاً لاحتساب 20% تلقائياً من السعر"
+                              />
+                            </div>
+                            <div className="space-y-3">
+                              <label className="text-sm font-black text-black uppercase tracking-widest px-1 block">
+                                مدة صلاحية الحجز (المحددة من المتجر)
+                              </label>
+                              <select
+                                value={productForm.reservationDurationDays || 3}
+                                onChange={(e) => setProductForm({ ...productForm, reservationDurationDays: Number(e.target.value) })}
+                                className="w-full bg-white border-2 border-gray-100 rounded-[1.5rem] p-5 font-black text-base focus:ring-4 focus:ring-black/5 focus:border-black transition-all shadow-md active:scale-[0.99]"
+                              >
+                                <option value={1}>يوم واحد (24 ساعة)</option>
+                                <option value={2}>يومان (48 ساعة)</option>
+                                <option value={3}>3 أيام (72 ساعة - موصى به)</option>
+                                <option value={5}>5 أيام</option>
+                                <option value={7}>أسبوع كامل (7 أيام)</option>
+                                <option value={10}>10 أيام</option>
+                                <option value={14}>أسبوعان (14 يوماً)</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="p-3 bg-red-100/70 rounded-2xl border border-red-200">
+                            <p className="text-[11px] text-red-800 font-black leading-relaxed flex items-center gap-1.5">
+                              <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+                              <span>شرط النظام المعتمد: في حال لم يقم الزبون بإتمام شراء المنتج وسداد باقي المبلغ خلال المدة المحددة، يُعتبر الحجز لاغياً تلقائياً ويذهب مبلغ العربون للمتجر.</span>
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
 
                 <div className="space-y-6">
                   <div className="flex justify-between items-end px-1">

@@ -298,6 +298,7 @@ function MainLayout() {
           <Route path="/store-site/:slug" element={<StoreSite />} />
           <Route path="/search-stores" element={<StoreSearch />} />
           <Route path="/safety-guide" element={<SafetyGuide />} />
+          <Route path="*" element={<StoreFront />} />
         </Routes>
       </main>
       <BottomNav />

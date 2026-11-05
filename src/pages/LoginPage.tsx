@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, User, Phone, Eye, EyeOff, ArrowRight, Sparkles, ShieldCheck, Camera, Check, FileText } from 'lucide-react';
+import { Mail, Lock, User, Phone, Eye, EyeOff, ArrowRight, Sparkles, ShieldCheck, Camera, Check, FileText, Store } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../AppContext';
 import toast from 'react-hot-toast';
@@ -162,8 +162,12 @@ export default function LoginPage() {
       >
         {/* Header */}
         <div className="relative bg-gradient-to-r from-emerald-600 via-green-600 to-teal-700 p-6 sm:p-8 text-white text-center">
-          <div className="w-14 h-14 mx-auto mb-2 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/20 shadow-inner">
-            <span className="text-2xl sm:text-3xl">🇾🇪</span>
+          <div className="w-14 h-14 mx-auto mb-2 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/20 shadow-inner overflow-hidden p-1">
+            {settings?.storeLogo ? (
+              <img src={settings.storeLogo} alt={settings?.storeName || 'شعار المتجر'} className="w-full h-full object-contain rounded-xl" />
+            ) : (
+              <Store className="w-7 h-7 text-white" />
+            )}
           </div>
 
           <h1 className="text-xl sm:text-2xl font-black">{settings?.storeName || 'متجر يمن ستور'}</h1>

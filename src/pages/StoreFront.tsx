@@ -1,5 +1,10 @@
-import { useState, useEffect } from 'react';
-import { ShoppingCart, CheckCircle, Image as ImageIcon, ShieldAlert, BookmarkCheck } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  ShoppingCart, CheckCircle, Image as ImageIcon, ShieldAlert, 
+  BookmarkCheck, ChevronRight, ChevronLeft, LayoutGrid, 
+  Laptop, Smartphone, Shirt, Sparkles, MapPin, Watch, 
+  ShoppingBag, Heart, Home, Gamepad2, Layers, Tag
+} from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
@@ -7,17 +12,55 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import PreOrderModal from '../components/PreOrderModal';
 
+const DEFAULT_CATEGORIES = [
+  { id: 'cat-electronics', name: 'الإلكترونيات والأجهزة', slug: 'electronics', icon: 'laptop' },
+  { id: 'cat-phones', name: 'الهواتف والملحقات', slug: 'phones', icon: 'smartphone' },
+  { id: 'cat-fashion', name: 'الأزياء والملابس', slug: 'fashion', icon: 'shirt' },
+  { id: 'cat-perfumes', name: 'العطور والبخور', slug: 'perfumes', icon: 'sparkles' },
+  { id: 'cat-local', name: 'منتجات محلية يمنية', slug: 'local', icon: 'map-pin' },
+  { id: 'cat-watches', name: 'الساعات والإكسسوارات', slug: 'watches', icon: 'watch' },
+  { id: 'cat-shoes', name: 'الأحذية والحقائب', slug: 'shoes-bags', icon: 'shopping-bag' },
+  { id: 'cat-beauty', name: 'العناية والجمال', slug: 'beauty', icon: 'heart' },
+  { id: 'cat-home', name: 'المنزل والمطبخ', slug: 'home', icon: 'home' },
+  { id: 'cat-gaming', name: 'ألعاب وترفيه', slug: 'gaming', icon: 'gamepad' }
+];
+
+const getCategoryIcon = (slugOrName: string) => {
+  const s = String(slugOrName || '').toLowerCase();
+  if (s.includes('elect') || s.includes('الكترون') || s.includes('إلكترون') || s === '11') return <Laptop className="w-5 h-5 shrink-0" />;
+  if (s.includes('phone') || s.includes('هاتف') || s.includes('جوال') || s.includes('تلفون')) return <Smartphone className="w-5 h-5 shrink-0" />;
+  if (s.includes('fashion') || s.includes('ملابس') || s.includes('ازياء') || s.includes('أزياء')) return <Shirt className="w-5 h-5 shrink-0" />;
+  if (s.includes('perfume') || s.includes('عطر') || s.includes('بخور') || s.includes('عود')) return <Sparkles className="w-5 h-5 shrink-0 text-amber-500" />;
+  if (s.includes('local') || s.includes('محلي') || s.includes('يمن')) return <MapPin className="w-5 h-5 shrink-0 text-emerald-500" />;
+  if (s.includes('watch') || s.includes('ساع') || s.includes('اكسسوار')) return <Watch className="w-5 h-5 shrink-0" />;
+  if (s.includes('shoe') || s.includes('bag') || s.includes('حقائب') || s.includes('أحذية') || s.includes('شنط')) return <ShoppingBag className="w-5 h-5 shrink-0" />;
+  if (s.includes('beauty') || s.includes('جمال') || s.includes('عناية') || s.includes('مكياج')) return <Heart className="w-5 h-5 shrink-0 text-rose-500" />;
+  if (s.includes('home') || s.includes('منزل') || s.includes('مطبخ') || s.includes('اثاث')) return <Home className="w-5 h-5 shrink-0" />;
+  if (s.includes('game') || s.includes('ألعاب') || s.includes('العاب') || s.includes('ترفيه')) return <Gamepad2 className="w-5 h-5 shrink-0" />;
+  return <Tag className="w-5 h-5 shrink-0" />;
+};
+
 export default function StoreFront() {
   const [activeTab, setActiveTab] = useState('all');
-  const { addToCart, isAdmin, settings, getThemeClasses, user, login } = useAppContext();
+  const { addToCart, isAdmin, settings, getThemeClasses, user, login, isDarkMode } = useAppContext();
   const navigate = useNavigate();
-  const themeColor = settings?.storeTheme || 'green';
-  const { isDarkMode } = useAppContext();
 
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [storeProfiles, setStoreProfiles] = useState<Record<string, any>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPreOrderProduct, setSelectedPreOrderProduct] = useState<any | null>(null);
+
+  const categoriesScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollCategories = (direction: 'left' | 'right') => {
+    if (categoriesScrollRef.current) {
+      categoriesScrollRef.current.scrollBy({
+        left: direction === 'right' ? 260 : -260,
+        behavior: 'smooth'
+      });
+    }
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'products'), where('status', '==', 'active'));
@@ -31,20 +74,68 @@ export default function StoreFront() {
     });
 
     const unsubCats = onSnapshot(collection(db, 'categories'), (snap) => {
-      setCategories(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      if (!snap.empty) {
+        setCategories(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }
     }, (err) => {
       console.warn('StoreFront categories listener notice (handled):', err.message);
+    });
+
+    const unsubProfiles = onSnapshot(collection(db, 'storeProfiles'), (snap) => {
+      const pMap: Record<string, any> = {};
+      snap.docs.forEach(doc => {
+        const data = doc.data();
+        const isVer = Boolean(data.verified) && (!data.verifiedUntil || data.verifiedUntil === '' || new Date(data.verifiedUntil).getTime() >= Date.now());
+        pMap[doc.id] = { ...data, isVerified: isVer };
+      });
+      setStoreProfiles(pMap);
+    }, (err) => {
+      console.warn('StoreProfiles listener notice:', err.message);
     });
 
     return () => {
       unsubProducts();
       unsubCats();
+      unsubProfiles();
     };
   }, []);
 
+  const allAvailableCategories = categories.length > 0 ? categories : DEFAULT_CATEGORIES;
+
+  const isProductInCategory = (product: any, catSlug: string, catName?: string) => {
+    if (!product) return false;
+    if (catSlug === 'all') return true;
+    const pCat = String(product.category || '').toLowerCase().trim();
+    const pCatSlug = String(product.categorySlug || '').toLowerCase().trim();
+    const targetSlug = String(catSlug).toLowerCase().trim();
+    const targetName = String(catName || '').toLowerCase().trim();
+
+    if (targetSlug && (pCatSlug === targetSlug || pCat === targetSlug)) return true;
+    if (targetName && pCat === targetName) return true;
+
+    // Fuzzy matching for Arabic terms and variations
+    if (targetSlug === 'electronics' && (pCat.includes('الكترون') || pCat.includes('إلكترون') || pCat === '11')) return true;
+    if (targetSlug === 'phones' && (pCat.includes('هاتف') || pCat.includes('جوال') || pCat.includes('ايفون') || pCat.includes('سامسونج') || pCat.includes('تلفون'))) return true;
+    if (targetSlug === 'fashion' && (pCat.includes('ملابس') || pCat.includes('ازياء') || pCat.includes('أزياء') || pCat.includes('ثوب') || pCat.includes('قميص') || pCat.includes('فستان'))) return true;
+    if (targetSlug === 'perfumes' && (pCat.includes('عطر') || pCat.includes('بخور') || pCat.includes('عود') || pCat.includes('مخلط'))) return true;
+    if (targetSlug === 'local' && (pCat.includes('محلي') || pCat.includes('يمن') || pCat.includes('عسل') || pCat.includes('بن') || pCat.includes('جنبية'))) return true;
+    if (targetSlug === 'watches' && (pCat.includes('ساع') || pCat.includes('نظار') || pCat.includes('اكسسوار'))) return true;
+    if (targetSlug === 'shoes-bags' && (pCat.includes('حذاء') || pCat.includes('احذية') || pCat.includes('أحذية') || pCat.includes('شنط') || pCat.includes('حقائب'))) return true;
+    if (targetSlug === 'beauty' && (pCat.includes('عناية') || pCat.includes('مكياج') || pCat.includes('جمال') || pCat.includes('بشرة'))) return true;
+    if (targetSlug === 'home' && (pCat.includes('منزل') || pCat.includes('مطبخ') || pCat.includes('أواني') || pCat.includes('اثاث'))) return true;
+    if (targetSlug === 'gaming' && (pCat.includes('العاب') || pCat.includes('ألعاب') || pCat.includes('ترفيه') || pCat.includes('بلايستيشن') || pCat.includes('قيمنق'))) return true;
+
+    return false;
+  };
+
   const filteredProducts = activeTab === 'all' 
     ? products 
-    : products.filter(p => p.category === activeTab);
+    : products.filter(p => isProductInCategory(p, activeTab, allAvailableCategories.find(c => c.slug === activeTab)?.name));
+
+  const getCategoryProductCount = (categorySlug: string, categoryName: string) => {
+    if (categorySlug === 'all') return products.length;
+    return products.filter(p => isProductInCategory(p, categorySlug, categoryName)).length;
+  };
 
   return (
     <div className="space-y-6">
@@ -106,67 +197,156 @@ export default function StoreFront() {
         </div>
       )}
 
-    <div id="products-section" className={`rounded-[4rem] p-12 md:p-24 shadow-sm border flex flex-col items-center text-center space-y-12 animate-in fade-in duration-700 transition-colors ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-50'}`}>
-        <div className="max-w-3xl space-y-4">
-          <h1 className={`text-4xl md:text-6xl font-black leading-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>أهلاً بك في يمن ستور</h1>
-          <p className={`text-lg md:text-xl font-black max-w-2xl mx-auto ${isDarkMode ? 'text-gray-300' : 'text-slate-900'}`}>اكتشف أفضل العروض والمنتجات الموثقة في مكان واحد</p>
+      {/* Main Store Banner & Search Store Section */}
+      <div id="products-section" className={`rounded-[3.5rem] p-8 md:p-14 shadow-sm border flex flex-col items-center text-center space-y-8 animate-in fade-in duration-700 transition-colors ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}>
+        <div className="max-w-3xl space-y-3">
+          <h1 className={`text-3xl md:text-5xl font-black leading-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>أهلاً بك في يمن ستور</h1>
+          <p className={`text-base md:text-lg font-black max-w-2xl mx-auto ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}>اكتشف أفضل العروض والمنتجات الموثقة من نخبة المتاجر اليمنية المعتمدة</p>
         </div>
 
-        <div className="w-full max-w-2xl">
+        <div className="w-full max-w-xl">
           <Link 
             to="/search-stores" 
-            className={`group flex flex-row-reverse items-center justify-between border p-3 pl-8 rounded-[2rem] shadow-2xl shadow-black/5 transition-all duration-300 ${isDarkMode ? 'bg-gray-800 border-gray-700 hover:border-blue-900' : 'bg-white border-gray-100 hover:border-blue-100'}`}
+            className={`group flex flex-row-reverse items-center justify-between border p-3 pl-8 rounded-[2rem] shadow-xl shadow-black/5 transition-all duration-300 ${isDarkMode ? 'bg-gray-800 border-gray-700 hover:border-blue-900' : 'bg-white border-gray-200 hover:border-blue-200'}`}
           >
-            <div className={`p-3 rounded-2xl border shadow-sm transition group-hover:scale-110 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-blue-400' : 'bg-white border-gray-50 text-blue-600'}`}>
-               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className={`p-3 rounded-2xl border shadow-sm transition group-hover:scale-110 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-blue-400' : 'bg-blue-50 border-blue-100 text-blue-600'}`}>
+               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                </svg>
             </div>
-            <span className={`text-lg md:text-xl font-black transition ${isDarkMode ? 'text-gray-200' : 'text-slate-700'}`}>ابحث عن متاجر أخرى</span>
+            <span className={`text-base md:text-lg font-black transition ${isDarkMode ? 'text-gray-200' : 'text-slate-800'}`}>ابحث عن متاجر أخرى موثقة</span>
           </Link>
         </div>
 
-        <div className="flex flex-wrap justify-center gap-4 w-full">
-          <button
-            onClick={() => setActiveTab('all')}
-            className={`px-10 py-4 rounded-2xl text-lg font-black transition-all ${
-              activeTab === 'all' 
-                ? `bg-black text-white shadow-xl shadow-black/20 ${isDarkMode ? 'bg-blue-600 text-white' : 'bg-black text-white'}` 
-                : `${isDarkMode ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-slate-50 text-slate-900 hover:bg-slate-100'}`
-            }`}
+        {/* Horizontal Scrollable Categories Bar (ترتيب أفقي من اليمين مع إمكانية التمرير) */}
+        <div className="w-full relative pt-4" dir="rtl">
+          <div className="flex items-center justify-between mb-3 px-2">
+            <div className="flex items-center gap-2">
+              <Layers className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              <h3 className={`text-base md:text-lg font-black ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                أقسام وتصنيفات المتجر
+              </h3>
+              <span className="text-[11px] font-bold text-gray-400 hidden sm:inline">
+                (اسحب أو اضغط للتنقل بين الأقسام)
+              </span>
+            </div>
+
+            {/* Scroll navigation arrows */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => scrollCategories('right')}
+                className={`w-9 h-9 rounded-2xl border flex items-center justify-center transition active:scale-90 ${
+                  isDarkMode ? 'bg-gray-800 border-gray-700 hover:bg-gray-700 text-white' : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700 shadow-sm'
+                }`}
+                title="تمرير لليمين"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollCategories('left')}
+                className={`w-9 h-9 rounded-2xl border flex items-center justify-center transition active:scale-90 ${
+                  isDarkMode ? 'bg-gray-800 border-gray-700 hover:bg-gray-700 text-white' : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700 shadow-sm'
+                }`}
+                title="تمرير لليسار"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Horizontal Scrolling Track */}
+          <div 
+            ref={categoriesScrollRef}
+            className="flex items-center gap-3 overflow-x-auto no-scrollbar scroll-smooth py-3 px-1 -mx-1"
           >
-            الكل
-          </button>
-          {categories.map((c: any) => (
+            {/* "الكل" Option */}
             <button
-              key={c.id}
-              onClick={() => setActiveTab(c.slug)}
-              className={`px-10 py-4 rounded-2xl text-lg font-black transition-all ${
-                activeTab === c.slug 
-                  ? `bg-black text-white shadow-xl shadow-black/20 ${isDarkMode ? 'bg-blue-600 text-white' : 'bg-black text-white'}` 
-                  : `${isDarkMode ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-slate-50 text-slate-900 hover:bg-slate-100'}`
+              onClick={() => setActiveTab('all')}
+              className={`shrink-0 flex items-center gap-2.5 px-6 py-3.5 rounded-2xl font-black text-sm transition-all duration-300 border-2 select-none active:scale-95 ${
+                activeTab === 'all'
+                  ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-600/30 ring-2 ring-emerald-400/30'
+                  : isDarkMode
+                    ? 'bg-gray-800/90 text-gray-300 border-gray-700 hover:border-gray-600 hover:bg-gray-800'
+                    : 'bg-white text-gray-800 border-gray-200 hover:border-gray-300 hover:bg-gray-50 shadow-sm'
               }`}
             >
-              {c.name}
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeTab === 'all' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                <LayoutGrid className="w-4 h-4" />
+              </div>
+              <span className="whitespace-nowrap">جميع الأقسام</span>
+              <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${
+                activeTab === 'all' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+              }`}>
+                {products.length}
+              </span>
             </button>
-          ))}
-        </div>
-    </div>
 
+            {/* Dynamic categories list */}
+            {allAvailableCategories.map((c: any) => {
+              const isActive = activeTab === c.slug || activeTab === c.name;
+              const count = getCategoryProductCount(c.slug, c.name);
+
+              return (
+                <button
+                  key={c.id || c.slug}
+                  onClick={() => setActiveTab(c.slug)}
+                  className={`shrink-0 flex items-center gap-2.5 px-5 py-3.5 rounded-2xl font-black text-sm transition-all duration-300 border-2 select-none active:scale-95 ${
+                    isActive
+                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-600/30 ring-2 ring-emerald-400/30 scale-[1.02]'
+                      : isDarkMode
+                        ? 'bg-gray-800/90 text-gray-300 border-gray-700 hover:border-gray-600 hover:bg-gray-800'
+                        : 'bg-white text-gray-800 border-gray-200 hover:border-gray-300 hover:bg-gray-50 shadow-sm'
+                  }`}
+                >
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isActive ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-700 text-emerald-600 dark:text-emerald-400'}`}>
+                    {getCategoryIcon(c.slug || c.name)}
+                  </div>
+                  <span className="whitespace-nowrap">{c.name}</span>
+                  {count > 0 && (
+                    <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50'
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Products Section */}
       {isLoading ? (
-        <div className="text-center py-20 text-gray-500">جاري تحميل المنتجات...</div>
-      ) : products.length === 0 ? (
-        <div className="text-center py-20 text-gray-500">لا توجد منتجات حالياً. {isAdmin ? 'قم بإضافة منتجات من لوحة التحكم.' : ''}</div>
+        <div className="text-center py-20 text-gray-500 font-bold">جاري تحميل المنتجات...</div>
+      ) : filteredProducts.length === 0 ? (
+        <div className={`text-center py-20 rounded-3xl border border-dashed p-8 ${isDarkMode ? 'border-gray-800 bg-gray-900/50 text-gray-400' : 'border-gray-200 bg-gray-50 text-gray-500'}`}>
+          <Layers className="w-12 h-12 mx-auto mb-3 opacity-40" />
+          <p className="text-base font-black">لا توجد منتجات متوفرة حالياً في هذا القسم.</p>
+          <button 
+            onClick={() => setActiveTab('all')} 
+            className="mt-4 px-6 py-2.5 rounded-xl bg-emerald-600 text-white font-black text-xs hover:bg-emerald-700 transition"
+          >
+            عرض جميع المنتجات
+          </button>
+        </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredProducts.map((product) => (
+          {filteredProducts.map((product) => {
+            const ownerProf = product.ownerId ? storeProfiles[product.ownerId] : null;
+            const isStoreVerified = Boolean(product.ownerVerified || ownerProf?.isVerified);
+            const canPreOrder = isStoreVerified && (product.isPreOrderEnabled ?? true);
+
+            return (
              <motion.div 
                key={product.id} 
                initial={{ opacity: 0, y: 30 }}
                animate={{ opacity: 1, y: 0 }}
                className={`rounded-[2.5rem] border overflow-hidden hover:shadow-2xl transition-all duration-500 flex flex-col h-full group ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}
              >
-              {/* Store Header matching screenshot exactly */}
+              {/* Store Header */}
               {product.ownerId && (
                 <div className={`p-4 flex items-center justify-between px-6 ${isDarkMode ? 'bg-gray-900' : 'bg-white'}`}>
                   <Link to={`/store/${product.ownerId}`} className="flex items-center gap-3 group/store">
@@ -175,36 +355,43 @@ export default function StoreFront() {
                         {product.ownerPhotoURL ? (
                           <img src={product.ownerPhotoURL} alt="" className="w-full h-full object-cover" />
                         ) : (
-                          <div className={`w-full h-full flex items-center justify-center ${getThemeClasses('bg')} text-white text-xs font-black`}>
-                            {product.ownerName?.charAt(0) || 'S'}
+                          <div className="w-full h-full flex items-center justify-center font-black text-sm text-gray-500">
+                            {product.ownerName?.charAt(0) || 'م'}
                           </div>
                         )}
                       </div>
                     </div>
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-1">
-                        <span className={`text-sm font-black ${isDarkMode ? 'text-white' : 'text-black'}`}>{product.ownerName}</span>
-                        {product.ownerVerified && <CheckCircle className="w-3.5 h-3.5 text-blue-500 fill-white" />}
+                    <div className="flex flex-col text-right">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`font-black text-sm transition group-hover/store:text-blue-500 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                          {product.ownerName || 'متجر معتمد'}
+                        </span>
+                        {isStoreVerified && (
+                          <CheckCircle className="w-4 h-4 text-blue-500 fill-white" title="متجر موثق ومعتمد رسمياً" />
+                        )}
                       </div>
-                      <span className={`text-[10px] font-extrabold ${isDarkMode ? 'text-gray-500' : 'text-gray-900'}`}>{product.ownerVerified ? 'متجر موثق' : 'متجر نظامي'}</span>
+                      <span className={`text-[10px] font-black ${isDarkMode ? 'text-gray-400' : 'text-gray-800'}`}>
+                        {isStoreVerified ? 'متجر موثق رسمياً' : 'متجر يمن ستور'}
+                      </span>
                     </div>
                   </Link>
-                  <Link 
-                    to={`/store/${product.ownerId}`} 
-                    className="text-xs font-black text-blue-600 dark:text-blue-400 hover:underline"
-                  >
-                    زيارة
-                  </Link>
+
+                  <div className="flex items-center gap-1 bg-yellow-400/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 rounded-xl border border-yellow-400/20 text-xs font-black">
+                     <span>★</span>
+                     <span>{ownerProf?.averageRating ? Number(ownerProf.averageRating).toFixed(1) : '5.0'}</span>
+                  </div>
                 </div>
               )}
 
-              <Link to={`/product/${product.id}`} className="relative aspect-square overflow-hidden bg-gray-50 block">
-                <div className="relative w-full h-full overflow-hidden flex items-center justify-center">
-                  {(product.image || (product.images && product.images[0])) ? (
+              {/* Product Content */}
+              <div className="p-6 flex-1 flex flex-col justify-between space-y-4">
+                <div className="space-y-4">
+                  <div className="aspect-square rounded-3xl overflow-hidden bg-gray-50 relative group/img cursor-pointer" onClick={() => navigate(`/product/${product.id}`)}>
+                  {product.image ? (
                     <img 
-                      src={product.image || product.images[0]} 
+                      src={product.image} 
                       alt={product.title} 
-                      className="w-full h-full object-cover transition duration-700 group-hover:scale-110" 
+                      className="w-full h-full object-cover group-hover/img:scale-105 transition duration-500" 
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-gray-50">
@@ -217,79 +404,79 @@ export default function StoreFront() {
                 </div>
                 {product.stock !== undefined && product.stock !== null && Number(product.stock) <= 0 && (
                   <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-20">
-                    <span className="bg-white text-black px-6 py-2 rounded-full text-xs font-black shadow-2xl">نفذت الكمية</span>
+                    <span className="text-white font-black text-sm bg-red-600 px-4 py-2 rounded-xl">نفذت الكمية</span>
                   </div>
                 )}
-              </Link>
-              
-              <div className="p-6 flex flex-col flex-1 space-y-4">
-                <div className="space-y-1">
-                  <div className="flex justify-between items-start gap-2">
-                    <Link to={`/product/${product.id}`} className="flex-1">
-                      <h3 className={`font-black text-xl leading-tight hover:text-blue-600 transition line-clamp-1 ${isDarkMode ? 'text-white' : 'text-black'}`}>{product.title}</h3>
-                    </Link>
-                  </div>
-                  <p className={`text-xs font-bold line-clamp-2 h-9 leading-relaxed ${isDarkMode ? 'text-gray-400' : 'text-gray-800'}`}>{product.description}</p>
+                   <div className="flex justify-between items-start">
+                      <Link to={`/product/${product.id}`} className="block">
+                         <h3 className={`font-black text-lg line-clamp-1 group-hover:text-blue-500 transition ${isDarkMode ? 'text-white' : 'text-black'}`}>{product.title}</h3>
+                      </Link>
+                      <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider ${isDarkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-900'}`}>{product.category}</span>
+                   </div>
+                   <p className={`text-xs font-bold line-clamp-2 h-9 leading-relaxed ${isDarkMode ? 'text-gray-400' : 'text-gray-800'}`}>{product.description}</p>
                 </div>
 
                 <div className={`flex items-center justify-between mt-auto pt-4 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-                   <div className="flex flex-col">
-                      <span className={`text-[10px] font-black uppercase ${isDarkMode ? 'text-gray-500' : 'text-gray-900'}`}>السعر الحالي</span>
-                      <span className="text-blue-600 dark:text-blue-400 font-black text-2xl tracking-tighter">{product.price.toLocaleString()} <span className={`text-sm font-black opacity-60 ${isDarkMode ? 'text-gray-400' : 'text-gray-900'}`}>ريال</span></span>
-                   </div>
-                   
-                   {user ? (
-                     <button 
-                       onClick={(e) => {
-                         e.preventDefault();
-                         e.stopPropagation();
-                         addToCart(product);
-                       }}
-                       disabled={product.stock !== undefined && Number(product.stock) <= 0}
-                       className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-xl transition-all disabled:opacity-30 ${isDarkMode ? 'bg-blue-600 text-white shadow-blue-950/40 hover:scale-110' : 'bg-black text-white shadow-black/10 hover:scale-110'}`}
-                       title="إضافة للسلة للشراء الفوري"
-                     >
-                       <ShoppingCart className="h-6 w-6" />
-                     </button>
-                   ) : (
-                     <button 
-                       onClick={login}
-                       className={`px-6 py-3 rounded-2xl text-[10px] font-black transition ${isDarkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-750' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                     >
-                       دخول للشراء
-                     </button>
-                   )}
+                    <div className="flex flex-col">
+                       <span className={`text-[10px] font-black uppercase ${isDarkMode ? 'text-gray-500' : 'text-gray-900'}`}>السعر الحالي</span>
+                       <span className="text-blue-600 dark:text-blue-400 font-black text-2xl tracking-tighter">{product.price.toLocaleString()} <span className={`text-sm font-black opacity-60 ${isDarkMode ? 'text-gray-400' : 'text-gray-900'}`}>ريال</span></span>
+                    </div>
+                    
+                    {user ? (
+                      <button 
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          addToCart(product);
+                        }}
+                        disabled={product.stock !== undefined && Number(product.stock) <= 0}
+                        className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-xl transition-all disabled:opacity-30 ${isDarkMode ? 'bg-blue-600 text-white shadow-blue-950/40 hover:scale-110' : 'bg-black text-white shadow-black/10 hover:scale-110'}`}
+                        title="إضافة للسلة للشراء الفوري"
+                      >
+                        <ShoppingCart className="h-6 w-6" />
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={login}
+                        className={`px-6 py-3 rounded-2xl text-[10px] font-black transition ${isDarkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-750' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                      >
+                        دخول للشراء
+                      </button>
+                    )}
                 </div>
 
-                {/* Pre-Order (حجز مسبق) Button Under Product */}
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (!user) {
-                        login();
-                        return;
-                      }
-                      setSelectedPreOrderProduct(product);
-                    }}
-                    className="w-full py-3 px-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-black text-xs flex items-center justify-between transition-all duration-200 active:scale-95 group/preorder shadow-sm"
-                  >
-                    <div className="flex items-center gap-2">
-                      <BookmarkCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 group-hover/preorder:scale-110 transition-transform" />
-                      <span className="font-black text-sm">حجز مسبق</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold">
-                      <span>عربون: {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ريال</span>
-                      <span className="text-gray-300 dark:text-gray-600">•</span>
-                      <span className="text-amber-800 dark:text-amber-400">مهلة {product.reservationDurationDays || 3} أيام</span>
-                    </div>
-                  </button>
-                </div>
+                {/* Pre-Order (حجز مسبق) Button Under Product - ONLY FOR VERIFIED STORES */}
+                {canPreOrder && (
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!user) {
+                          login();
+                          return;
+                        }
+                        setSelectedPreOrderProduct(product);
+                      }}
+                      className="w-full py-3 px-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-black text-xs flex items-center justify-between transition-all duration-200 active:scale-95 group/preorder shadow-sm"
+                    >
+                      <div className="flex items-center gap-2">
+                        <BookmarkCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 group-hover/preorder:scale-110 transition-transform" />
+                        <span className="font-black text-sm">حجز مسبق</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold">
+                        <span>عربون: {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ريال</span>
+                        <span className="text-gray-300 dark:text-gray-600">•</span>
+                        <span className="text-amber-800 dark:text-amber-400">مهلة {product.reservationDurationDays || 3} أيام</span>
+                      </div>
+                    </button>
+                  </div>
+                )}
               </div>
             </motion.div>
-          ))}
+          );
+        })}
         </div>
       )}
 

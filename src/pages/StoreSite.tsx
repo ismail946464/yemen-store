@@ -67,7 +67,13 @@ export default function StoreSite() {
 
   const filteredProducts = activeTab === 'all' 
     ? products 
-    : products.filter(p => p.category === activeTab);
+    : products.filter(p => {
+        if (!p.category) return false;
+        const target = activeTab.toLowerCase().trim();
+        const pCat = String(p.category).toLowerCase().trim();
+        const pSlug = String(p.categorySlug || '').toLowerCase().trim();
+        return pCat === target || pSlug === target || (target === 'الكترونيات' && pCat.includes('الكترون')) || (pCat.includes(target) || target.includes(pCat));
+      });
 
   if (isLoading) {
     return (

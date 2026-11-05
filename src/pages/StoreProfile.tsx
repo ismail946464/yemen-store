@@ -589,25 +589,27 @@ export default function StoreProfile() {
                          {product.price.toLocaleString()} <span className="text-xs font-black text-gray-500 mr-0.5">ر.ي</span>
                        </span>
                      </div>
-                   {/* Pre-Order button */}
-                   <div className="pt-3 mt-3 border-t border-gray-100">
-                     <button
-                       type="button"
-                       onClick={(e) => {
-                         e.preventDefault();
-                         e.stopPropagation();
-                         if (!user) { login(); return; }
-                         setSelectedPreOrderProduct(product);
-                       }}
-                       className="w-full py-2.5 px-3 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 font-black text-xs flex items-center justify-between border border-amber-500/30 transition active:scale-95 shadow-sm"
-                     >
-                       <div className="flex items-center gap-1.5">
-                         <BookmarkCheck className="w-4 h-4 text-amber-600" />
-                         <span>حجز مسبق</span>
-                       </div>
-                       <span className="text-[10px] font-bold">عربون: {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ريال</span>
-                     </button>
-                   </div>
+                   {/* Pre-Order button - Only for verified stores */}
+                   {isVerified && (product.isPreOrderEnabled ?? true) && (
+                     <div className="pt-3 mt-3 border-t border-gray-100">
+                       <button
+                         type="button"
+                         onClick={(e) => {
+                           e.preventDefault();
+                           e.stopPropagation();
+                           if (!user) { login(); return; }
+                           setSelectedPreOrderProduct(product);
+                         }}
+                         className="w-full py-2.5 px-3 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 font-black text-xs flex items-center justify-between border border-amber-500/30 transition active:scale-95 shadow-sm"
+                       >
+                         <div className="flex items-center gap-1.5">
+                           <BookmarkCheck className="w-4 h-4 text-amber-600" />
+                           <span>حجز مسبق</span>
+                         </div>
+                         <span className="text-[10px] font-bold">عربون: {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ريال</span>
+                       </button>
+                     </div>
+                   )}
                    </div>
                  </div>
               </motion.div>

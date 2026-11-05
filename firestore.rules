@@ -403,12 +403,5 @@ service cloud.firestore {
     match /otpLogs/{logId} {
       allow read, write: if false;
     }
-
-    match /orders/{orderId} {
-      allow read: if true;
-      allow create: if isValidOrder(incoming());
-      allow update: if isValidOrder(incoming());
-      allow delete: if isAdmin() || (isSignedIn() && isStore() && existing().storeId == request.auth.uid);
-    }
   }
 }
