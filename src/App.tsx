@@ -309,40 +309,40 @@ function MainLayout() {
 export default function App() {
   return (
     <Router>
-      <Toaster 
-        position="top-center" 
-        gutter={8}
-        containerStyle={{
-          top: 24,
-        }}
-        toastOptions={{
-          duration: 3500,
-          style: {
-            borderRadius: '16px',
-            background: '#0f172a',
-            color: '#fff',
-            padding: '12px 20px',
-            fontWeight: 'bold',
-            fontSize: '13px',
-            direction: 'rtl',
-            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.25)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-          },
-          success: {
-            iconTheme: {
-              primary: '#10b981',
-              secondary: '#fff',
-            },
-          },
-          error: {
-            iconTheme: {
-              primary: '#ef4444',
-              secondary: '#fff',
-            },
-          },
-        }}
-      />
       <AppProvider>
+        <Toaster 
+          position="top-center" 
+          gutter={8}
+          containerStyle={{
+            top: 24,
+          }}
+          toastOptions={{
+            duration: 3500,
+            style: {
+              borderRadius: '16px',
+              background: '#0f172a',
+              color: '#fff',
+              padding: '12px 20px',
+              fontWeight: 'bold',
+              fontSize: '13px',
+              direction: 'rtl',
+              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.25)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+            },
+            success: {
+              iconTheme: {
+                primary: '#10b981',
+                secondary: '#fff',
+              },
+            },
+            error: {
+              iconTheme: {
+                primary: '#ef4444',
+                secondary: '#fff',
+              },
+            },
+          }}
+        />
         <MainLayout />
       </AppProvider>
     </Router>

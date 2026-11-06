@@ -89,11 +89,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [globalStats, setGlobalStats] = useState({ totalVisitors: 0, totalRegistered: 0, onlineCount: 0, mainStoreLastSeen: null as string | null });
 
   const toggleDarkMode = () => {
-    setIsDarkMode((prev: boolean) => {
-      const newVal = !prev;
-      localStorage.setItem('isDarkMode', JSON.stringify(newVal));
-      return newVal;
-    });
+    setIsDarkMode((prev: boolean) => !prev);
   };
 
   useEffect(() => {
@@ -102,6 +98,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       document.documentElement.classList.remove('dark');
     }
+    try {
+      localStorage.setItem('isDarkMode', JSON.stringify(isDarkMode));
+    } catch {}
   }, [isDarkMode]);
 
   // Visitor increment
@@ -239,13 +238,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const snap = await getDocs(qOnline);
         const count = Math.max(1, snap.size);
         
-        setGlobalStats(prev => {
-          if (prev.onlineCount !== count) {
-            updateDoc(doc(db, 'stats', 'global'), { onlineCount: count }).catch(() => {});
-            return { ...prev, onlineCount: count };
-          }
-          return prev;
-        });
+        updateDoc(doc(db, 'stats', 'global'), { onlineCount: count }).catch(() => {});
+        setGlobalStats(prev => (prev.onlineCount !== count ? { ...prev, onlineCount: count } : prev));
       } catch (error) {
         console.warn("Notice updating online users count:", error);
       }
@@ -258,13 +252,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (auth.currentUser) {
       getDocs(collection(db, 'users')).then(snap => {
         const count = snap.size;
-        setGlobalStats(prev => {
-          if (prev.totalRegistered !== count) {
-            updateDoc(doc(db, 'stats', 'global'), { totalRegistered: count }).catch(() => {});
-            return { ...prev, totalRegistered: count };
-          }
-          return prev;
-        });
+        updateDoc(doc(db, 'stats', 'global'), { totalRegistered: count }).catch(() => {});
+        setGlobalStats(prev => (prev.totalRegistered !== count ? { ...prev, totalRegistered: count } : prev));
       }).catch(() => {});
     }
 
@@ -312,10 +301,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
 
         if (trulyNewMessages.length > 0) {
-          toast.success("لديك رسالة جديدة!", {
-            icon: '💬',
-            position: 'top-center'
-          });
+          setTimeout(() => {
+            toast.success("لديك رسالة جديدة!", {
+              icon: '💬',
+              position: 'top-center'
+            });
+          }, 0);
 
           if (document.hidden && "Notification" in window && Notification.permission === "granted") {
             new Notification("متجر يمن", {
@@ -796,28 +787,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addToCart = (product: any) => {
-    setCart((prev) => {
-      // Check if trying to mix stores
-      if (prev.length > 0) {
-        const firstStoreId = prev[0].product.ownerId || 'global';
-        const newStoreId = product.ownerId || 'global';
-        if (firstStoreId !== newStoreId) {
-          toast.error("يرجى إتمام طلب المتجر الحالي أولاً أو تفريغ السلة، لا يمكن الجمع بين منتجات من متاجر مختلفة في طلب واحد.");
-          return prev;
-        }
+    // Check if trying to mix stores
+    if (cart.length > 0) {
+      const firstStoreId = cart[0].product.ownerId || 'global';
+      const newStoreId = product.ownerId || 'global';
+      if (firstStoreId !== newStoreId) {
+        toast.error("يرجى إتمام طلب المتجر الحالي أولاً أو تفريغ السلة، لا يمكن الجمع بين منتجات من متاجر مختلفة في طلب واحد.");
+        return;
       }
+    }
 
-      const existing = prev.find((item) => item.product.id === product.id);
-      if (existing) {
-        return prev.map((item) =>
+    const existing = cart.find((item) => item.product.id === product.id);
+    if (existing) {
+      setCart((prev) =>
+        prev.map((item) =>
           item.product.id === product.id
             ? { ...item, quantity: item.quantity + 1 }
             : item
-        );
-      }
-      toast.success("تمت الإضافة للسلة");
-      return [...prev, { product, quantity: 1 }];
-    });
+        )
+      );
+    } else {
+      setCart((prev) => [...prev, { product, quantity: 1 }]);
+    }
+    toast.success("تمت الإضافة للسلة");
   };
 
   const removeFromCart = (productId: string) => {

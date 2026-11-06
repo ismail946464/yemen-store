@@ -329,8 +329,7 @@ export default function ProductDetail() {
              </div>
           </div>
 
-          <div className="sticky bottom-4 sm:relative sm:bottom-0 z-40">
-             <div className="bg-white/80 backdrop-blur-xl sm:bg-transparent p-4 sm:p-0 rounded-[2.5rem] shadow-2xl shadow-black/10 sm:shadow-none border border-gray-100 sm:border-0 flex flex-col gap-4">
+          <div className="flex flex-col gap-4">
                 {product.externalLink ? (
                   <a 
                     href={product.externalLink}
@@ -356,7 +355,7 @@ export default function ProductDetail() {
                   </button>
                 )}
                 
-                {product.ownerId && (
+                {product.ownerId && product.ownerId !== user?.uid && (
                    <Link to={`/contact?to=${product.ownerId}`} className="w-full bg-white text-gray-900 border-2 border-gray-100 py-5 rounded-[2rem] font-black text-center hover:bg-gray-50 transition flex items-center justify-center gap-2">
                       <MessageCircle className="w-5 h-5 text-green-500" />
                       مراسلة البائع فوراً
@@ -418,8 +417,7 @@ export default function ProductDetail() {
                     </button>
                   </div>
                 )}
-             </div>
-          </div>
+              </div>
         </div>
       </div>
 
@@ -442,7 +440,7 @@ export default function ProductDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
           {/* Post Review Form */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-[2.5rem] p-8 border border-gray-50 shadow-2xl shadow-black/5 sticky top-28">
+            <div className="bg-white rounded-[2.5rem] p-8 border border-gray-50 shadow-2xl shadow-black/5 lg:sticky lg:top-28">
               <h3 className="font-black text-xl mb-8 text-gray-900">أضف تقييمك</h3>
               {user ? (
                 <form onSubmit={handleSubmitReview} className="space-y-8">

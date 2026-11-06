@@ -333,7 +333,7 @@ export default function StoreFront() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 md:gap-6">
           {filteredProducts.map((product) => {
             const ownerProf = product.ownerId ? storeProfiles[product.ownerId] : null;
             const isStoreVerified = Boolean(product.ownerVerified || ownerProf?.isVerified);
@@ -342,112 +342,144 @@ export default function StoreFront() {
             return (
              <motion.div 
                key={product.id} 
-               initial={{ opacity: 0, y: 30 }}
+               initial={{ opacity: 0, y: 20 }}
                animate={{ opacity: 1, y: 0 }}
-               className={`rounded-[2.5rem] border overflow-hidden hover:shadow-2xl transition-all duration-500 flex flex-col h-full group ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}
+               onClick={() => navigate(`/product/${product.id}`)}
+               className={`rounded-2xl sm:rounded-3xl border overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col h-full group cursor-pointer active:scale-[0.98] relative ${
+                 isDarkMode ? 'bg-gray-900 border-gray-800 hover:border-gray-700' : 'bg-white border-gray-100 hover:border-blue-100 shadow-sm'
+               }`}
              >
-              {/* Store Header */}
+              {/* Compact Store Header */}
               {product.ownerId && (
-                <div className={`p-4 flex items-center justify-between px-6 ${isDarkMode ? 'bg-gray-900' : 'bg-white'}`}>
-                  <Link to={`/store/${product.ownerId}`} className="flex items-center gap-3 group/store">
-                    <div className="w-12 h-12 rounded-full p-0.5 bg-gradient-to-tr from-pink-500 to-yellow-500">
-                      <div className={`w-full h-full rounded-full overflow-hidden border-2 bg-gray-50 ${isDarkMode ? 'border-gray-800 bg-gray-800' : 'border-white'}`}>
+                <div 
+                  className={`px-2.5 py-1.5 sm:px-3 sm:py-2 flex items-center justify-between border-b ${
+                    isDarkMode ? 'bg-gray-900/90 border-gray-800' : 'bg-white border-gray-50'
+                  }`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Link to={`/store/${product.ownerId}`} className="flex items-center gap-1.5 min-w-0 group/store">
+                    <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full p-0.5 bg-gradient-to-tr from-pink-500 to-yellow-500 shrink-0">
+                      <div className={`w-full h-full rounded-full overflow-hidden flex items-center justify-center text-[9px] font-black ${
+                        isDarkMode ? 'border-gray-800 bg-gray-800 text-gray-300' : 'border-white bg-white text-gray-700'
+                      }`}>
                         {product.ownerPhotoURL ? (
                           <img src={product.ownerPhotoURL} alt="" className="w-full h-full object-cover" />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center font-black text-sm text-gray-500">
-                            {product.ownerName?.charAt(0) || 'م'}
-                          </div>
+                          (product.ownerName?.charAt(0) || 'م')
                         )}
                       </div>
                     </div>
-                    <div className="flex flex-col text-right">
-                      <div className="flex items-center gap-1.5">
-                        <span className={`font-black text-sm transition group-hover/store:text-blue-500 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                          {product.ownerName || 'متجر معتمد'}
-                        </span>
-                        {isStoreVerified && (
-                          <CheckCircle className="w-4 h-4 text-blue-500 fill-white" title="متجر موثق ومعتمد رسمياً" />
-                        )}
-                      </div>
-                      <span className={`text-[10px] font-black ${isDarkMode ? 'text-gray-400' : 'text-gray-800'}`}>
-                        {isStoreVerified ? 'متجر موثق رسمياً' : 'متجر يمن ستور'}
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className={`font-black text-[11px] sm:text-xs truncate transition group-hover/store:text-blue-500 ${
+                        isDarkMode ? 'text-white' : 'text-gray-900'
+                      }`}>
+                        {product.ownerName || 'متجر معتمد'}
                       </span>
+                      {isStoreVerified && (
+                        <CheckCircle className="w-3.5 h-3.5 text-blue-500 fill-white shrink-0" title="متجر موثق ومعتمد رسمياً" />
+                      )}
                     </div>
                   </Link>
 
-                  <div className="flex items-center gap-1 bg-yellow-400/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 rounded-xl border border-yellow-400/20 text-xs font-black">
+                  <div className="flex items-center gap-0.5 text-[10px] font-black text-amber-500 shrink-0">
                      <span>★</span>
                      <span>{ownerProf?.averageRating ? Number(ownerProf.averageRating).toFixed(1) : '5.0'}</span>
                   </div>
                 </div>
               )}
 
-              {/* Product Content */}
-              <div className="p-6 flex-1 flex flex-col justify-between space-y-4">
-                <div className="space-y-4">
-                  <div className="aspect-square rounded-3xl overflow-hidden bg-gray-50 relative group/img cursor-pointer" onClick={() => navigate(`/product/${product.id}`)}>
-                  {product.image ? (
-                    <img 
-                      src={product.image} 
-                      alt={product.title} 
-                      className="w-full h-full object-cover group-hover/img:scale-105 transition duration-500" 
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gray-50">
-                      <ImageIcon className="w-12 h-12 text-gray-200" />
-                    </div>
-                  )}
-                  {product.category === 'local' && (
-                    <div className="absolute top-4 right-4 bg-[#facc15] text-[#422006] text-[11px] font-black px-4 py-2 rounded-xl shadow-lg z-10">منتج محلي</div>
-                  )}
-                </div>
-                {product.stock !== undefined && product.stock !== null && Number(product.stock) <= 0 && (
-                  <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-20">
-                    <span className="text-white font-black text-sm bg-red-600 px-4 py-2 rounded-xl">نفذت الكمية</span>
+              {/* Product Image Area */}
+              <div className="relative aspect-square overflow-hidden bg-gray-50 dark:bg-gray-800/40 m-2 sm:m-2.5 rounded-xl sm:rounded-2xl group/img">
+                {product.image ? (
+                  <img 
+                    src={product.image} 
+                    alt={product.title} 
+                    className="w-full h-full object-cover group-hover/img:scale-105 transition duration-500" 
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-50 dark:bg-gray-800/60">
+                    <ImageIcon className="w-8 h-8 text-gray-300 dark:text-gray-600" />
                   </div>
                 )}
-                   <div className="flex justify-between items-start">
-                      <Link to={`/product/${product.id}`} className="block">
-                         <h3 className={`font-black text-lg line-clamp-1 group-hover:text-blue-500 transition ${isDarkMode ? 'text-white' : 'text-black'}`}>{product.title}</h3>
-                      </Link>
-                      <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider ${isDarkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-900'}`}>{product.category}</span>
-                   </div>
-                   <p className={`text-xs font-bold line-clamp-2 h-9 leading-relaxed ${isDarkMode ? 'text-gray-400' : 'text-gray-800'}`}>{product.description}</p>
+
+                {/* Local Badge */}
+                {(product.category === 'local' || (product.category && String(product.category).includes('محلي'))) && (
+                  <div className="absolute top-1.5 right-1.5 bg-[#facc15] text-[#422006] text-[9px] font-black px-2 py-0.5 rounded-lg shadow-md z-10">
+                    محلي 🇾🇪
+                  </div>
+                )}
+
+                {/* Out of Stock Overlay */}
+                {product.stock !== undefined && product.stock !== null && Number(product.stock) <= 0 && (
+                  <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-20">
+                    <span className="text-white font-black text-[10px] sm:text-xs bg-red-600 px-2.5 py-1 rounded-xl">نفذت الكمية</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Product Content */}
+              <div className="px-2.5 pb-2.5 sm:px-3 sm:pb-3 flex-1 flex flex-col justify-between gap-1 sm:gap-1.5">
+                <div>
+                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-md truncate max-w-[100px] ${
+                      isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {product.category}
+                    </span>
+                  </div>
+                  <h3 className={`font-black text-xs sm:text-sm line-clamp-1 group-hover:text-blue-500 transition leading-snug ${
+                    isDarkMode ? 'text-white' : 'text-gray-900'
+                  }`}>
+                    {product.title}
+                  </h3>
                 </div>
 
-                <div className={`flex items-center justify-between mt-auto pt-4 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-                    <div className="flex flex-col">
-                       <span className={`text-[10px] font-black uppercase ${isDarkMode ? 'text-gray-500' : 'text-gray-900'}`}>السعر الحالي</span>
-                       <span className="text-blue-600 dark:text-blue-400 font-black text-2xl tracking-tighter">{product.price.toLocaleString()} <span className={`text-sm font-black opacity-60 ${isDarkMode ? 'text-gray-400' : 'text-gray-900'}`}>ريال</span></span>
-                    </div>
-                    
-                    {user ? (
-                      <button 
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          addToCart(product);
-                        }}
-                        disabled={product.stock !== undefined && Number(product.stock) <= 0}
-                        className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-xl transition-all disabled:opacity-30 ${isDarkMode ? 'bg-blue-600 text-white shadow-blue-950/40 hover:scale-110' : 'bg-black text-white shadow-black/10 hover:scale-110'}`}
-                        title="إضافة للسلة للشراء الفوري"
-                      >
-                        <ShoppingCart className="h-6 w-6" />
-                      </button>
-                    ) : (
-                      <button 
-                        onClick={login}
-                        className={`px-6 py-3 rounded-2xl text-[10px] font-black transition ${isDarkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-750' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                      >
-                        دخول للشراء
-                      </button>
-                    )}
+                {/* Price & Quick Cart Row */}
+                <div className={`flex items-center justify-between pt-1 border-t mt-auto ${
+                  isDarkMode ? 'border-gray-800' : 'border-gray-50'
+                }`}>
+                  <div className="flex flex-col">
+                    <span className="text-xs sm:text-base font-black text-blue-600 dark:text-blue-400 leading-tight">
+                      {product.price.toLocaleString()} <span className="text-[10px] opacity-70">ر.ي</span>
+                    </span>
+                  </div>
+
+                  {user ? (
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        addToCart(product);
+                      }}
+                      disabled={product.stock !== undefined && Number(product.stock) <= 0}
+                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shadow-sm transition-all disabled:opacity-30 ${
+                        isDarkMode ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-black text-white hover:bg-emerald-600'
+                      } active:scale-90 shrink-0`}
+                      title="أضف للسلة"
+                    >
+                      <ShoppingCart className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    </button>
+                  ) : (
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        login();
+                      }}
+                      className={`px-2 py-1 rounded-xl text-[9px] font-black transition ${
+                        isDarkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      شراء
+                    </button>
+                  )}
                 </div>
 
                 {/* Pre-Order (حجز مسبق) Button Under Product - ONLY FOR VERIFIED STORES */}
                 {canPreOrder && (
-                  <div className="pt-2">
+                  <div className="pt-1">
                     <button
                       type="button"
                       onClick={(e) => {
@@ -459,17 +491,15 @@ export default function StoreFront() {
                         }
                         setSelectedPreOrderProduct(product);
                       }}
-                      className="w-full py-3 px-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-black text-xs flex items-center justify-between transition-all duration-200 active:scale-95 group/preorder shadow-sm"
+                      className="w-full py-1.5 px-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 dark:bg-amber-950/40 border border-amber-500/30 text-amber-800 dark:text-amber-300 font-black text-[10px] sm:text-xs flex items-center justify-between transition active:scale-95 shadow-sm"
                     >
-                      <div className="flex items-center gap-2">
-                        <BookmarkCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 group-hover/preorder:scale-110 transition-transform" />
-                        <span className="font-black text-sm">حجز مسبق</span>
+                      <div className="flex items-center gap-1">
+                        <BookmarkCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                        <span>حجز مسبق</span>
                       </div>
-                      <div className="flex items-center gap-1.5 text-[11px] font-bold">
-                        <span>عربون: {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ريال</span>
-                        <span className="text-gray-300 dark:text-gray-600">•</span>
-                        <span className="text-amber-800 dark:text-amber-400">مهلة {product.reservationDurationDays || 3} أيام</span>
-                      </div>
+                      <span className="text-[9px] font-bold">
+                        {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ريال
+                      </span>
                     </button>
                   </div>
                 )}

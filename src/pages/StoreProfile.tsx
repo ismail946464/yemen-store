@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { useAppContext } from '../AppContext';
@@ -10,6 +10,7 @@ import PreOrderModal from '../components/PreOrderModal';
 
 export default function StoreProfile() {
   const userId = useParams().userId;
+  const navigate = useNavigate();
   const { getThemeClasses, addToCart, user, userData, isAdmin, login, settings } = useAppContext();
   const [profile, setProfile] = useState<any>(null);
   const [products, setProducts] = useState<any[]>([]);
@@ -219,13 +220,15 @@ export default function StoreProfile() {
                   تقديم تقييم
                </button>
 
-               <Link 
-                  to={`/contact?to=${userId}`}
-                  className="flex items-center gap-2 bg-gray-900 text-white px-8 py-3 rounded-2xl text-xs font-black hover:bg-black transition shadow-xl shadow-black/10 active:scale-95"
-               >
-                  <MessageSquare className="w-4 h-4" />
-                  مراسلة فورية
-               </Link>
+               {user?.uid !== userId && (
+                 <Link 
+                   to={`/contact?to=${userId}`}
+                   className="flex items-center gap-2 bg-gray-900 text-white px-8 py-3 rounded-2xl text-xs font-black hover:bg-black transition shadow-xl shadow-black/10 active:scale-95"
+                 >
+                   <MessageSquare className="w-4 h-4" />
+                   مراسلة فورية
+                 </Link>
+               )}
 
                {(isAdmin || user?.uid === userId) && (
                   <Link 
@@ -534,64 +537,73 @@ export default function StoreProfile() {
              <p className="text-gray-500 font-medium">لا توجد منتجات معروضة حالياً لهذا المتجر.</p>
           </div>
         ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 px-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-6 px-2 sm:px-4">
             {products.map((product) => (
               <motion.div 
                 key={product.id}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-[2.5rem] border border-gray-50 overflow-hidden shadow-sm hover:shadow-2xl hover:shadow-black/5 transition duration-500 group flex flex-col h-full relative"
+                onClick={() => navigate(`/product/${product.id}`)}
+                className="bg-white rounded-2xl sm:rounded-3xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 group flex flex-col h-full relative cursor-pointer active:scale-[0.98]"
               >
-                 <div className="aspect-[4/5] relative overflow-hidden bg-gray-50 p-2">
-                   <div className="w-full h-full rounded-[2rem] overflow-hidden">
+                 <div className="aspect-square relative overflow-hidden bg-gray-50 m-2 sm:m-2.5 rounded-xl sm:rounded-2xl">
+                   <div className="w-full h-full overflow-hidden">
                      <img 
                        src={product.image || (product.images && product.images[0])} 
                        alt={product.title} 
-                       className="w-full h-full object-cover group-hover:scale-110 transition duration-700" 
+                       className="w-full h-full object-cover group-hover:scale-105 transition duration-500" 
                      />
                    </div>
                    
                    {!product.available && (
-                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center p-8 text-center">
-                      <span className="text-gray-900 font-black text-sm border-2 border-gray-900 px-6 py-2 rounded-2xl rotate-[-12deg]">نفذت الكمية</span>
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 text-center z-20">
+                      <span className="text-white font-black text-[10px] sm:text-xs bg-red-600 px-2.5 py-1 rounded-xl">نفذت الكمية</span>
                     </div>
                   )}
 
-                   <div className="absolute top-4 right-4 z-10">
-                      <div className="bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-2xl text-[10px] font-black text-gray-900 shadow-sm border border-white/50">
-                         {product.category}
-                      </div>
-                   </div>
-
-                   <button 
-                     onClick={(e) => {
-                       e.preventDefault();
-                       e.stopPropagation();
-                       addToCart(product);
-                       toast.success('تم إضافة المنتج للسلة');
-                     }}
-                     className="absolute bottom-6 left-6 right-6 bg-white text-gray-900 py-3.5 rounded-2xl font-black text-xs shadow-2xl shadow-black/20 transform translate-y-20 group-hover:translate-y-0 transition-all duration-500 flex items-center justify-center gap-2 hover:bg-gray-50"
-                   >
-                     <ShoppingCart className="h-4 w-4" />
-                     أضف للسلة
-                   </button>
+                   {product.category && (
+                     <div className="absolute top-2 right-2 z-10">
+                        <div className="bg-white/95 backdrop-blur-md px-2 py-0.5 rounded-lg text-[9px] font-black text-gray-800 shadow-sm border border-white/50">
+                           {product.category}
+                        </div>
+                     </div>
+                   )}
                  </div>
 
-                 <div className="p-6 pt-2 flex flex-col flex-1">
-                   <Link to={`/product/${product.id}`} className="block">
-                     <h3 className="font-black text-black group-hover:text-blue-600 transition-colors line-clamp-1 mb-2 text-lg">{product.title}</h3>
-                   </Link>
-                   <p className="text-xs text-gray-800 mb-6 line-clamp-2 leading-relaxed font-bold">{product.description}</p>
-                   <div className="mt-auto flex items-center justify-between gap-2">
+                 <div className="px-2.5 pb-2.5 sm:px-3 sm:pb-3 flex flex-col flex-1 justify-between gap-1 sm:gap-1.5">
+                   <div>
+                     <h3 className="font-black text-xs sm:text-sm text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1 leading-snug">
+                       {product.title}
+                     </h3>
+                   </div>
+
+                   {/* Price and Cart Button */}
+                   <div className="pt-1 border-t border-gray-50 flex items-center justify-between gap-1 mt-auto">
                      <div className="flex flex-col">
-                       <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest leading-none mb-1">السعر الحالي</span>
-                       <span className="text-xl font-black text-blue-600">
-                         {product.price.toLocaleString()} <span className="text-xs font-black text-gray-500 mr-0.5">ر.ي</span>
+                       <span className="text-xs sm:text-base font-black text-blue-600 leading-tight">
+                         {product.price.toLocaleString()} <span className="text-[10px] text-gray-500 mr-0.5">ر.ي</span>
                        </span>
                      </div>
+
+                     <button 
+                       type="button"
+                       onClick={(e) => {
+                         e.preventDefault();
+                         e.stopPropagation();
+                         addToCart(product);
+                         toast.success('تم إضافة المنتج للسلة');
+                       }}
+                       disabled={!product.available}
+                       className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-black text-white hover:bg-emerald-600 flex items-center justify-center shadow-sm transition active:scale-90 shrink-0 disabled:opacity-30"
+                       title="أضف للسلة"
+                     >
+                       <ShoppingCart className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                     </button>
+                   </div>
+
                    {/* Pre-Order button - Only for verified stores */}
                    {isVerified && (product.isPreOrderEnabled ?? true) && (
-                     <div className="pt-3 mt-3 border-t border-gray-100">
+                     <div className="pt-1">
                        <button
                          type="button"
                          onClick={(e) => {
@@ -600,17 +612,16 @@ export default function StoreProfile() {
                            if (!user) { login(); return; }
                            setSelectedPreOrderProduct(product);
                          }}
-                         className="w-full py-2.5 px-3 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 font-black text-xs flex items-center justify-between border border-amber-500/30 transition active:scale-95 shadow-sm"
+                         className="w-full py-1.5 px-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 font-black text-[10px] sm:text-xs flex items-center justify-between border border-amber-500/30 transition active:scale-95 shadow-sm"
                        >
-                         <div className="flex items-center gap-1.5">
-                           <BookmarkCheck className="w-4 h-4 text-amber-600" />
+                         <div className="flex items-center gap-1">
+                           <BookmarkCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                            <span>حجز مسبق</span>
                          </div>
-                         <span className="text-[10px] font-bold">عربون: {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ريال</span>
+                         <span className="text-[9px] font-bold">عربون: {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ريال</span>
                        </button>
                      </div>
                    )}
-                   </div>
                  </div>
               </motion.div>
             ))}

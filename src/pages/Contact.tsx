@@ -21,19 +21,29 @@ import {
 } from 'firebase/firestore';
 import { useAppContext } from '../AppContext';
 import toast from 'react-hot-toast';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function Contact() {
   const { userData, user, getThemeClasses, isAdmin, isStore, settings, markMessagesAsRead } = useAppContext();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const recipientId = searchParams.get('to');
+  const rawRecipientId = searchParams.get('to');
+  const recipientId = (rawRecipientId && user && rawRecipientId === user.uid) ? null : rawRecipientId;
   const [recipientProfile, setRecipientProfile] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [userSearchResults, setUserSearchResults] = useState<any[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+
+  // Prevent user from starting a conversation with themselves
+  useEffect(() => {
+    if (user && rawRecipientId === user.uid) {
+      toast.error('لا يمكنك بدء محادثة مع نفسك');
+      navigate('/contact', { replace: true });
+    }
+  }, [user, rawRecipientId, navigate]);
 
   // Automatically clear unread messages badge when user opens the Contact / Chat page
   useEffect(() => {
@@ -235,10 +245,10 @@ export default function Contact() {
         }
       });
 
-      if (conversationId) {
-        updateDoc(doc(db, 'conversations', conversationId), {
+      if (conversationId && msgs.length > 0) {
+        setDoc(doc(db, 'conversations', conversationId), {
           [`unreadCount.${user.uid}`]: 0
-        }).catch(e => console.error("Error resetting unread count:", e));
+        }, { merge: true }).catch(e => console.warn("Notice resetting unread count (handled):", e?.message || e));
       }
     }, (err) => {
       console.warn("Messages listener notice (handled):", err.message);
@@ -270,6 +280,10 @@ export default function Contact() {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!text.trim() && selectedImages.length === 0) || !user) return;
+    if (recipientId && recipientId === user.uid) {
+      toast.error('لا يمكنك إرسال رسالة لنفسك');
+      return;
+    }
 
     if (selectionMode) {
       setSelectionMode(false);
@@ -581,12 +595,12 @@ export default function Contact() {
                     } else {
                       // Mark conversation as read when clicked
                       try {
-                        await updateDoc(doc(db, 'conversations', conv.id), {
+                        await setDoc(doc(db, 'conversations', conv.id), {
                           [`unreadCount.${user.uid}`]: 0
-                        });
+                        }, { merge: true });
                         markMessagesAsRead();
                       } catch (err) {
-                        console.error("Error marking as read:", err);
+                        console.warn("Notice marking as read (handled):", err);
                       }
                     }
                   }}
