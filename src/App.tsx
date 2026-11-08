@@ -48,7 +48,7 @@ function Header() {
 
     return (
       <header className={`${isIndependentStore ? 'hidden' : 'sticky top-0 z-50 transition-colors duration-300'}`}>
-        <div className={`border-b relative z-10 py-5 transition-colors duration-300 ${isDarkMode ? 'bg-gray-950 border-gray-800' : 'bg-white border-gray-100'}`}>
+        <div className={`border-b relative z-10 py-5 transition-colors duration-300 backdrop-blur-md ${getThemeClasses('headerBg')}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
               <Link to="/" className="flex items-center gap-3 group">
                 <div className="relative">
@@ -105,7 +105,7 @@ function Header() {
                   })()}
                 </div>
                 <div className="flex flex-col leading-tight">
-                  <h1 className={`text-xl sm:text-2xl font-black tracking-tight group-hover:text-blue-600 transition ${isDarkMode ? 'text-white' : 'text-black'}`}>
+                  <h1 className={`text-xl sm:text-2xl font-black tracking-tight transition ${getThemeClasses('text')} ${isDarkMode ? 'dark:text-white' : ''}`}>
                     {settings?.storeName || 'يمن ستور'}
                   </h1>
                 </div>
@@ -122,7 +122,7 @@ function Header() {
                     </Link>
                     
                     <Link to="/profile" className="hidden sm:block ml-1">
-                       <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl sm:rounded-3xl p-0.5 bg-gradient-to-tr from-blue-600 to-indigo-600 hover:scale-105 transition active:scale-95 cursor-pointer shadow-lg shadow-blue-500/10">
+                       <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl sm:rounded-3xl p-0.5 bg-gradient-to-tr ${getThemeClasses('gradient')} hover:scale-105 transition active:scale-95 cursor-pointer shadow-lg`}>
                           <div className={`w-full h-full rounded-[0.9rem] sm:rounded-[1.25rem] overflow-hidden ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
                              <img 
                                src={userData?.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop'} 
@@ -134,7 +134,7 @@ function Header() {
                     </Link>
                   </div>
                 ) : (
-                  <button onClick={handleLogin} className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-2xl font-black text-xs shadow-xl transition active:translate-y-0 ${isDarkMode ? 'bg-blue-600 text-white shadow-blue-900/20 hover:bg-blue-700' : 'bg-black text-white shadow-black/10 hover:translate-y-[-2px]'}`}>
+                  <button onClick={handleLogin} className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-2xl font-black text-xs shadow-xl transition active:translate-y-0 ${getThemeClasses('bg')} ${getThemeClasses('hover')} hover:translate-y-[-2px]`}>
                     دخول المنصة
                   </button>
                 )}
@@ -154,7 +154,7 @@ function Header() {
 }
 
 function MainLayout() {
-  const { settings, settingsLoading, getThemeClasses, isDarkMode, isLoginModalOpen, closeLoginModal, loginModalInitialEmail } = useAppContext();
+  const { settings, settingsLoading, getThemeClasses, isDarkMode, isLoginModalOpen, closeLoginModal, loginModalInitialEmail, effectiveTheme } = useAppContext();
   const location = useLocation();
   const isIndependentStore = location.pathname.startsWith('/s/') || location.pathname.startsWith('/store-site/');
   
@@ -245,14 +245,14 @@ function MainLayout() {
 
   if (settingsLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white" dir="rtl">
+      <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`} dir="rtl">
         <div className="flex flex-col items-center gap-6">
           {settings?.storeLogo && settings.storeLogo !== "" && (
             <img src={settings.storeLogo} alt="Logo" className="w-24 h-24 object-contain animate-pulse" />
           )}
           <div className="flex flex-col items-center gap-4">
             <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${getThemeClasses('border')}`}></div>
-            <p className="text-gray-900 font-black animate-pulse">{settings?.storeName || 'جاري تحميل المتجر...'}</p>
+            <p className="font-black animate-pulse">{settings?.storeName || 'جاري تحميل المتجر...'}</p>
           </div>
         </div>
       </div>
@@ -265,7 +265,8 @@ function MainLayout() {
   return (
     <div 
       id="app-root" 
-      className={`min-h-screen flex flex-col transition-all duration-300 ${isDarkMode ? 'dark bg-gray-950 text-white' : 'bg-gray-50'} ${fontClass}`} 
+      data-theme={effectiveTheme}
+      className={`min-h-screen flex flex-col transition-all duration-300 ${getThemeClasses('pageBg')} ${isDarkMode ? 'dark text-white' : 'text-neutral-950 font-medium'} ${fontClass}`} 
       dir="rtl"
     >
       {settings?.customCss && (

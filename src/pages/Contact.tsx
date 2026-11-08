@@ -26,7 +26,7 @@ import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function Contact() {
-  const { userData, user, getThemeClasses, isAdmin, isStore, settings, markMessagesAsRead } = useAppContext();
+  const { userData, user, getThemeClasses, isAdmin, isStore, settings, markMessagesAsRead, isDarkMode } = useAppContext();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const rawRecipientId = searchParams.get('to');
@@ -423,15 +423,15 @@ export default function Contact() {
   const listToRender = allConversations;
 
   return (
-    <div className="max-w-6xl mx-auto h-[calc(100vh-140px)] flex flex-col md:flex-row bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden m-4 font-tajawal relative">
+    <div className={`max-w-6xl mx-auto h-[calc(100vh-140px)] flex flex-col md:flex-row rounded-3xl shadow-2xl border overflow-hidden m-4 font-tajawal relative ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
       
       {/* Sidebar */}
-      <div className={`md:w-96 border-l border-gray-100 flex flex-col min-h-0 ${recipientId ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`md:w-96 border-l flex flex-col min-h-0 ${isDarkMode ? 'border-slate-800' : 'border-gray-100'} ${recipientId ? 'hidden md:flex' : 'flex'}`}>
         
         {/* Top Header Section */}
         <div className="p-4 flex items-center justify-between">
            <div className="flex items-center gap-1.5 cursor-pointer hover:opacity-70 transition">
-             <h2 className="text-xl font-black text-gray-900">{userData?.username || userData?.storeName || 'الدردشة'}</h2>
+             <h2 className="text-xl font-black text-gray-900 dark:text-white">{userData?.username || userData?.storeName || 'الدردشة'}</h2>
              <ChevronDown className="w-4 h-4 mt-1" />
            </div>
            <div className="flex items-center gap-1">
@@ -546,16 +546,24 @@ export default function Contact() {
         </div>
 
         {/* Tabs: Messages / Orders */}
-        <div className="flex items-center justify-around border-b border-gray-100 mb-2 px-4">
+        <div className={`flex items-center justify-around border-b mb-2 px-4 ${isDarkMode ? 'border-slate-800' : 'border-gray-100'}`}>
            <button 
              onClick={() => setActiveTab('messages')}
-             className={`flex-1 py-4 text-[15px] font-black transition-all relative ${activeTab === 'messages' ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-900 opacity-60'}`}
+             className={`flex-1 py-4 text-[15px] font-black transition-all relative ${
+               activeTab === 'messages' 
+                 ? (isDarkMode ? 'text-white border-b-2 border-white' : 'text-gray-900 border-b-2 border-gray-900') 
+                 : (isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
+             }`}
            >
              الرسائل
            </button>
            <button 
              onClick={() => setActiveTab('orders')}
-             className={`flex-1 py-4 text-[15px] font-black transition-all relative ${activeTab === 'orders' ? 'text-gray-900' : 'text-gray-900 opacity-60'}`}
+             className={`flex-1 py-4 text-[15px] font-black transition-all relative ${
+               activeTab === 'orders' 
+                 ? (isDarkMode ? 'text-white border-b-2 border-white' : 'text-gray-900 border-b-2 border-gray-900') 
+                 : (isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
+             }`}
            >
              الطلبات
            </button>
@@ -625,18 +633,30 @@ export default function Contact() {
             
             <div className="flex-1 min-w-0 text-right space-y-0.5">
               <div className="flex items-center gap-1.5">
-                <span className={`text-[16px] md:text-[17px] ${isUnread ? 'font-black text-gray-900' : 'font-bold text-gray-700'}`}>
+                <span className={`text-[16px] md:text-[17px] ${
+                  isUnread 
+                    ? (isDarkMode ? 'font-black text-white' : 'font-black text-gray-900') 
+                    : (isDarkMode ? 'font-bold text-gray-200' : 'font-bold text-gray-700')
+                }`}>
                   {otherId === 'admin' ? 'إدارة المتجر' : (userProfilesCache[otherId || '']?.name || userProfilesCache[otherId || '']?.displayName || userProfilesCache[otherId || '']?.username || userProfilesCache[otherId || '']?.storeName || `مستخدم (${otherId?.slice(0, 5)})`)}
                 </span>
                 {otherId === 'admin' && <BadgeCheck className="w-4 h-4 text-blue-500 fill-current" />}
               </div>
-              <p className={`text-sm truncate leading-relaxed ${isUnread ? 'text-blue-700 font-bold' : 'text-gray-900 font-black opacity-70'}`}>
+              <p className={`text-sm truncate leading-relaxed ${
+                isUnread 
+                  ? (isDarkMode ? 'text-blue-400 font-bold' : 'text-blue-700 font-bold') 
+                  : (isDarkMode ? 'text-gray-400 font-medium' : 'text-gray-600 font-medium')
+              }`}>
                 {conv.lastMessage}
               </p>
             </div>
 
             <div className="flex flex-col items-end gap-2 shrink-0 pr-2">
-               <span className={`text-[10px] font-bold ${isUnread ? 'text-blue-600' : 'text-gray-900 font-black'}`}>
+               <span className={`text-[10px] font-bold ${
+                 isUnread 
+                   ? (isDarkMode ? 'text-blue-400' : 'text-blue-600') 
+                   : (isDarkMode ? 'text-gray-500 font-semibold' : 'text-gray-400 font-semibold')
+               }`}>
                  {conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                </span>
                {isUnread && (
@@ -742,7 +762,7 @@ export default function Contact() {
          {recipientId ? (
            <>
              {/* Unified Chat Interface Header */}
-             <div className="p-4 md:p-5 border-b border-gray-100 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-10">
+              <div className={`p-4 md:p-5 border-b flex items-center justify-between backdrop-blur-md sticky top-0 z-10 ${isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white/80 border-gray-100'}`}>
                 <div className="flex items-center gap-4">
                    <Link to="/contact" className="md:hidden p-2 hover:bg-gray-100 rounded-full transition">
                      <ArrowRight className="w-5 h-5" />
@@ -759,7 +779,7 @@ export default function Contact() {
                    </div>
                    <div>
                       <div className="flex items-center gap-1.5">
-                        <h3 className="font-black text-gray-900 text-sm md:text-lg">
+                        <h3 className="font-black text-gray-900 dark:text-white text-sm md:text-lg">
                           {recipientProfile?.name || recipientProfile?.displayName || recipientProfile?.username || recipientProfile?.storeName || (recipientId ? `مستخدم (${recipientId.slice(0, 5)})` : 'جاري التحميل...')}
                         </h3>
                         {recipientId === 'admin' && <BadgeCheck className="w-4 h-4 text-blue-500 fill-current" />}
@@ -780,7 +800,7 @@ export default function Contact() {
              </div>
 
              {/* Chat Bubbles */}
-             <div className="flex-1 overflow-y-auto min-h-0 p-4 md:p-6 space-y-6 bg-gray-50/20 custom-scrollbar">
+              <div className={`flex-1 overflow-y-auto min-h-0 p-4 md:p-6 space-y-6 ${isDarkMode ? 'bg-slate-950/40' : 'bg-gray-50/20'} custom-scrollbar`}>
                 {loading ? (
                   <div className="flex items-center justify-center h-full">
                      <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
@@ -790,7 +810,7 @@ export default function Contact() {
                      <div className="w-20 h-20 rounded-full bg-white shadow-xl flex items-center justify-center mb-6 ring-4 ring-blue-50">
                         <MessageSquare className="w-10 h-10 text-blue-500" />
                      </div>
-                     <h4 className="text-lg font-black text-gray-900">أهلاً بك في الدردشة!</h4>
+                     <h4 className="text-lg font-black text-gray-900 dark:text-white">أهلاً بك في الدردشة!</h4>
                      <p className="text-xs text-gray-500 mt-2 max-w-xs leading-relaxed">
                        ابدأ المحادثة مع الإدارة أو البائع حالاً، استفسر عن السعر أو الجودة أو موعد التوصيل.
                      </p>
@@ -805,7 +825,8 @@ export default function Contact() {
                         {showDate && (
                           <div className="flex justify-center my-8 relative">
                             <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-gray-100"></div>
-                            <span className="relative text-[10px] font-black bg-white px-4 py-1.5 rounded-full text-gray-900 border border-gray-100 uppercase tracking-widest">
+                            <span className={`relative text-[10px] font-black px-4 py-1.5 rounded-full border uppercase tracking-widest ${isDarkMode ? "bg-slate-800 text-gray-200 border-slate-700" : "bg-white text-gray-900 border-gray-100"}`}>
+
                               {new Date(m.createdAt).toLocaleDateString('ar-YE', { weekday: 'long', day: 'numeric', month: 'long' })}
                             </span>
                           </div>
@@ -817,7 +838,7 @@ export default function Contact() {
                         >
                           <div className={`max-w-[85%] md:max-w-[70%] px-5 py-3.5 rounded-3xl shadow-sm relative group ${
                             isMine 
-                            ? 'bg-white text-gray-800 rounded-br-none border border-gray-100' 
+                            ? (isDarkMode ? 'bg-slate-800 text-slate-100 rounded-br-none border border-slate-700' : 'bg-white text-gray-800 rounded-br-none border border-gray-100') 
                             : `${getThemeClasses('bg')} text-white rounded-bl-none shadow-blue-500/10`
                           }`}>
                             {m.images && m.images.length > 0 && (
@@ -852,7 +873,8 @@ export default function Contact() {
              </div>
 
              {/* Bottom Action Bar */}
-             <div className="p-2 md:p-6 border-t border-gray-100 bg-white shrink-0 z-10">
+             <div className={`p-2 md:p-6 border-t shrink-0 z-10 ${isDarkMode ? "border-slate-800 bg-slate-900" : "border-gray-100 bg-white"}`}>
+
                 {/* Image Previews */}
                 {selectedImages.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-2 animate-in slide-in-from-bottom-2 px-2">
@@ -897,7 +919,8 @@ export default function Contact() {
                           }
                         }}
                         placeholder="اكتب رسالتك بلهجتك اليمنية..."
-                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-3.5 text-[15px] resize-none outline-none focus:ring-4 focus:ring-blue-500/5 focus:bg-white transition-all max-h-32"
+                        className={`w-full ${isDarkMode ? "bg-slate-800 border-slate-700 text-white placeholder-slate-500" : "bg-gray-50 border-gray-100 text-slate-900 placeholder-slate-400"} border rounded-2xl px-6 py-3.5 text-[15px] resize-none outline-none transition-all max-h-32`}
+
                         rows={1}
                       />
                    </div>
@@ -917,7 +940,7 @@ export default function Contact() {
                  <MessageSquare className="w-16 h-16 text-gray-200" />
               </div>
               <div>
-                <h3 className="text-2xl font-black text-gray-900 mb-2">رسائلك تجتمع هنا</h3>
+                <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-2">رسائلك تجتمع هنا</h3>
                 <p className="text-gray-500 text-sm max-w-xs mx-auto">
                   اختر محادثة من القائمة الجانبية للبدء.
                 </p>
@@ -943,7 +966,7 @@ export default function Contact() {
                 <Trash2 className="w-10 h-10 text-red-500" />
               </div>
               <div>
-                <h3 className="text-2xl font-black text-gray-900 leading-tight mb-2">تأكيد الحذف</h3>
+                <h3 className="text-2xl font-black text-gray-900 dark:text-white leading-tight mb-2">تأكيد الحذف</h3>
                 <p className="text-gray-500 font-medium">
                   هل أنت متأكد من حذف <span className="font-bold text-red-600">{selectedIds.length}</span> محادثة؟
                   هذا الإجراء سيحذف كافة الرسائل نهائياً.

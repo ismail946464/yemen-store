@@ -200,14 +200,14 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
               {/* Avatar selection & upload */}
               <div className="flex flex-col items-center gap-3 pt-2">
                 <div className="relative group">
-                  <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-emerald-500 shadow-md bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                  <div className={`w-20 h-20 rounded-full overflow-hidden border-2 ${getThemeClasses('border')} shadow-md bg-gray-100 dark:bg-gray-800 flex items-center justify-center`}>
                     {optPhotoURL ? (
                       <img src={optPhotoURL} alt="Avatar" className="w-full h-full object-cover" />
                     ) : (
                       <User className="w-10 h-10 text-gray-400" />
                     )}
                   </div>
-                  <label className="absolute bottom-0 left-0 p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full shadow-lg cursor-pointer transition">
+                  <label className={`absolute bottom-0 left-0 p-1.5 ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white rounded-full shadow-lg cursor-pointer transition`}>
                     <Camera className="w-4 h-4" />
                     <input 
                       type="file" 
@@ -226,7 +226,7 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
                       type="button"
                       onClick={() => setOptPhotoURL(url)}
                       className={`w-7 h-7 rounded-full overflow-hidden border transition ${
-                        optPhotoURL === url ? 'ring-2 ring-emerald-500 scale-110' : 'opacity-70 hover:opacity-100'
+                        optPhotoURL === url ? `ring-2 ${getThemeClasses('ring')} scale-110` : 'opacity-70 hover:opacity-100'
                       }`}
                     >
                       <img src={url} alt="preset" className="w-full h-full object-cover" />
@@ -247,7 +247,7 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
                     value={optDisplayName}
                     onChange={(e) => setOptDisplayName(e.target.value)}
                     placeholder="اسمك الظاهر للجميع"
-                    className={`w-full pr-10 pl-4 py-3 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                    className={`w-full pr-10 pl-4 py-3 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 ${getThemeClasses('ring')} ${
                       isDarkMode 
                         ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' 
                         : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
@@ -347,7 +347,7 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
                         value={loginEmail}
                         onChange={(e) => setLoginEmail(e.target.value)}
                         placeholder="name@example.com"
-                        className={`w-full pr-10 pl-4 py-3 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                        className={`w-full pr-10 pl-4 py-3 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 ${getThemeClasses('ring')} ${
                           isDarkMode 
                             ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' 
                             : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
@@ -369,7 +369,7 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
                         value={loginPassword}
                         onChange={(e) => setLoginPassword(e.target.value)}
                         placeholder="كلمة المرور الخاصة بك"
-                        className={`w-full pr-10 pl-11 py-3 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                        className={`w-full pr-10 pl-11 py-3 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 ${getThemeClasses('ring')} ${
                           isDarkMode 
                             ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' 
                             : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
@@ -389,7 +389,7 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
                   <button
                     type="submit"
                     disabled={loginLoading}
-                    className={`w-full py-3.5 px-4 rounded-2xl font-black text-white text-sm shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition disabled:opacity-50 mt-2 ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                    className={`w-full py-3.5 px-4 rounded-2xl font-black text-white text-sm shadow-lg flex items-center justify-center gap-2 transition disabled:opacity-50 mt-2 ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
                   >
                     {loginLoading ? (
                       <span>جاري تسجيل الدخول...</span>
@@ -405,7 +405,7 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
                     <button
                       type="button"
                       onClick={() => setActiveTab('register')}
-                      className="text-xs text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
+                      className={`text-xs ${getThemeClasses('text')} font-bold hover:underline`}
                     >
                       ليس لديك حساب؟ اضغط هنا لإنشاء حساب جديد
                     </button>
@@ -426,7 +426,7 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
                         value={regName}
                         onChange={(e) => setRegName(e.target.value)}
                         placeholder="اسمك الكامل"
-                        className={`w-full pr-10 pl-4 py-3 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                        className={`w-full pr-10 pl-4 py-3 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 ${getThemeClasses('ring')} ${
                           isDarkMode 
                             ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' 
                             : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
@@ -447,7 +447,7 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
                         value={regEmail}
                         onChange={(e) => setRegEmail(e.target.value)}
                         placeholder="name@example.com"
-                        className={`w-full pr-10 pl-4 py-3 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                        className={`w-full pr-10 pl-4 py-3 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 ${getThemeClasses('ring')} ${
                           isDarkMode 
                             ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' 
                             : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
@@ -472,7 +472,7 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
                         value={regPassword}
                         onChange={(e) => setRegPassword(e.target.value)}
                         placeholder="أدخل كلمة المرور الخاصة بك"
-                        className={`w-full pr-10 pl-11 py-3 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                        className={`w-full pr-10 pl-11 py-3 rounded-2xl border text-sm font-medium transition focus:outline-none focus:ring-2 ${getThemeClasses('ring')} ${
                           isDarkMode 
                             ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' 
                             : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
@@ -496,14 +496,14 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
                         type="checkbox"
                         checked={agreedToTerms}
                         onChange={(e) => setAgreedToTerms(e.target.checked)}
-                        className="mt-0.5 w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer"
+                        className={`mt-0.5 w-4 h-4 rounded border-gray-300 focus:ring-2 ${getThemeClasses('ring')} cursor-pointer`}
                       />
                       <span className="text-xs text-amber-900 dark:text-amber-200 font-medium leading-relaxed">
                         أوافق على{' '}
                         <button
                           type="button"
                           onClick={handleOpenDisclaimer}
-                          className="text-emerald-700 dark:text-emerald-400 underline font-black hover:text-emerald-800 inline-flex items-center gap-0.5"
+                          className={`underline font-black hover:opacity-80 inline-flex items-center gap-0.5 ${getThemeClasses('text')}`}
                         >
                           <FileText className="w-3 h-3" />
                           شروط وسياسات الاستخدام وإخلاء المسؤولية
@@ -518,7 +518,7 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
                     <button
                       type="submit"
                       disabled={regLoading || !agreedToTerms}
-                      className={`w-full py-4 px-4 rounded-2xl font-black text-white text-sm shadow-xl shadow-emerald-600/25 flex items-center justify-center gap-2 transition disabled:opacity-50 active:scale-95 ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                      className={`w-full py-4 px-4 rounded-2xl font-black text-white text-sm shadow-xl flex items-center justify-center gap-2 transition disabled:opacity-50 active:scale-95 ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
                     >
                       {regLoading ? (
                         <span>جاري إنشاء الحساب...</span>

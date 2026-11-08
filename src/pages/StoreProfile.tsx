@@ -11,7 +11,7 @@ import PreOrderModal from '../components/PreOrderModal';
 export default function StoreProfile() {
   const userId = useParams().userId;
   const navigate = useNavigate();
-  const { getThemeClasses, addToCart, user, userData, isAdmin, login, settings } = useAppContext();
+  const { getThemeClasses, addToCart, user, userData, isAdmin, login, settings, isDarkMode } = useAppContext();
   const [profile, setProfile] = useState<any>(null);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -180,7 +180,7 @@ export default function StoreProfile() {
               <div className="flex flex-col gap-2">
                      <div className="flex items-center gap-3">
                         <h1 className="text-3xl md:text-5xl font-black text-black drop-shadow-sm">{profile.name}</h1>
-                        {isVerified && <CheckCircle className="w-6 h-6 md:w-8 md:h-8 text-blue-500 fill-white" title="متجر موثق ومعتمد رسمياً" />}
+                        {isVerified && <CheckCircle className={`w-6 h-6 md:w-8 md:h-8 ${getThemeClasses('verified')}`} title="متجر موثق ومعتمد رسمياً" />}
                      </div>
                      <div className="flex items-center gap-2">
                         <span className={`text-[10px] font-black px-3 py-1 rounded-full ${isOnline ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-gray-200 text-gray-700'}`}>
@@ -293,7 +293,7 @@ export default function StoreProfile() {
                initial={{ y: 50, opacity: 0 }}
                animate={{ y: 0, opacity: 1 }}
                exit={{ y: 50, opacity: 0 }}
-               className="bg-white rounded-[2.5rem] w-full max-w-lg p-8 shadow-2xl relative overflow-hidden flex flex-col"
+               className={`rounded-[2.5rem] w-full max-w-lg p-8 shadow-2xl relative overflow-hidden flex flex-col border ${isDarkMode ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-gray-100 text-gray-900"}`}
                onClick={e => e.stopPropagation()}
                dir="rtl"
             >
@@ -302,7 +302,7 @@ export default function StoreProfile() {
                      <div className="bg-yellow-50 p-2.5 rounded-2xl">
                         <Star className="w-6 h-6 text-yellow-600 fill-yellow-600" />
                      </div>
-                     <h3 className="text-2xl font-black text-gray-900">تقييم المتجر والمصداقية</h3>
+                     <h3 className="text-2xl font-black text-gray-900 dark:text-white">تقييم المتجر والمصداقية</h3>
                   </div>
                   <button onClick={() => setShowRatingModal(false)} className="bg-gray-100 p-2 rounded-full text-gray-400 hover:bg-gray-200 transition">
                      <X className="w-5 h-5" />
@@ -312,7 +312,7 @@ export default function StoreProfile() {
                <div className="space-y-8 flex-1">
                   <div className="space-y-4">
                      <div className="flex justify-between items-end">
-                        <label className="text-sm font-black text-gray-900 uppercase tracking-wider">تقييم المتجر العام</label>
+                        <label className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider">تقييم المتجر العام</label>
                         <span className="text-3xl font-black text-yellow-600">{userRating}<span className="text-sm text-gray-300">/10</span></span>
                      </div>
                      <div className="flex gap-1.5 justify-between">
@@ -332,8 +332,8 @@ export default function StoreProfile() {
 
                   <div className="space-y-4">
                      <div className="flex justify-between items-end">
-                        <label className="text-sm font-black text-gray-900 uppercase tracking-wider">مصداقية التعامل</label>
-                        <span className="text-3xl font-black text-blue-600">{userCredibility}<span className="text-sm text-gray-300">/10</span></span>
+                        <label className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider">مصداقية التعامل</label>
+                        <span className={`text-3xl font-black ${getThemeClasses('price')}`}>{userCredibility}<span className="text-sm text-gray-300">/10</span></span>
                      </div>
                      <div className="flex gap-1.5 justify-between">
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((star) => (
@@ -351,12 +351,12 @@ export default function StoreProfile() {
                   </div>
 
                   <div className="space-y-3">
-                     <label className="text-sm font-black text-gray-900 uppercase tracking-wider pb-2">رأيك الشخصي (اختياري)</label>
+                     <label className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider pb-2">رأيك الشخصي (اختياري)</label>
                      <textarea
                         value={userComment}
                         onChange={(e) => setUserComment(e.target.value)}
                         placeholder="اكتب تجربتك مع هذا المتجر..."
-                        className="w-full h-24 bg-gray-50 border-2 border-gray-100 rounded-3xl p-4 outline-none focus:border-blue-500 transition-all text-sm resize-none"
+                        className={`w-full h-24 border rounded-3xl p-4 outline-none transition-all text-sm resize-none ${isDarkMode ? "bg-slate-800 border-slate-700 text-white placeholder-slate-500" : "bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400"}`}
                      ></textarea>
                   </div>
                </div>
@@ -465,7 +465,7 @@ export default function StoreProfile() {
       {ratings.length > 0 && (
          <div className="space-y-6" dir="rtl">
             <div className="flex items-center gap-3 px-2">
-               <h2 className="text-2xl font-black text-gray-900 border-r-4 border-blue-500 pr-4">تعليقات المشتريين</h2>
+               <h2 className={`text-2xl font-black text-gray-900 dark:text-white border-r-4 ${getThemeClasses('border')} pr-4`}>تعليقات المشتريين</h2>
             </div>
             
             <div className="flex overflow-x-auto pb-6 gap-6 px-2 scrollbar-hide">
@@ -475,7 +475,7 @@ export default function StoreProfile() {
                      initial={{ opacity: 0, x: 20 }}
                      animate={{ opacity: 1, x: 0 }}
                      transition={{ delay: i * 0.1 }}
-                     className="min-w-[300px] md:min-w-[400px] bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-4"
+                     className={`min-w-[300px] md:min-w-[400px] p-6 rounded-[2rem] border shadow-sm space-y-4 ${getThemeClasses('cardBg')}`}
                   >
                      <div className="flex justify-between items-start">
                         <div className="flex items-center gap-3">
@@ -483,33 +483,33 @@ export default function StoreProfile() {
                               {r.userName?.charAt(0) || 'U'}
                            </div>
                            <div>
-                              <h4 className="font-black text-gray-900">{r.userName}</h4>
+                              <h4 className="font-black text-gray-900 dark:text-white">{r.userName}</h4>
                               <p className="text-[10px] text-gray-400">{new Date(r.createdAt).toLocaleDateString('ar-EG')}</p>
                            </div>
                         </div>
-                        <div className="bg-yellow-50 px-3 py-1 rounded-full flex items-center gap-1.5 border border-yellow-100 shadow-sm">
+                        <div className="bg-yellow-50 dark:bg-yellow-950/40 px-3 py-1 rounded-full flex items-center gap-1.5 border border-yellow-200 dark:border-yellow-800 shadow-sm">
                            <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
-                           <span className="text-xs font-black text-yellow-700">{r.rating}</span>
+                           <span className="text-xs font-black text-yellow-700 dark:text-yellow-400">{r.rating}</span>
                         </div>
                      </div>
                      
                      <div className="flex gap-4">
                         <div className="flex-1 space-y-1">
-                           <p className="text-[10px] font-black text-gray-900 uppercase tracking-widest bg-gray-50 p-1 px-2 rounded-lg inline-block">التقييم</p>
-                           <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                           <p className={`text-[10px] font-black uppercase tracking-widest p-1 px-2 rounded-lg inline-block ${isDarkMode ? 'bg-slate-800 text-gray-200' : 'bg-gray-100 text-gray-800'}`}>التقييم</p>
+                           <div className="h-1.5 w-full bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
                               <div className="h-full bg-yellow-500 rounded-full shadow-sm" style={{ width: `${r.rating * 10}%` }}></div>
                            </div>
                         </div>
                         <div className="flex-1 space-y-1">
-                           <p className="text-[10px] font-black text-gray-900 uppercase tracking-widest bg-gray-50 p-1 px-2 rounded-lg inline-block">المصداقية</p>
-                           <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                           <p className={`text-[10px] font-black uppercase tracking-widest p-1 px-2 rounded-lg inline-block ${isDarkMode ? 'bg-slate-800 text-gray-200' : 'bg-gray-100 text-gray-800'}`}>المصداقية</p>
+                           <div className="h-1.5 w-full bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
                               <div className="h-full bg-blue-500 rounded-full shadow-sm" style={{ width: `${r.credibility * 10}%` }}></div>
                            </div>
                         </div>
                      </div>
 
                      {r.comment && (
-                        <div className="bg-gray-50/50 p-4 rounded-2xl border-r-4 border-blue-500 italic text-gray-900 font-bold text-sm leading-relaxed">
+                        <div className={`p-4 rounded-2xl border-r-4 ${getThemeClasses('border')} italic font-bold text-sm leading-relaxed ${isDarkMode ? 'bg-slate-800/60 text-gray-200' : 'bg-gray-50 text-gray-900'}`}>
                            "{r.comment}"
                         </div>
                      )}
@@ -522,7 +522,7 @@ export default function StoreProfile() {
       {/* Products Section */}
       <div className="space-y-6">
         <div className="flex justify-between items-center px-2">
-          <h2 className="text-2xl font-bold flex items-center gap-2">
+          <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
             منتجات المتجر
             <span className="text-sm bg-gray-100 text-gray-500 px-3 py-1 rounded-full">{products.length}</span>
           </h2>
@@ -544,7 +544,7 @@ export default function StoreProfile() {
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 onClick={() => navigate(`/product/${product.id}`)}
-                className="bg-white rounded-2xl sm:rounded-3xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 group flex flex-col h-full relative cursor-pointer active:scale-[0.98]"
+                className={`rounded-2xl sm:rounded-3xl border overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 group flex flex-col h-full relative cursor-pointer active:scale-[0.98] ${getThemeClasses('cardBg')}`}
               >
                  <div className="aspect-square relative overflow-hidden bg-gray-50 m-2 sm:m-2.5 rounded-xl sm:rounded-2xl">
                    <div className="w-full h-full overflow-hidden">
@@ -572,7 +572,7 @@ export default function StoreProfile() {
 
                  <div className="px-2.5 pb-2.5 sm:px-3 sm:pb-3 flex flex-col flex-1 justify-between gap-1 sm:gap-1.5">
                    <div>
-                     <h3 className="font-black text-xs sm:text-sm text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1 leading-snug">
+                     <h3 className="font-black text-xs sm:text-sm text-gray-900 dark:text-white group-hover:opacity-80 transition-colors line-clamp-1 leading-snug">
                        {product.title}
                      </h3>
                    </div>
@@ -580,7 +580,7 @@ export default function StoreProfile() {
                    {/* Price and Cart Button */}
                    <div className="pt-1 border-t border-gray-50 flex items-center justify-between gap-1 mt-auto">
                      <div className="flex flex-col">
-                       <span className="text-xs sm:text-base font-black text-blue-600 leading-tight">
+                       <span className={`text-xs sm:text-base font-black ${getThemeClasses('price')} leading-tight`}>
                          {product.price.toLocaleString()} <span className="text-[10px] text-gray-500 mr-0.5">ر.ي</span>
                        </span>
                      </div>
@@ -591,10 +591,9 @@ export default function StoreProfile() {
                          e.preventDefault();
                          e.stopPropagation();
                          addToCart(product);
-                         toast.success('تم إضافة المنتج للسلة');
                        }}
                        disabled={!product.available}
-                       className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-black text-white hover:bg-emerald-600 flex items-center justify-center shadow-sm transition active:scale-90 shrink-0 disabled:opacity-30"
+                       className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl ${getThemeClasses('bg')} ${getThemeClasses('hover')} flex items-center justify-center shadow-sm transition active:scale-90 shrink-0 disabled:opacity-30`}
                        title="أضف للسلة"
                      >
                        <ShoppingCart className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
@@ -612,13 +611,13 @@ export default function StoreProfile() {
                            if (!user) { login(); return; }
                            setSelectedPreOrderProduct(product);
                          }}
-                         className="w-full py-1.5 px-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 font-black text-[10px] sm:text-xs flex items-center justify-between border border-amber-500/30 transition active:scale-95 shadow-sm"
+                         className={`w-full py-1.5 px-2 rounded-xl border text-[10px] sm:text-xs flex items-center justify-between transition active:scale-95 shadow-xs ${getThemeClasses('bgLight')} ${getThemeClasses('border')} ${getThemeClasses('textDark')}`}
                        >
                          <div className="flex items-center gap-1">
-                           <BookmarkCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                           <BookmarkCheck className={`w-3.5 h-3.5 ${getThemeClasses('text')} shrink-0`} />
                            <span>حجز مسبق</span>
                          </div>
-                         <span className="text-[9px] font-bold">عربون: {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ريال</span>
+                         <span className={`text-[9px] font-black ${getThemeClasses('price')}`}>عربون: {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ريال</span>
                        </button>
                      </div>
                    )}

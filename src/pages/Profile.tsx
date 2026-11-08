@@ -7,7 +7,21 @@ import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 export default function Profile() {
-  const { user, userData, isAdmin, isStore, settings, logout, getThemeClasses, isDarkMode, toggleDarkMode, updateUserProfile } = useAppContext();
+  const { 
+    user, 
+    userData, 
+    isAdmin, 
+    isStore, 
+    settings, 
+    logout, 
+    getThemeClasses, 
+    isDarkMode, 
+    toggleDarkMode, 
+    updateUserProfile,
+    effectiveTheme,
+    setUserTheme,
+    allowUserThemeOverride
+  } = useAppContext();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [photoURL, setPhotoURL] = useState('');
@@ -97,8 +111,8 @@ export default function Profile() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
         <User className="h-12 w-12 text-gray-400 mb-4" />
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">الملف الشخصي</h2>
-        <p className="text-gray-900 font-black">الرجاء تسجيل الدخول لعرض ملفك الشخصي</p>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">الملف الشخصي</h2>
+        <p className="text-gray-600 dark:text-gray-300 font-bold">الرجاء تسجيل الدخول لعرض ملفك الشخصي</p>
       </div>
     );
   }
@@ -143,7 +157,7 @@ export default function Profile() {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="absolute bottom-0 right-0 p-2 bg-green-600 text-white rounded-full shadow-lg hover:bg-green-700 transition transform hover:scale-110"
+            className={`absolute bottom-0 right-0 p-2 ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white rounded-full shadow-lg transition transform hover:scale-110`}
             title="تغيير الصورة"
           >
             <Camera className="w-4 h-4" />
@@ -184,7 +198,7 @@ export default function Profile() {
             required
             value={name}
             onChange={e => setName(e.target.value)}
-            className={`w-full border rounded-lg p-3 outline-none focus:ring-2 focus:ring-green-600 transition-all text-right font-black ${isDarkMode ? 'bg-gray-800 border-gray-700 text-white placeholder:text-gray-500 focus:bg-gray-750' : 'bg-gray-50 border-gray-300 text-gray-900 focus:bg-white'}`}
+            className={`w-full border rounded-lg p-3 outline-none focus:ring-2 ${getThemeClasses('ring')} transition-all text-right font-black ${isDarkMode ? 'bg-gray-800 border-gray-700 text-white placeholder:text-gray-500 focus:bg-gray-750' : 'bg-gray-50 border-gray-300 text-gray-900 focus:bg-white'}`}
           />
         </div>
         <div>
@@ -193,7 +207,7 @@ export default function Profile() {
             type="tel"
             value={phone}
             onChange={e => setPhone(e.target.value)}
-            className={`w-full border rounded-lg p-3 outline-none focus:ring-2 focus:ring-green-600 transition-all text-left font-black ${isDarkMode ? 'bg-gray-800 border-gray-700 text-white placeholder:text-gray-500 focus:bg-gray-750' : 'bg-gray-50 border-gray-300 text-gray-900 focus:bg-white'}`}
+            className={`w-full border rounded-lg p-3 outline-none focus:ring-2 ${getThemeClasses('ring')} transition-all text-left font-black ${isDarkMode ? 'bg-gray-800 border-gray-700 text-white placeholder:text-gray-500 focus:bg-gray-750' : 'bg-gray-50 border-gray-300 text-gray-900 focus:bg-white'}`}
             dir="ltr"
             placeholder="+967..."
           />
@@ -201,19 +215,94 @@ export default function Profile() {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full bg-green-600 text-white font-bold rounded-lg py-3 hover:bg-green-700 transition disabled:opacity-50"
+          className={`w-full ${getThemeClasses('bg')} ${getThemeClasses('hover')} font-bold rounded-xl py-3.5 transition-all shadow-md active:scale-98 disabled:opacity-50`}
         >
           {isSubmitting ? 'جاري الحفظ...' : 'حفظ التعديلات'}
         </button>
       </form>
 
+      {/* مظهر وتصميم المنصة (الثيم) */}
+      <div className={`mt-8 pt-6 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🎨</span>
+            <h3 className={`font-black text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+              مظهر وتصميم الموقع
+            </h3>
+          </div>
+          {allowUserThemeOverride ? (
+            <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              تخصيص حر
+            </span>
+          ) : (
+            <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+              محدد من الإدارة
+            </span>
+          )}
+        </div>
+
+        {allowUserThemeOverride ? (
+          <div>
+            <p className={`text-xs mb-3 font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              اختر الستايل المناسب لك، سيتم تطبيق الألوان والتفاصيل تلقائياً عبر كامل أقسام المنصة:
+            </p>
+            <div className="grid grid-cols-5 gap-2">
+              {[
+                { id: 'white', name: 'أبيض (الأساسي)', color: '#ffffff', bgClass: 'bg-white border-2 border-black', ringClass: 'ring-black' },
+                { id: 'green', name: 'أخضر', color: '#059669', bgClass: 'bg-emerald-600', ringClass: 'ring-emerald-500' },
+                { id: 'blue', name: 'أزرق', color: '#2563eb', bgClass: 'bg-blue-600', ringClass: 'ring-blue-500' },
+                { id: 'red', name: 'أحمر', color: '#e11d48', bgClass: 'bg-rose-600', ringClass: 'ring-rose-500' },
+                { id: 'black', name: 'أسود', color: '#09090b', bgClass: 'bg-zinc-950', ringClass: 'ring-zinc-800' }
+              ].map((t) => {
+                const isSelected = effectiveTheme === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setUserTheme(t.id as any);
+                      toast.success(`تم تغيير ستايل الموقع إلى ${t.name}`, { id: 'theme-change' });
+                    }}
+                    className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border transition-all ${
+                      isSelected
+                        ? `scale-105 shadow-md ring-2 ${t.ringClass} ${isDarkMode ? 'bg-gray-800 border-white/30' : 'bg-gray-50 border-gray-400'}`
+                        : `${isDarkMode ? 'border-gray-800 hover:bg-gray-800/60' : 'border-gray-200 hover:bg-gray-50'}`
+                    }`}
+                  >
+                    <div 
+                      className={`w-7 h-7 rounded-xl shadow-xs transition-transform ${t.bgClass} ${isSelected ? 'scale-110' : ''}`}
+                      style={t.id !== 'white' ? { backgroundColor: t.color } : {}}
+                    />
+                    <span className={`text-[10px] font-black ${isSelected ? (isDarkMode ? 'text-white' : 'text-gray-900') : (isDarkMode ? 'text-gray-400' : 'text-gray-600')}`}>
+                      {t.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className={`p-3.5 rounded-2xl border text-xs flex items-center gap-3 ${isDarkMode ? 'bg-gray-800/60 border-gray-700/60 text-gray-300' : 'bg-amber-50/60 border-amber-200/60 text-amber-900'}`}>
+            <span className="text-xl shrink-0">🔒</span>
+            <div className="leading-relaxed">
+              <span className="font-black block mb-0.5">ستايل موحد للمنصة</span>
+              <span>حددت إدارة المنصة ستايل موحد لجميع المستخدمين حالياً ({
+                effectiveTheme === 'green' ? 'الأخضر' :
+                effectiveTheme === 'blue' ? 'الأزرق' :
+                effectiveTheme === 'red' ? 'الأحمر' :
+                effectiveTheme === 'black' ? 'الأسود' : 'الأبيض'
+              }).</span>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className={`mt-8 pt-6 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}>
         <button
           onClick={() => {
             logout();
-            toast.success("تم تسجيل الخروج بنجاح");
           }}
-          className={`w-full flex items-center justify-center gap-2 border-2 font-bold rounded-lg py-3 transition-all ${isDarkMode ? 'border-red-900/30 text-red-500 hover:bg-red-900/20 hover:border-red-800/50' : 'border-red-100 text-red-600 hover:bg-red-50 hover:border-red-200'}`}
+          className={`w-full flex items-center justify-center gap-2 border-2 font-bold rounded-xl py-3 transition-all ${isDarkMode ? 'border-red-900/30 text-red-500 hover:bg-red-900/20 hover:border-red-800/50' : 'border-red-100 text-red-600 hover:bg-red-50 hover:border-red-200'}`}
         >
           <LogOut className="h-5 w-5" />
           <span>تسجيل الخروج</span>

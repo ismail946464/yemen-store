@@ -3,7 +3,7 @@ import { Home, Search, ShoppingBag, MessageSquare, User, LayoutDashboard } from 
 import { useAppContext } from '../AppContext';
 
 export default function BottomNav() {
-  const { user, cart, unreadCount, isStore, isAdmin, isDarkMode } = useAppContext();
+  const { user, cart, unreadCount, isStore, isAdmin, isDarkMode, getThemeClasses } = useAppContext();
   const location = useLocation();
 
   // Hide bottom nav on specific independent store URLs if needed, but show by default on all main routes
@@ -84,9 +84,7 @@ export default function BottomNav() {
                   to={item.path}
                   className={`flex flex-col items-center justify-center relative py-1.5 px-2.5 sm:px-3 rounded-2xl transition-all duration-200 group active:scale-90 ${
                     isActive
-                      ? isDarkMode
-                        ? 'text-emerald-400 font-bold'
-                        : 'text-emerald-600 font-bold'
+                      ? `${getThemeClasses('text')} font-black`
                       : isDarkMode
                         ? 'text-slate-400 hover:text-slate-200'
                         : 'text-slate-500 hover:text-slate-900'
@@ -94,7 +92,7 @@ export default function BottomNav() {
                 >
                   {/* Active Indicator Glow / Pill */}
                   {isActive && (
-                    <span className="absolute -top-1 w-8 h-1 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50 animate-in fade-in zoom-in duration-200" />
+                    <span className={`absolute -top-1 w-8 h-1 rounded-full ${getThemeClasses('bg')} shadow-sm animate-in fade-in zoom-in duration-200`} />
                   )}
 
                   <div className="relative">

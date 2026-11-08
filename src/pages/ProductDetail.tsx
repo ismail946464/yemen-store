@@ -13,7 +13,7 @@ export default function ProductDetail() {
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const { addToCart, settings, getThemeClasses, user, login } = useAppContext();
+  const { addToCart, settings, getThemeClasses, user, login, isDarkMode } = useAppContext();
   const navigate = useNavigate();
   const [storeProfile, setStoreProfile] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
@@ -190,7 +190,11 @@ export default function ProductDetail() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 font-sans" dir="rtl">
       <button 
         onClick={() => navigate(-1)}
-        className="group inline-flex items-center gap-2.5 text-gray-900 hover:text-black transition-all mb-8 bg-gray-50 hover:bg-white hover:shadow-xl hover:shadow-black/5 px-6 py-3 rounded-2xl border border-gray-100"
+        className={`group inline-flex items-center gap-2.5 transition-all mb-8 px-6 py-3 rounded-2xl border ${
+          isDarkMode 
+            ? 'bg-slate-800/80 hover:bg-slate-800 text-slate-100 border-slate-700' 
+            : 'text-gray-900 hover:text-black bg-gray-50 hover:bg-white hover:shadow-xl border-gray-100'
+        }`}
       >
         <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition" />
         <span className="font-black text-sm">العودة للمتجر</span>
@@ -202,7 +206,9 @@ export default function ProductDetail() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="aspect-[4/5] rounded-[3rem] overflow-hidden bg-white border border-gray-50 shadow-2xl shadow-black/5 relative group p-2"
+            className={`aspect-[4/5] rounded-[3rem] overflow-hidden border shadow-xl relative group p-2 ${
+              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'
+            }`}
           >
             <div className="w-full h-full rounded-[2.5rem] overflow-hidden relative bg-gray-50 flex items-center justify-center">
               {(product.image || (product.images && product.images[0])) ? (
@@ -237,7 +243,7 @@ export default function ProductDetail() {
                 <button 
                   key={idx}
                   onClick={() => setProduct({ ...product, image: img })}
-                  className={`flex-shrink-0 w-24 h-24 rounded-3xl overflow-hidden border-2 transition-all p-1 ${product.image === img ? 'border-blue-600 scale-105 shadow-lg shadow-blue-500/10' : 'border-gray-50 grayscale opacity-60 hover:opacity-100 hover:grayscale-0'}`}
+                  className={`flex-shrink-0 w-24 h-24 rounded-3xl overflow-hidden border-2 transition-all p-1 ${product.image === img ? `${getThemeClasses('border')} scale-105 shadow-lg` : 'border-gray-50 grayscale opacity-60 hover:opacity-100 hover:grayscale-0'}`}
                 >
                   {img ? (
                     <img src={img} alt="" className="w-full h-full object-cover rounded-2xl" />
@@ -255,43 +261,43 @@ export default function ProductDetail() {
         {/* Info Section */}
         <div className="flex flex-col pt-2 sm:pt-4">
           <div className="flex items-center gap-3 mb-8">
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${product.stock === undefined || product.stock === null || Number(product.stock) > 0 ? 'bg-blue-50 border-blue-100' : 'bg-red-50 border-red-100'}`}>
-               <span className={`w-2 h-2 rounded-full ${product.stock === undefined || product.stock === null || Number(product.stock) > 0 ? 'bg-blue-600 animate-pulse' : 'bg-red-600'}`}></span>
-               <span className={`text-[10px] font-black uppercase tracking-widest ${product.stock === undefined || product.stock === null || Number(product.stock) > 0 ? 'text-blue-700' : 'text-red-700'}`}>
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${product.stock === undefined || product.stock === null || Number(product.stock) > 0 ? `${getThemeClasses('bgLight')} ${getThemeClasses('border')}` : 'bg-red-50 border-red-100'}`}>
+               <span className={`w-2 h-2 rounded-full ${product.stock === undefined || product.stock === null || Number(product.stock) > 0 ? `${getThemeClasses('bg')} animate-pulse` : 'bg-red-600'}`}></span>
+               <span className={`text-[10px] font-black uppercase tracking-widest ${product.stock === undefined || product.stock === null || Number(product.stock) > 0 ? getThemeClasses('textDark') : 'text-red-700'}`}>
                  {product.stock === undefined || product.stock === null || Number(product.stock) > 0 ? `متوفر بالمخزن ${product.stock !== undefined && product.stock !== null ? `(${product.stock} وحدة)` : '(كمية غير محدودة)'}` : 'نفدت الكمية'}
                </span>
             </div>
           </div>
 
-          <h1 className="text-4xl md:text-5xl font-black text-gray-900 mb-6 leading-[1.2]">{product.title}</h1>
+          <h1 className="text-4xl md:text-5xl font-black text-gray-900 dark:text-white mb-6 leading-[1.2]">{product.title}</h1>
           
           <div className="flex items-center gap-4 mb-8">
-            <div className="flex items-center bg-gray-100 px-4 py-2 rounded-2xl border border-gray-200">
+            <div className={`flex items-center px-4 py-2 rounded-2xl border ${isDarkMode ? 'bg-slate-800/80 border-slate-700' : 'bg-gray-100 border-gray-200'}`}>
                <div className="flex items-center text-yellow-500 ml-2">
                  {[...Array(5)].map((_, i) => (
-                   <Star key={i} className={`w-4 h-4 ${i < Math.round(product.averageRating || 0) ? 'fill-current' : 'text-gray-300'}`} />
+                   <Star key={i} className={`w-4 h-4 ${i < Math.round(product.averageRating || 0) ? 'fill-current' : (isDarkMode ? 'text-slate-600' : 'text-gray-300')}`} />
                  ))}
                </div>
-               <span className="text-sm font-black text-black">
+               <span className="text-sm font-black text-gray-900 dark:text-white">
                  {product.averageRating ? product.averageRating.toFixed(1) : '0.0'}
                </span>
             </div>
-            <div className="w-[1px] h-6 bg-gray-200"></div>
-            <span className="text-sm font-black text-gray-800">
+            <div className={`w-[1px] h-6 ${isDarkMode ? 'bg-slate-700' : 'bg-gray-200'}`}></div>
+            <span className="text-sm font-black text-gray-700 dark:text-gray-300">
                {product.ratingCount || 0} تقييم حقيقي من عملاءنا
             </span>
           </div>
           
-          <div className="bg-gray-50 rounded-[2.5rem] p-8 mb-10 border border-gray-100">
+          <div className={`rounded-[2.5rem] p-8 mb-10 border ${isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-gray-50 border-gray-100'}`}>
             <div className="flex flex-wrap items-end gap-3 mb-2">
-              <span className="text-[10px] text-gray-900 font-black uppercase tracking-[0.2em] w-full mb-1">السعر النهائي للمنتج</span>
-              <span className="text-5xl font-black text-blue-600 tracking-tight">
+              <span className="text-[10px] text-gray-500 dark:text-gray-400 font-black uppercase tracking-[0.2em] w-full mb-1">السعر النهائي للمنتج</span>
+              <span className={`text-5xl font-black ${getThemeClasses('price')} tracking-tight`}>
                 {product.price.toLocaleString()}
               </span>
-              <span className="text-lg font-black text-gray-900 mb-1.5 mr-0.5">ر.ي</span>
+              <span className="text-lg font-black text-gray-900 dark:text-white mb-1.5 mr-0.5">ر.ي</span>
             </div>
             {product.deliveryFee > 0 && (
-              <p className="text-xs text-green-700 font-black flex items-center gap-1.5">
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-black flex items-center gap-1.5">
                  <Truck className="w-3.5 h-3.5" />
                  + رسوم توصيل ذكية {product.deliveryFee} ريال فقط
               </p>
@@ -299,32 +305,32 @@ export default function ProductDetail() {
           </div>
 
           <div className="mb-12">
-            <h4 className="text-black font-black text-lg mb-4 flex items-center gap-2">
-               <div className="w-1.5 h-6 bg-blue-600 rounded-full"></div>
+            <h4 className="text-gray-900 dark:text-white font-black text-lg mb-4 flex items-center gap-2">
+               <div className={`w-1.5 h-6 ${getThemeClasses('bg')} rounded-full`}></div>
                تفاصيل المنتج
             </h4>
-            <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-sm">
-               <p className="text-gray-900 text-sm leading-[1.8] font-bold whitespace-pre-wrap">{product.description}</p>
+            <div className={`rounded-3xl p-6 border shadow-sm ${getThemeClasses('cardBg')}`}>
+               <p className="text-gray-800 dark:text-gray-100 text-sm leading-[1.8] font-bold whitespace-pre-wrap">{product.description}</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-12">
-             <div className="flex items-center gap-4 p-5 bg-blue-50/50 rounded-[2rem] border border-blue-100/50 group hover:bg-blue-50 transition">
-               <div className="bg-white p-3 rounded-2xl shadow-sm text-blue-600 group-hover:scale-110 transition">
+             <div className={`flex items-center gap-4 p-5 ${getThemeClasses('bgLight')} rounded-[2rem] border ${getThemeClasses('border')} group transition`}>
+               <div className={`p-3 rounded-2xl shadow-sm ${getThemeClasses('text')} ${isDarkMode ? 'bg-slate-800' : 'bg-white'} group-hover:scale-110 transition`}>
                  <Truck className="w-6 h-6" />
                </div>
                <div>
-                 <span className="block font-black text-gray-900 text-sm">توصيل وتوريد</span>
-                 <span className="text-gray-900 text-[10px] font-black leading-tight">شحن آمن وسريع</span>
+                 <span className="block font-black text-gray-900 dark:text-white text-sm">توصيل وتوريد</span>
+                 <span className="text-gray-600 dark:text-gray-300 text-[10px] font-bold leading-tight">شحن آمن وسريع</span>
                </div>
              </div>
-             <div className="flex items-center gap-4 p-5 bg-green-50/50 rounded-[2rem] border border-green-100/50 group hover:bg-green-50 transition">
-               <div className="bg-white p-3 rounded-2xl shadow-sm text-green-600 group-hover:scale-110 transition">
+             <div className={`flex items-center gap-4 p-5 ${getThemeClasses('bgLight')} rounded-[2rem] border ${getThemeClasses('border')} group transition`}>
+               <div className={`p-3 rounded-2xl shadow-sm ${getThemeClasses('text')} ${isDarkMode ? 'bg-slate-800' : 'bg-white'} group-hover:scale-110 transition`}>
                  <ShieldCheck className="w-6 h-6" />
                </div>
                <div>
-                 <span className="block font-black text-gray-900 text-sm">ضمان المنصة</span>
-                 <span className="text-gray-900 text-[10px] font-black leading-tight">حقك محفوظ 100%</span>
+                 <span className="block font-black text-gray-900 dark:text-white text-sm">ضمان المنصة</span>
+                 <span className="text-gray-600 dark:text-gray-300 text-[10px] font-bold leading-tight">حقك محفوظ 100%</span>
                </div>
              </div>
           </div>
@@ -345,10 +351,9 @@ export default function ProductDetail() {
                     onClick={() => {
                       if (!user) { login(); return; }
                       addToCart(product);
-                      toast.success('تمت الإضافة للسلة');
                     }}
                     disabled={product.stock !== undefined && product.stock !== null && Number(product.stock) <= 0}
-                    className="w-full bg-blue-600 text-white py-6 rounded-[2rem] font-black transition shadow-[0_20px_50px_-15px_rgba(37,99,235,0.4)] hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 text-lg disabled:opacity-50 group"
+                    className={`w-full ${getThemeClasses('bg')} ${getThemeClasses('hover')} py-6 rounded-[2rem] font-black transition shadow-xl hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 text-lg disabled:opacity-50 group`}
                   >
                     <ShoppingCart className="w-6 h-6 group-hover:rotate-12 transition" />
                     <span>{product.stock === undefined || product.stock === null || Number(product.stock) > 0 ? (user ? 'أضف للسلة الآن' : 'سجل دخولك للشراء') : 'نفدت الكمية من المخزن'}</span>
@@ -356,7 +361,10 @@ export default function ProductDetail() {
                 )}
                 
                 {product.ownerId && product.ownerId !== user?.uid && (
-                   <Link to={`/contact?to=${product.ownerId}`} className="w-full bg-white text-gray-900 border-2 border-gray-100 py-5 rounded-[2rem] font-black text-center hover:bg-gray-50 transition flex items-center justify-center gap-2">
+                   <Link 
+                     to={`/contact?to=${product.ownerId}`} 
+                     className={`w-full ${isDarkMode ? 'bg-slate-800/90 text-white border-slate-700 hover:bg-slate-800' : 'bg-white text-gray-900 border-gray-200 hover:bg-gray-50'} border-2 py-5 rounded-[2rem] font-black text-center transition flex items-center justify-center gap-2`}
+                   >
                       <MessageCircle className="w-5 h-5 text-green-500" />
                       مراسلة البائع فوراً
                    </Link>
@@ -364,10 +372,10 @@ export default function ProductDetail() {
 
                 {/* Pre-Order / Reservation Card with Deposit - ONLY FOR TRUSTED / VERIFIED STORES */}
                 {canPreOrder && (
-                  <div className="bg-amber-50/70 dark:bg-amber-950/30 rounded-[2.5rem] p-6 border-2 border-amber-300 dark:border-amber-800/60 space-y-4 shadow-sm">
+                  <div className={`rounded-[2.5rem] p-6 border-2 space-y-4 shadow-sm ${getThemeClasses('cardBg')} ${getThemeClasses('border')}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-700 dark:text-amber-400 flex items-center justify-center">
+                        <div className={`w-10 h-10 rounded-2xl ${getThemeClasses('bgLight')} ${getThemeClasses('text')} flex items-center justify-center`}>
                           <BookmarkCheck className="w-6 h-6" />
                         </div>
                         <div>
@@ -375,21 +383,21 @@ export default function ProductDetail() {
                           <span className="text-[11px] text-gray-500 dark:text-gray-400 font-bold">احجز السلعة باسمك لضمان عدم بيعها لغيرك</span>
                         </div>
                       </div>
-                      <span className="text-[11px] font-black px-3 py-1 rounded-full bg-amber-500 text-white shadow-sm">
+                      <span className={`text-[11px] font-black px-3 py-1 rounded-full ${getThemeClasses('bg')} shadow-sm`}>
                         متجر موثق ✓
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 text-center bg-white/90 dark:bg-gray-800/90 p-4 rounded-2xl border border-amber-200/60 dark:border-amber-800/40">
+                    <div className={`grid grid-cols-2 gap-3 text-center p-4 rounded-2xl border ${getThemeClasses('bgLight')} ${getThemeClasses('border')}`}>
                       <div>
-                        <span className="text-[10px] text-gray-400 font-bold block mb-0.5">مبلغ العربون المطلوب</span>
-                        <span className="text-lg font-black text-amber-600 dark:text-amber-400">
+                        <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold block mb-0.5">مبلغ العربون المطلوب</span>
+                        <span className={`text-lg font-black ${getThemeClasses('price')}`}>
                           {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ريال
                         </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-gray-400 font-bold block mb-0.5">صلاحية مدة الحجز</span>
-                        <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                        <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold block mb-0.5">صلاحية مدة الحجز</span>
+                        <span className={`text-lg font-black ${getThemeClasses('text')}`}>
                           {product.reservationDurationDays || 3} أيام
                         </span>
                       </div>
@@ -410,7 +418,7 @@ export default function ProductDetail() {
                         if (!user) { login(); return; }
                         setShowPreOrderModal(true);
                       }}
-                      className="w-full bg-amber-600 hover:bg-amber-700 text-white py-4 rounded-2xl font-black text-base shadow-lg shadow-amber-600/25 active:scale-95 transition flex items-center justify-center gap-2"
+                      className={`w-full ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white py-4 rounded-2xl font-black text-base shadow-lg active:scale-95 transition flex items-center justify-center gap-2`}
                     >
                       <BookmarkCheck className="w-5 h-5" />
                       <span>حجز مسبق للسلعة الآن</span>
@@ -431,21 +439,21 @@ export default function ProductDetail() {
       )}
 
       {/* Reviews Section */}
-      <div className="mt-32 border-t border-gray-50 pt-20">
+      <div className={`mt-32 border-t pt-20 ${isDarkMode ? 'border-slate-800' : 'border-gray-100'}`}>
         <div className="max-w-4xl mx-auto text-center mb-16">
-          <h2 className="text-4xl font-black text-gray-900 mb-4">آراء العملاء الحقيقية</h2>
-          <p className="text-gray-900 font-black uppercase tracking-widest text-xs">ثقة عملاءنا هي سر نجاحنا</p>
+          <h2 className="text-4xl font-black text-gray-900 dark:text-white mb-4">آراء العملاء الحقيقية</h2>
+          <p className="text-gray-500 dark:text-gray-400 font-black uppercase tracking-widest text-xs">ثقة عملاءنا هي سر نجاحنا</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
           {/* Post Review Form */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-[2.5rem] p-8 border border-gray-50 shadow-2xl shadow-black/5 lg:sticky lg:top-28">
-              <h3 className="font-black text-xl mb-8 text-gray-900">أضف تقييمك</h3>
+            <div className={`rounded-[2.5rem] p-8 border ${isDarkMode ? 'bg-slate-900/95 border-slate-800 shadow-none' : 'bg-white border-gray-100 shadow-xl shadow-black/5'} lg:sticky lg:top-28`}>
+              <h3 className="font-black text-xl mb-8 text-gray-900 dark:text-white">أضف تقييمك</h3>
               {user ? (
                 <form onSubmit={handleSubmitReview} className="space-y-8">
                   <div className="text-center">
-                    <label className="block text-[10px] font-black text-gray-400 mb-6 uppercase tracking-widest">اختر عدد النجوم</label>
+                    <label className="block text-[11px] font-black text-gray-500 dark:text-gray-300 mb-6 uppercase tracking-widest">اختر عدد النجوم</label>
                     <div className="flex items-center justify-center gap-2">
                       {[1, 2, 3, 4, 5].map((num) => (
                         <button
@@ -455,26 +463,26 @@ export default function ProductDetail() {
                           className="focus:outline-none transition transform hover:scale-125 hover:rotate-6"
                         >
                           <Star 
-                            className={`w-10 h-10 transition-all ${num <= newRating ? 'fill-yellow-400 text-yellow-400 drop-shadow-lg' : 'text-gray-100'}`} 
+                            className={`w-10 h-10 transition-all ${num <= newRating ? 'fill-yellow-400 text-yellow-400 drop-shadow-lg' : (isDarkMode ? 'text-slate-700' : 'text-gray-200')}`} 
                           />
                         </button>
                       ))}
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-gray-400 mb-3 uppercase tracking-widest text-right">تعليقك يهمنا</label>
+                    <label className="block text-[11px] font-black text-gray-500 dark:text-gray-300 mb-3 uppercase tracking-widest text-right">تعليقك يهمنا</label>
                     <textarea
                       value={newComment}
                       onChange={(e) => setNewComment(e.target.value)}
                       placeholder="كيف كانت تجربتك مع هذا المنتج؟"
-                      className="w-full bg-gray-50 border-none rounded-3xl p-6 text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none transition h-40 resize-none text-right placeholder:text-gray-300"
+                      className={`w-full ${isDarkMode ? 'bg-slate-800/90 text-white placeholder:text-gray-500 border-slate-700' : 'bg-gray-50 text-gray-900 placeholder:text-gray-400 border-gray-100'} border rounded-3xl p-6 text-sm font-medium focus:ring-4 outline-none transition h-40 resize-none text-right`}
                       dir="rtl"
                     ></textarea>
                   </div>
                   <button
                     type="submit"
                     disabled={submittingReview}
-                    className="w-full bg-black text-white py-5 rounded-[1.75rem] font-black flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-95 transition shadow-2xl shadow-black/10 disabled:opacity-50"
+                    className={`w-full ${getThemeClasses('bg')} ${getThemeClasses('hover')} py-5 rounded-[1.75rem] font-black flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-95 transition shadow-xl disabled:opacity-50`}
                   >
                     {submittingReview ? 'جاري الإرسال...' : (
                       <>
@@ -485,12 +493,12 @@ export default function ProductDetail() {
                   </button>
                 </form>
               ) : (
-                <div className="text-center py-10 bg-gray-50 rounded-3xl">
-                  <User className="w-12 h-12 text-gray-200 mx-auto mb-4" />
-                  <p className="text-gray-400 text-sm font-bold mb-6">سجل دخولك لتتمكن من التقييم</p>
+                <div className={`text-center py-10 rounded-3xl ${isDarkMode ? 'bg-slate-800/60' : 'bg-gray-50'}`}>
+                  <User className={`w-12 h-12 ${isDarkMode ? 'text-slate-600' : 'text-gray-300'} mx-auto mb-4`} />
+                  <p className="text-gray-500 dark:text-gray-300 text-sm font-bold mb-6">سجل دخولك لتتمكن من التقييم</p>
                   <button 
                     onClick={login}
-                    className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-xs shadow-xl shadow-blue-500/20"
+                    className={`px-8 py-3 ${getThemeClasses('bg')} ${getThemeClasses('hover')} rounded-2xl font-black text-xs shadow-xl transition active:scale-95`}
                   >
                     دخول المنصة
                   </button>
@@ -502,12 +510,12 @@ export default function ProductDetail() {
           {/* Reviews List */}
           <div className="lg:col-span-2 space-y-8">
             {reviews.length === 0 ? (
-              <div className="text-center py-20 bg-gray-50 rounded-[3rem] border-4 border-dashed border-gray-100">
-                <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl shadow-black/5">
-                  <Star className="w-10 h-10 text-gray-100" />
+              <div className={`text-center py-20 rounded-[3rem] border-4 border-dashed ${isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-gray-50 border-gray-100'}`}>
+                <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl ${isDarkMode ? 'bg-slate-800' : 'bg-white shadow-black/5'}`}>
+                  <Star className={`w-10 h-10 ${isDarkMode ? 'text-slate-700' : 'text-gray-200'}`} />
                 </div>
-                <h4 className="text-xl font-black text-gray-900 mb-2">كن أنت البطل</h4>
-                <p className="text-gray-400 font-bold">لا توجد تقييمات لهذا المنتج بعد، كن أول من يضع بصمته</p>
+                <h4 className="text-xl font-black text-gray-900 dark:text-white mb-2">كن أنت البطل</h4>
+                <p className="text-gray-500 dark:text-gray-400 font-bold">لا توجد تقييمات لهذا المنتج بعد، كن أول من يضع بصمته</p>
               </div>
             ) : (
               reviews.map((review) => (
@@ -515,26 +523,26 @@ export default function ProductDetail() {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   key={review.id} 
-                  className="bg-white p-8 rounded-[2.5rem] border border-gray-50 shadow-xl shadow-black/5 hover:shadow-2xl hover:shadow-black/10 transition-all duration-500 group"
+                  className={`p-8 rounded-[2.5rem] border shadow-xl transition-all duration-500 group ${isDarkMode ? 'bg-slate-900/90 border-slate-800 shadow-none' : 'bg-white border-gray-100 shadow-black/5 hover:shadow-black/10'}`}
                 >
                   <div className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 rounded-2xl overflow-hidden bg-gray-50 flex items-center justify-center text-gray-400 border border-gray-100 group-hover:rotate-3 transition">
+                      <div className={`w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center text-gray-400 border group-hover:rotate-3 transition ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-gray-50 border-gray-100'}`}>
                         {review.userPhoto ? <img src={review.userPhoto} className="w-full h-full object-cover" /> : <User className="w-7 h-7" />}
                       </div>
                       <div>
-                        <h4 className="font-black text-gray-900 text-base">{review.userName}</h4>
-                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{new Date(review.createdAt).toLocaleDateString('ar-SA')}</span>
+                        <h4 className="font-black text-gray-900 dark:text-white text-base">{review.userName}</h4>
+                        <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase tracking-widest">{new Date(review.createdAt).toLocaleDateString('ar-SA')}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 bg-yellow-400/10 px-4 py-2 rounded-2xl">
                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                       <span className="text-sm font-black text-yellow-600">{review.rating}.0</span>
+                       <span className="text-sm font-black text-yellow-600 dark:text-yellow-400">{review.rating}.0</span>
                     </div>
                   </div>
                   <div className="relative">
-                    <div className="absolute -right-4 top-0 w-1 h-full bg-blue-100 rounded-full group-hover:bg-blue-600 transition"></div>
-                    <p className="text-gray-600 text-base leading-[1.8] font-medium whitespace-pre-wrap pr-4">{review.comment}</p>
+                    <div className={`absolute -right-4 top-0 w-1 h-full ${getThemeClasses('bgLight')} rounded-full group-hover:${getThemeClasses('bg')} transition`}></div>
+                    <p className="text-gray-700 dark:text-gray-200 text-base leading-[1.8] font-medium whitespace-pre-wrap pr-4">{review.comment}</p>
                   </div>
                 </motion.div>
               ))

@@ -964,7 +964,7 @@ export default function AdminDashboard() {
             
             {isAdmin && (
               <div className="pt-6 mt-6 border-t border-gray-100 space-y-1">
-                <p className="text-[10px] font-black text-gray-900 px-4 mb-2 uppercase tracking-widest">إدارة النظام</p>
+                <p className="text-[10px] font-black text-gray-900 dark:text-gray-300 px-4 mb-2 uppercase tracking-widest">إدارة النظام</p>
                 <NavItem active={activeTab === 'store-accounts'} onClick={() => handleTabClick('store-accounts')} icon={<KeyRound className="w-5 h-5 text-amber-500"/>} label="الحسابات وكلمات المرور" />
                 <NavItem active={activeTab === 'stores'} onClick={() => handleTabClick('stores')} icon={<Store className="w-5 h-5 text-blue-500"/>} label="إدارة المتاجر والتوثيق" count={viewedTabs['stores'] ? undefined : allStoresList.length} />
                 <NavItem active={activeTab === 'users'} onClick={() => handleTabClick('users')} icon={<Users className="w-5 h-5"/>} label="المستخدمين" count={viewedTabs['users'] ? undefined : users.length} />
@@ -1011,8 +1011,8 @@ export default function AdminDashboard() {
               <div className="space-y-10">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div>
-                    <h1 className="text-3xl font-black text-gray-900 mb-1">نظرة عامة</h1>
-                    <p className="text-gray-900 font-black">أداء المتجر ونشاط المستخدمين في الوقت الفعلي</p>
+                    <h1 className="text-3xl font-black text-gray-900 dark:text-white mb-1">نظرة عامة</h1>
+                    <p className="text-gray-600 dark:text-gray-400 font-bold">أداء المتجر ونشاط المستخدمين في الوقت الفعلي</p>
                   </div>
                   <div className="flex gap-2 bg-gray-50 p-2 rounded-2xl border border-gray-100">
                     <div className="px-4 py-2 bg-white rounded-xl shadow-sm border border-gray-100 text-xs font-bold text-green-600 flex items-center gap-2">
@@ -1431,7 +1431,7 @@ export default function AdminDashboard() {
                 <div className="flex justify-between items-center">
                   <div>
                     <h2 className="text-3xl font-black mb-1 text-black">إدارة المنتجات</h2>
-                    <p className="text-gray-900 font-black">عرض، تعديل، وإضافة منتجات جديدة للمتجر</p>
+                    <p className="text-gray-600 dark:text-gray-400 font-bold">عرض، تعديل، وإضافة منتجات جديدة للمتجر</p>
                   </div>
                   <button 
                     onClick={() => setProductForm({ title: '', price: '', description: '', stock: 0, category: 'عام', images: [], status: 'active' })} 
@@ -1456,7 +1456,7 @@ export default function AdminDashboard() {
                 <div className="overflow-x-auto">
                    <table className="w-full text-right border-separate border-spacing-y-4">
                      <thead>
-                       <tr className="text-gray-900 text-xs font-black uppercase tracking-widest px-4 border-b border-gray-100">
+                       <tr className="text-gray-900 dark:text-gray-300 text-xs font-black uppercase tracking-widest px-4 border-b border-gray-100 dark:border-gray-800">
                          <th className="p-4 font-black">المنتج</th>
                          <th className="p-4 font-black">التصنيف</th>
                          <th className="p-4 font-black text-center">السعر</th>
@@ -1518,13 +1518,13 @@ export default function AdminDashboard() {
               <div className="space-y-8">
                 <div>
                    <h2 className="text-3xl font-black mb-1 text-black">طلبات الشراء</h2>
-                   <p className="text-gray-900 font-black">متابعة طلبات العملاء وتحديث حالات التسليم</p>
+                   <p className="text-gray-600 dark:text-gray-400 font-bold">متابعة طلبات العملاء وتحديث حالات التسليم</p>
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-right border-separate border-spacing-y-4">
                     <thead>
-                      <tr className="text-gray-900 text-[10px] font-black uppercase tracking-widest px-4 border-b border-gray-100">
+                      <tr className="text-gray-900 dark:text-gray-300 text-[10px] font-black uppercase tracking-widest px-4 border-b border-gray-100 dark:border-gray-800">
                         <th className="p-4">رقم الطلب</th>
                         <th className="p-4 text-center">العميل</th>
                         <th className="p-4 text-center">تاريخ الطلب</th>
@@ -1538,7 +1538,7 @@ export default function AdminDashboard() {
                         <tr key={order.id} className="bg-gray-50/50 hover:bg-white transition hover:shadow-lg rounded-2xl group">
                           <td className="p-4 rounded-r-2xl border-y border-r border-transparent group-hover:border-gray-100 whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
-                              <span className="font-mono text-xs font-black text-gray-900">#{order.id.slice(-6).toUpperCase()}</span>
+                              <span className="font-mono text-xs font-black text-gray-900 dark:text-white">#{order.id.slice(-6).toUpperCase()}</span>
                               {(order.isPreOrder || order.orderType === 'preorder') && (
                                 <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[9px] font-black inline-flex items-center gap-1">
                                   <BookmarkCheck className="w-3 h-3 text-amber-600" />
@@ -1952,17 +1952,147 @@ export default function AdminDashboard() {
                            </div>
                            <AdminInput label="المعرف العالمي (Handle)" value={localSettings.storeHandle || ''} onChange={(v: any) => setLocalSettings({...localSettings, storeHandle: v})} />
                         </div>
-                        <div className="space-y-4">
-                          <label className="block text-sm font-black text-gray-700">لون المظهر الرئيسي</label>
-                          <div className="flex flex-wrap gap-4 bg-gray-50 p-6 rounded-[2rem] border border-gray-100">
-                            {['green', 'blue', 'red', 'purple', 'orange', 'black', 'rose', 'amber', 'cyan'].map(c => (
-                              <button 
-                                key={c}
-                                onClick={() => setLocalSettings({...localSettings, storeTheme: c})}
-                                className={`w-12 h-12 rounded-2xl border-4 transition-all duration-300 ${localSettings.storeTheme === c ? 'border-white scale-110 shadow-xl ring-4 ring-black/5' : 'border-white/50 scale-90'}`}
-                                style={{ backgroundColor: c === 'black' ? '#000' : (c === 'green' ? '#166534' : c) }}
+                        <div className="space-y-6 bg-gray-50/80 dark:bg-slate-900/80 p-6 rounded-[2rem] border border-gray-100 dark:border-slate-800">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h4 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+                                <span>🎨</span>
+                                ستايل ومظهر المنصة العام
+                              </h4>
+                              <p className="text-xs text-gray-500 font-medium mt-0.5">
+                                اختر الستايل المعتمد لجميع الأزرار والبطاقات والترويسة
+                              </p>
+                            </div>
+                            <span className="text-xs font-black px-3 py-1 rounded-full bg-neutral-100 text-neutral-900 border border-neutral-300">
+                              {localSettings.storeTheme === 'blue' ? 'أزرق ملكي' :
+                               localSettings.storeTheme === 'red' ? 'أحمر ياقوتي' :
+                               localSettings.storeTheme === 'black' ? 'أسود فخم' :
+                               localSettings.storeTheme === 'green' ? 'أخضر زمردي' : 'أبيض ناصع (الأساسي)'}
+                            </span>
+                          </div>
+
+                          {/* 5 Themes Selection Grid */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {[
+                              { 
+                                id: 'white', 
+                                name: 'أبيض ناصع (الأساسي)', 
+                                desc: 'ستايل أبيض نقي بالكامل مع خطوط سوداء فائقة التباين والوضوح',
+                                primaryColor: '#ffffff',
+                                accentBg: 'bg-white border-2 border-black text-black',
+                                sampleBadge: 'bg-black text-white shadow-xs',
+                                selectedClass: 'border-black ring-black/20',
+                                checkBg: 'bg-black text-white'
+                              },
+                              { 
+                                id: 'green', 
+                                name: 'أخضر زمردي', 
+                                desc: 'أخضر يمني راقي مع تباين عالي',
+                                primaryColor: '#059669',
+                                accentBg: 'bg-emerald-600',
+                                sampleBadge: 'bg-emerald-100 text-emerald-800',
+                                selectedClass: 'border-emerald-600 ring-emerald-500/30',
+                                checkBg: 'bg-emerald-600 text-white'
+                              },
+                              { 
+                                id: 'blue', 
+                                name: 'أزرق ملكي', 
+                                desc: 'أزرق بحري عصري وجذاب',
+                                primaryColor: '#2563eb',
+                                accentBg: 'bg-blue-600',
+                                sampleBadge: 'bg-blue-100 text-blue-800',
+                                selectedClass: 'border-blue-600 ring-blue-500/30',
+                                checkBg: 'bg-blue-600 text-white'
+                              },
+                              { 
+                                id: 'red', 
+                                name: 'أحمر ياقوتي', 
+                                desc: 'أحمر قاني فخم وملفت للأنظار',
+                                primaryColor: '#e11d48',
+                                accentBg: 'bg-rose-600',
+                                sampleBadge: 'bg-rose-100 text-rose-800',
+                                selectedClass: 'border-rose-600 ring-rose-500/30',
+                                checkBg: 'bg-rose-600 text-white'
+                              },
+                              { 
+                                id: 'black', 
+                                name: 'أسود فخم', 
+                                desc: 'ستايل داكن معاصر وأنيق',
+                                primaryColor: '#09090b',
+                                accentBg: 'bg-zinc-950',
+                                sampleBadge: 'bg-zinc-100 text-zinc-900',
+                                selectedClass: 'border-zinc-950 dark:border-white ring-zinc-700/30',
+                                checkBg: 'bg-zinc-950 text-white dark:bg-white dark:text-zinc-950'
+                              }
+                            ].map((themeItem) => {
+                              const isSelected = (localSettings.storeTheme || 'white') === themeItem.id;
+                              return (
+                                <button
+                                  key={themeItem.id}
+                                  type="button"
+                                  onClick={() => setLocalSettings({ ...localSettings, storeTheme: themeItem.id })}
+                                  className={`p-4 rounded-2xl border text-right transition-all duration-200 relative group flex flex-col justify-between ${
+                                    isSelected
+                                      ? `${themeItem.selectedClass} bg-white dark:bg-slate-800 shadow-lg ring-2 scale-[1.02]`
+                                      : 'border-gray-200/80 dark:border-slate-800 bg-white/70 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 hover:border-gray-300'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between mb-3 w-full">
+                                    <div className="flex items-center gap-2.5">
+                                      <div 
+                                        className={`w-6 h-6 rounded-full shadow-inner ${themeItem.accentBg}`}
+                                        style={themeItem.id !== 'white' ? { backgroundColor: themeItem.primaryColor } : {}}
+                                      />
+                                      <span className="font-black text-sm text-gray-900 dark:text-white">
+                                        {themeItem.name}
+                                      </span>
+                                    </div>
+                                    {isSelected && (
+                                      <span className={`w-5 h-5 rounded-full ${themeItem.checkBg} flex items-center justify-center text-xs font-bold`}>
+                                        ✓
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium mb-3">
+                                    {themeItem.desc}
+                                  </p>
+                                  {/* Preview chip */}
+                                  <div className="w-full pt-2 border-t border-gray-100 dark:border-slate-700/60 flex items-center justify-between">
+                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg ${themeItem.sampleBadge}`}>
+                                      عينة الزر
+                                    </span>
+                                    <span className="text-[10px] text-gray-400 font-mono">
+                                      {themeItem.id.toUpperCase()}
+                                    </span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* صلاحية تخصيص المظهر للمستخدمين */}
+                          <div className="pt-4 border-t border-gray-200/80 dark:border-slate-800">
+                            <label className="flex items-start justify-between gap-4 p-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 cursor-pointer hover:border-emerald-500/50 transition">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base">👥</span>
+                                  <span className="text-sm font-black text-gray-900 dark:text-white">
+                                    السماح لكل مستخدم باختيار وتغيير ستايل الموقع بشكل منفرد
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed font-medium">
+                                  {localSettings.allowUserThemeOverride !== false
+                                    ? 'مفعّل: يمكن لكل مستخدم وزائر تخصيص مظهر الموقع الخاص به من إعدادات حسابه.'
+                                    : 'مغلق: تم إيقاف التخصيص الفردي. يتم تطبيق الستايل المحدد من الإدارة أعلاه بشكل إجباري وموحد على جميع المستخدمين والزوار.'}
+                                </p>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={localSettings.allowUserThemeOverride !== false}
+                                onChange={(e) => setLocalSettings({ ...localSettings, allowUserThemeOverride: e.target.checked })}
+                                className="w-5 h-5 rounded-lg text-emerald-600 focus:ring-emerald-500 border-gray-300 mt-1 cursor-pointer shrink-0"
                               />
-                            ))}
+                            </label>
                           </div>
                         </div>
                      </div>

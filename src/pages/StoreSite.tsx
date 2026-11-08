@@ -221,7 +221,6 @@ export default function StoreSite() {
                   onClick={(e) => {
                     e.stopPropagation();
                     addToCart(product);
-                    toast.success('تم إضافة المنتج للسلة');
                   }}
                   className="absolute bottom-6 left-6 right-6 bg-white text-gray-900 py-3.5 rounded-2xl font-black text-xs shadow-2xl shadow-black/20 transform translate-y-20 group-hover:translate-y-0 transition-all duration-500 flex items-center justify-center gap-2 hover:bg-gray-50"
                 >
@@ -230,12 +229,12 @@ export default function StoreSite() {
                 </button>
               </div>
               <div className="p-6 pt-2 flex flex-col flex-1">
-                <h3 className="font-black text-black group-hover:text-blue-600 transition-colors line-clamp-1 mb-2 text-lg">{product.name}</h3>
+                <h3 className="font-black text-black group-hover:opacity-80 transition-colors line-clamp-1 mb-2 text-lg">{product.name}</h3>
                 <p className="text-xs text-gray-700 mb-6 line-clamp-2 leading-relaxed font-bold">{product.description}</p>
                 <div className="mt-auto flex items-center justify-between gap-2">
                   <div className="flex flex-col">
                     <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest leading-none mb-1">السعر</span>
-                    <span className="text-xl font-black text-blue-600">
+                    <span className={`text-xl font-black ${getThemeClasses('price')}`}>
                       {product.price.toLocaleString()} <span className="text-xs font-black text-gray-500 mr-0.5">ر.ي</span>
                     </span>
                   </div>

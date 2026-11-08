@@ -335,7 +335,7 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
               <p className="text-xs text-gray-500 dark:text-gray-400 truncate mb-2">{product.category}</p>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-gray-400 font-bold">السعر الكامل:</span>
-                <span className="text-base font-black text-blue-600 dark:text-blue-400">
+                <span className={`text-base font-black ${getThemeClasses('price')}`}>
                   {productPrice.toLocaleString()} ريال
                 </span>
               </div>
@@ -359,29 +359,29 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
             </div>
 
             {/* Remaining Box */}
-            <div className="p-4 rounded-3xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60">
-              <span className="text-[11px] font-black text-blue-700 dark:text-blue-300 block mb-1">
+            <div className={`p-4 rounded-3xl border ${getThemeClasses('bgLight')} ${getThemeClasses('border')}`}>
+              <span className={`text-[11px] font-black ${getThemeClasses('textDark')} block mb-1`}>
                 المتبقي عند الشراء
               </span>
-              <span className="text-2xl font-black text-blue-600 dark:text-blue-400">
+              <span className={`text-2xl font-black ${getThemeClasses('price')}`}>
                 {remainingAmount.toLocaleString()}
               </span>
-              <span className="text-xs font-black text-blue-700 dark:text-blue-300 mr-1">ريال</span>
-              <p className="text-[10px] text-blue-800/80 dark:text-blue-400/80 mt-1 font-bold">
+              <span className={`text-xs font-black ${getThemeClasses('textDark')} mr-1`}>ريال</span>
+              <p className={`text-[10px] ${getThemeClasses('textDark')} opacity-80 mt-1 font-bold`}>
                 (عند استلام السلعة)
               </p>
             </div>
 
             {/* Duration Box */}
-            <div className="p-4 rounded-3xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60">
-              <span className="text-[11px] font-black text-emerald-700 dark:text-emerald-300 block mb-1">
+            <div className={`p-4 rounded-3xl border ${getThemeClasses('bgLight')} ${getThemeClasses('border')}`}>
+              <span className={`text-[11px] font-black ${getThemeClasses('textDark')} block mb-1`}>
                 صلاحية مدة الحجز
               </span>
-              <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+              <span className={`text-2xl font-black ${getThemeClasses('price')}`}>
                 {reservationDurationDays}
               </span>
-              <span className="text-xs font-black text-emerald-700 dark:text-emerald-300 mr-1">أيام</span>
-              <p className="text-[10px] text-emerald-800/80 dark:text-emerald-400/80 mt-1 font-bold">
+              <span className={`text-xs font-black ${getThemeClasses('textDark')} mr-1`}>أيام</span>
+              <p className={`text-[10px] ${getThemeClasses('textDark')} opacity-80 mt-1 font-bold`}>
                 (مهلة حصرية لك)
               </p>
             </div>
@@ -417,7 +417,7 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
           <div className="space-y-3">
             <div className="flex justify-between items-center">
               <label className="text-sm font-black flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-blue-600" />
+                <CreditCard className={`w-4 h-4 ${getThemeClasses('text')}`} />
                 <span>اختر محفظة المتجر لدفع العربون ({depositAmount.toLocaleString()} ريال)</span>
               </label>
               <span className="text-[10px] text-gray-400 font-bold">تحويل مباشر</span>
@@ -430,7 +430,7 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
                   onClick={() => setSelectedWallet(wallet)}
                   className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
                     selectedWallet?.id === wallet.id
-                      ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 shadow-md'
+                      ? `${getThemeClasses('border')} ${getThemeClasses('bgLight')} shadow-md ring-2 ${getThemeClasses('ring')}`
                       : isDarkMode
                       ? 'border-gray-800 bg-gray-800 hover:border-gray-700'
                       : 'border-gray-100 bg-gray-50 hover:border-gray-200'
@@ -438,12 +438,12 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
                 >
                   <div className="flex justify-between items-start mb-2">
                     <span className="text-xs font-black">{wallet.name}</span>
-                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-bold">
+                    <span className={`text-[9px] px-2 py-0.5 rounded-full ${getThemeClasses('bgLight')} ${getThemeClasses('textDark')} font-bold`}>
                       {wallet.transferType === 'subscriber' ? 'حساب مشترك' : 'حساب بنكي'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-gray-200/50 dark:border-gray-700/50">
-                    <div className="font-mono text-sm font-black tracking-wider text-blue-600 dark:text-blue-400">
+                    <div className={`font-mono text-sm font-black tracking-wider ${getThemeClasses('text')}`}>
                       {wallet.accountNumber}
                     </div>
                     <button
@@ -479,8 +479,8 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 className={`w-full p-4 rounded-2xl border-2 font-black text-sm outline-none transition text-right ${
-                  isDarkMode ? 'bg-gray-800 border-gray-700 focus:border-blue-500' : 'bg-white border-gray-200 focus:border-blue-500'
-                }`}
+                  isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+                } focus:${getThemeClasses('border')}`}
                 dir="ltr"
               />
             </div>
@@ -494,8 +494,8 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
                 value={transferReference}
                 onChange={(e) => setTransferReference(e.target.value)}
                 className={`w-full p-4 rounded-2xl border-2 font-black text-sm outline-none transition text-right ${
-                  isDarkMode ? 'bg-gray-800 border-gray-700 focus:border-blue-500' : 'bg-white border-gray-200 focus:border-blue-500'
-                }`}
+                  isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+                } focus:${getThemeClasses('border')}`}
               />
             </div>
           </div>
@@ -510,7 +510,7 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
               isDarkMode ? 'bg-gray-800/40 border-gray-700' : 'bg-gray-50 border-gray-200'
             }`}>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 flex items-center justify-center shrink-0">
+                <div className={`w-10 h-10 rounded-xl ${getThemeClasses('bgLight')} ${getThemeClasses('text')} flex items-center justify-center shrink-0`}>
                   <UploadCloud className="w-5 h-5" />
                 </div>
                 <div>
@@ -518,7 +518,7 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
                   <p className="text-[10px] text-gray-400">يدعم JPG, PNG (يتم الضغط تلقائياً)</p>
                 </div>
               </div>
-              <label className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black cursor-pointer active:scale-95 transition shadow-md shadow-blue-500/20">
+              <label className={`px-4 py-2.5 rounded-xl ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white text-xs font-black cursor-pointer active:scale-95 transition shadow-md`}>
                 <span>{isUploadingProof ? 'جاري المعالجة...' : paymentProof ? 'تغيير الصورة' : 'اختيار صورة'}</span>
                 <input
                   type="file"
@@ -530,7 +530,7 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
               </label>
             </div>
             {paymentProof && (
-              <div className="relative w-28 h-28 rounded-2xl overflow-hidden border-2 border-blue-500 shadow-md">
+              <div className={`relative w-28 h-28 rounded-2xl overflow-hidden border-2 ${getThemeClasses('border')} shadow-md`}>
                 <img src={paymentProof} alt="إشعار التحويل" className="w-full h-full object-cover" />
                 <button
                   type="button"
@@ -552,8 +552,8 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
               value={customerNotes}
               onChange={(e) => setCustomerNotes(e.target.value)}
               className={`w-full p-4 rounded-2xl border-2 font-medium text-xs outline-none transition text-right ${
-                isDarkMode ? 'bg-gray-800 border-gray-700 focus:border-blue-500' : 'bg-white border-gray-200 focus:border-blue-500'
-              }`}
+                isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+              } focus:${getThemeClasses('border')}`}
             />
           </div>
 
@@ -565,7 +565,7 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
               className={`w-full py-5 rounded-2xl text-white font-black text-base shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] ${
                 !hasAgreedToPolicy
                   ? 'bg-gray-400 cursor-not-allowed opacity-60'
-                  : 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/30'
+                  : `${getThemeClasses('bg')} ${getThemeClasses('hover')} shadow-lg`
               }`}
             >
               {isSubmitting ? (

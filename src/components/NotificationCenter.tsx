@@ -8,7 +8,7 @@ import { useAppContext } from '../AppContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
 
 export default function NotificationCenter() {
-  const { user } = useAppContext();
+  const { user, getThemeClasses } = useAppContext();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
@@ -97,7 +97,7 @@ export default function NotificationCenter() {
                     onClick={() => {
                         notifications.forEach(n => !n.read && markAsRead(n.id));
                     }}
-                    className="text-xs text-blue-600 font-bold hover:underline"
+                    className={`text-xs ${getThemeClasses('text')} font-bold hover:underline`}
                   >
                     تحديد الكل كمقروء
                   </button>
@@ -114,7 +114,7 @@ export default function NotificationCenter() {
                   notifications.map((n) => (
                     <div 
                       key={n.id} 
-                      className={`p-4 border-b last:border-0 hover:bg-gray-50 transition-colors cursor-pointer relative group ${!n.read ? 'bg-blue-50/50' : ''}`}
+                      className={`p-4 border-b last:border-0 hover:bg-gray-50 transition-colors cursor-pointer relative group ${!n.read ? getThemeClasses('bgLight') : ''}`}
                       onClick={() => handleAction(n)}
                     >
                       <div className="flex gap-3">
@@ -148,7 +148,7 @@ export default function NotificationCenter() {
                         </button>
                       </div>
                       {!n.read && (
-                        <div className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-blue-600 rounded-full" />
+                        <div className={`absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 ${getThemeClasses('bg')} rounded-full`} />
                       )}
                     </div>
                   ))

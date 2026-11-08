@@ -71,7 +71,7 @@ const DEFAULT_FALLBACK_WALLETS: MerchantWallet[] = [
 ];
 
 export default function Cart() {
-  const { cart, removeFromCart, cartTotal, user, userData, clearCart, isDarkMode } = useAppContext();
+  const { cart, removeFromCart, cartTotal, user, userData, clearCart, isDarkMode, getThemeClasses } = useAppContext();
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'wallet'>('cod');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [location, setLocation] = useState<{lat: number, lng: number} | null>(null);
@@ -224,7 +224,7 @@ export default function Cart() {
         <p className="text-slate-500 dark:text-slate-400 font-medium mb-6">أضف بعض المنتجات لتتمكن من شرائها والطلب المباشر</p>
         <button 
           onClick={() => navigate('/')}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3.5 rounded-2xl font-black shadow-lg shadow-emerald-600/20 active:scale-95 transition"
+          className={`${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white px-8 py-3.5 rounded-2xl font-black shadow-lg active:scale-95 transition`}
         >
           تصفح المتجر الآن
         </button>
@@ -353,7 +353,7 @@ export default function Cart() {
                 <div className="text-center sm:text-right flex-1 min-w-0">
                   <h3 className="font-black text-slate-900 dark:text-white text-base sm:text-lg mb-1 truncate">{item.product.title}</h3>
                   <div className="flex items-center justify-center sm:justify-start gap-3 mb-2">
-                    <span className="text-emerald-600 dark:text-emerald-400 font-black text-lg">
+                    <span className={`${getThemeClasses('price')} font-black text-lg`}>
                       {item.product.price?.toLocaleString()} <span className="text-xs">ر.ي</span>
                     </span>
                     <span className="text-[11px] bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full font-bold text-slate-700 dark:text-slate-300">
@@ -361,7 +361,7 @@ export default function Cart() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2 justify-center sm:justify-start">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span className={`w-2 h-2 rounded-full ${getThemeClasses('bg')} animate-pulse`}></span>
                     <span className="text-[11px] text-slate-400 font-medium">متوفر وجاهز للشحن والتسليم</span>
                   </div>
                 </div>
@@ -382,7 +382,7 @@ export default function Cart() {
             isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/80 shadow-sm'
           }`}>
             <h4 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <span className={`w-2.5 h-2.5 rounded-full ${getThemeClasses('bg')}`}></span>
               بيانات التواصل الخاصة بك لتأكيد الطلب
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -395,7 +395,7 @@ export default function Cart() {
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value)}
                   placeholder="مثال: 777123456"
-                  className={`w-full px-4 py-3 rounded-2xl border text-sm font-bold transition focus:ring-2 focus:ring-emerald-500 outline-none ${
+                  className={`w-full px-4 py-3 rounded-2xl border text-sm font-bold transition focus:ring-2 ${getThemeClasses('ring')} outline-none ${
                     isDarkMode 
                       ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-500' 
                       : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
@@ -412,7 +412,7 @@ export default function Cart() {
                   value={customerNotes}
                   onChange={(e) => setCustomerNotes(e.target.value)}
                   placeholder="مثال: الحي، الشارع، قرب معلم معين..."
-                  className={`w-full px-4 py-3 rounded-2xl border text-sm font-bold transition focus:ring-2 focus:ring-emerald-500 outline-none ${
+                  className={`w-full px-4 py-3 rounded-2xl border text-sm font-bold transition focus:ring-2 ${getThemeClasses('ring')} outline-none ${
                     isDarkMode 
                       ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-500' 
                       : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
@@ -429,7 +429,7 @@ export default function Cart() {
             isDarkMode ? 'bg-slate-900 border-slate-800 shadow-xl' : 'bg-white border-slate-200/80 shadow-md'
           }`}>
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 bg-emerald-50 dark:bg-emerald-950/50 rounded-2xl flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <div className={`w-11 h-11 ${getThemeClasses('bgLight')} rounded-2xl flex items-center justify-center ${getThemeClasses('text')}`}>
                 <CreditCard className="w-5 h-5" />
               </div>
               <h3 className="text-xl font-black text-slate-900 dark:text-white">ملخص الطلب والدفع</h3>
@@ -443,12 +443,12 @@ export default function Cart() {
               </div>
               <div className="flex justify-between items-center p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                 <span className="text-slate-500 dark:text-slate-400 font-bold text-xs">رسوم التوصيل</span>
-                <span className="text-emerald-600 dark:text-emerald-400 font-black text-xs">مجاناً</span>
+                <span className={`${getThemeClasses('price')} font-black text-xs`}>مجاناً</span>
               </div>
               <div className="pt-4 border-t border-dashed border-slate-200 dark:border-slate-800">
                 <div className="flex justify-between items-end">
                   <span className="text-slate-500 dark:text-slate-400 font-black text-xs">الإجمالي النهائي</span>
-                  <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400">
+                  <span className={`text-3xl font-black ${getThemeClasses('price')}`}>
                     {cartTotal.toLocaleString()} <span className="text-xs text-slate-500 font-bold">ر.ي</span>
                   </span>
                 </div>
@@ -458,16 +458,16 @@ export default function Cart() {
             {/* Location selector */}
             <div className={`p-4 rounded-2xl border transition ${
               location 
-                ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40' 
+                ? `${getThemeClasses('bgLight')} ${getThemeClasses('border')}` 
                 : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800'
             }`}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <Navigation className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <Navigation className={`w-4 h-4 ${getThemeClasses('text')}`} />
                   <span className="font-black text-xs text-slate-900 dark:text-white">موقع التوصيل عبر الـ GPS</span>
                 </div>
                 {location && (
-                  <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <span className={`text-[10px] font-black ${getThemeClasses('text')} flex items-center gap-1`}>
                     <CheckCircle className="w-3.5 h-3.5" />
                     تم التحديد
                   </span>
@@ -515,7 +515,7 @@ export default function Cart() {
                   onClick={() => setPaymentMethod('cod')}
                   className={`p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-2 transition-all ${
                     paymentMethod === 'cod'
-                      ? 'border-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                      ? `${getThemeClasses('border')} ${getThemeClasses('bgLight')} ${getThemeClasses('text')} shadow-sm`
                       : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-600 dark:text-slate-400'
                   }`}
                 >
@@ -529,11 +529,11 @@ export default function Cart() {
                   onClick={() => setPaymentMethod('wallet')}
                   className={`p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-2 transition-all relative ${
                     paymentMethod === 'wallet'
-                      ? 'border-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                      ? `${getThemeClasses('border')} ${getThemeClasses('bgLight')} ${getThemeClasses('text')} shadow-sm`
                       : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-600 dark:text-slate-400'
                   }`}
                 >
-                  <span className="absolute -top-2 right-2 bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                  <span className={`absolute -top-2 right-2 ${getThemeClasses('bg')} text-white text-[9px] font-black px-1.5 py-0.5 rounded-full`}>
                     مباشر
                   </span>
                   <Wallet className="w-5 h-5" />
@@ -565,13 +565,13 @@ export default function Cart() {
                             onClick={() => setSelectedWallet(wallet)}
                             className={`p-3 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
                               isSelected
-                                ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 text-slate-900 dark:text-white'
+                                ? `${getThemeClasses('border')} ${getThemeClasses('bgLight')} text-slate-900 dark:text-white`
                                 : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-800/40'
                             }`}
                           >
                             <div className="flex items-center gap-3">
                               <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs ${
-                                isSelected ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                                isSelected ? `${getThemeClasses('bg')} text-white` : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
                               }`}>
                                 <Wallet className="w-4 h-4" />
                               </div>
@@ -587,11 +587,11 @@ export default function Cart() {
                               <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
                                 wallet.transferType === 'point'
                                   ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                  : getThemeClasses('badge')
                               }`}>
                                 {wallet.transferType === 'point' ? 'تحويل لنقطة' : 'تحويل لمشترك'}
                               </span>
-                              {isSelected && <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />}
+                              {isSelected && <Check className={`w-4 h-4 ${getThemeClasses('text')}`} />}
                             </div>
                           </div>
                         );
@@ -611,7 +611,7 @@ export default function Cart() {
                           <button
                             type="button"
                             onClick={() => handleCopyAccount(selectedWallet)}
-                            className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs transition active:scale-95 flex items-center gap-1 shadow-sm"
+                            className={`p-1.5 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white text-xs transition active:scale-95 flex items-center gap-1 shadow-sm`}
                             title="نسخ رقم الحساب"
                           >
                             {copiedWalletId === selectedWallet.id ? (
@@ -713,7 +713,7 @@ export default function Cart() {
                             >
                               <X className="w-4 h-4" />
                             </button>
-                            <span className="absolute bottom-2 right-2 bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-md">
+                            <span className={`absolute bottom-2 right-2 ${getThemeClasses('bg')} text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-md`}>
                               تم إرفاق السند ✅
                             </span>
                           </div>
@@ -729,7 +729,7 @@ export default function Cart() {
             <button 
               onClick={handleCheckout}
               disabled={isSubmitting}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-base shadow-xl shadow-emerald-600/20 active:scale-98 transition flex items-center justify-center gap-2 disabled:opacity-50"
+              className={`w-full ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white py-4 rounded-2xl font-black text-base shadow-xl active:scale-98 transition flex items-center justify-center gap-2 disabled:opacity-50`}
             >
               {isSubmitting ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

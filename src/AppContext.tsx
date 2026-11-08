@@ -14,6 +14,8 @@ export interface AppUser {
   [key: string]: any;
 }
 
+export type ThemeColor = 'green' | 'blue' | 'red' | 'black' | 'white';
+
 interface AppContextType {
   user: User | AppUser | null;
   userData: any | null;
@@ -43,7 +45,11 @@ interface AppContextType {
   markMessagesAsRead: () => Promise<void>;
   settingsLoading: boolean;
   globalStats: { totalVisitors: number, totalRegistered: number, onlineCount: number, mainStoreLastSeen: string | null };
-  getThemeClasses: (type: 'bg' | 'text' | 'hover' | 'border' | 'bgLight' | 'textDark') => string;
+  effectiveTheme: ThemeColor;
+  userTheme: ThemeColor | null;
+  setUserTheme: (theme: ThemeColor) => Promise<void> | void;
+  allowUserThemeOverride: boolean;
+  getThemeClasses: (type: 'bg' | 'text' | 'hover' | 'border' | 'bgLight' | 'textDark' | 'badge' | 'ring' | 'gradient' | 'activeTab' | 'price' | 'pageBg' | 'cardBg' | 'headerBg' | 'verified') => string;
   isDarkMode: boolean;
   toggleDarkMode: () => void;
   getAuthHeaders: () => Promise<Record<string, string>>;
@@ -80,6 +86,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [settings, setSettings] = useState<any | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [userTheme, setUserThemeState] = useState<ThemeColor | null>(() => {
+    try {
+      const saved = localStorage.getItem('user_preferred_theme');
+      if (saved && ['green', 'blue', 'red', 'black', 'white'].includes(saved)) {
+        return saved as ThemeColor;
+      }
+    } catch {}
+    return null;
+  });
+
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('isDarkMode');
     return saved ? JSON.parse(saved) : false;
@@ -92,16 +108,62 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsDarkMode((prev: boolean) => !prev);
   };
 
+  const allowUserThemeOverride = settings?.allowUserThemeOverride !== false;
+  const rawAdminTheme = settings?.storeTheme || 'white';
+  const adminTheme: ThemeColor = ['green', 'blue', 'red', 'black', 'white'].includes(rawAdminTheme)
+    ? (rawAdminTheme as ThemeColor)
+    : 'white';
+
+  const effectiveTheme: ThemeColor = (allowUserThemeOverride && userTheme)
+    ? userTheme
+    : adminTheme;
+
+  // When white theme is active, enforce light mode so dark slate backgrounds do not override the pure white style
+  const effectiveIsDarkMode = effectiveTheme === 'white' ? false : isDarkMode;
+
+  const setUserTheme = async (theme: ThemeColor) => {
+    setUserThemeState(theme);
+    try {
+      localStorage.setItem('user_preferred_theme', theme);
+      if (user) {
+        const targetUid = (user.email?.toLowerCase() === '1ismaai0lll@gmail.com' || user.uid === 'u_32cd7332ee7ec2e0c1121512')
+          ? 'MQAwCYqFztd2PZbV1fRMxKRqoYX2'
+          : user.uid;
+        await setDoc(doc(db, 'users', targetUid), { preferredTheme: theme }, { merge: true }).catch(() => {});
+      }
+    } catch {}
+  };
+
+  // Sync user preferredTheme from userData if not set locally
   useEffect(() => {
-    if (isDarkMode) {
+    if (userData?.preferredTheme && ['green', 'blue', 'red', 'black', 'white'].includes(userData.preferredTheme)) {
+      if (!userTheme) {
+        setUserThemeState(userData.preferredTheme as ThemeColor);
+        try {
+          localStorage.setItem('user_preferred_theme', userData.preferredTheme);
+        } catch {}
+      }
+    }
+  }, [userData?.preferredTheme]);
+
+  // Apply effective theme to document root and body
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', effectiveTheme);
+    document.body.setAttribute('data-theme', effectiveTheme);
+  }, [effectiveTheme]);
+
+  useEffect(() => {
+    if (effectiveIsDarkMode) {
       document.documentElement.classList.add('dark');
+      document.body.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
+      document.body.classList.remove('dark');
     }
     try {
       localStorage.setItem('isDarkMode', JSON.stringify(isDarkMode));
     } catch {}
-  }, [isDarkMode]);
+  }, [effectiveIsDarkMode, isDarkMode]);
 
   // Visitor increment
     useEffect(() => {
@@ -783,7 +845,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       await signOut(auth);
     } catch {}
-    toast.success('تم تسجيل الخروج بنجاح');
+    toast.success('تم تسجيل الخروج بنجاح', { id: 'auth-toast' });
   };
 
   const addToCart = (product: any) => {
@@ -792,7 +854,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const firstStoreId = cart[0].product.ownerId || 'global';
       const newStoreId = product.ownerId || 'global';
       if (firstStoreId !== newStoreId) {
-        toast.error("يرجى إتمام طلب المتجر الحالي أولاً أو تفريغ السلة، لا يمكن الجمع بين منتجات من متاجر مختلفة في طلب واحد.");
+        toast.error("يرجى إتمام طلب المتجر الحالي أولاً أو تفريغ السلة، لا يمكن الجمع بين منتجات من متاجر مختلفة في طلب واحد.", { id: 'cart-error' });
         return;
       }
     }
@@ -809,7 +871,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       setCart((prev) => [...prev, { product, quantity: 1 }]);
     }
-    toast.success("تمت الإضافة للسلة");
+    toast.success("تمت الإضافة للسلة", { id: 'cart-toast' });
   };
 
   const removeFromCart = (productId: string) => {
@@ -824,22 +886,104 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const isAdmin = userData?.role === 'admin' || isMasterAdmin;
   const isStore = userData?.role === 'store';
   const userRole = userData?.role || null;
-  const themeColor = settings?.storeTheme || 'green';
 
-  const getThemeClasses = (type: 'bg' | 'text' | 'hover' | 'border' | 'bgLight' | 'textDark') => {
-    switch (themeColor) {
+  const getThemeClasses = (type: 'bg' | 'text' | 'hover' | 'border' | 'bgLight' | 'textDark' | 'badge' | 'ring' | 'gradient' | 'activeTab' | 'price' | 'pageBg' | 'cardBg' | 'headerBg' | 'verified'): string => {
+    switch (effectiveTheme) {
       case 'blue':
-        return { bg: 'bg-blue-600', text: 'text-blue-600', hover: 'hover:bg-blue-700', border: 'border-blue-600', bgLight: 'bg-blue-50', textDark: 'text-blue-700' }[type];
+        return {
+          bg: 'bg-blue-600 text-white',
+          text: 'text-blue-600 dark:text-blue-400',
+          hover: 'hover:bg-blue-700',
+          border: 'border-blue-600 dark:border-blue-500',
+          bgLight: 'bg-blue-50 dark:bg-blue-950/40',
+          textDark: 'text-blue-800 dark:text-blue-300',
+          badge: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800',
+          ring: 'focus:ring-blue-500 ring-blue-500',
+          gradient: 'from-blue-600 to-indigo-700',
+          activeTab: 'bg-blue-600 text-white shadow-blue-600/30 ring-blue-400/30',
+          price: 'text-blue-600 dark:text-blue-400',
+          pageBg: 'bg-[#f4f7fb] dark:bg-[#030712]',
+          cardBg: 'bg-white dark:bg-[#0b1329] border-blue-100/70 dark:border-blue-900/40',
+          headerBg: 'bg-white/95 dark:bg-[#070e1e]/95 border-blue-100 dark:border-blue-950',
+          verified: 'text-blue-500 fill-white'
+        }[type] || 'bg-blue-600 text-white';
+
       case 'red':
-        return { bg: 'bg-red-600', text: 'text-red-600', hover: 'hover:bg-red-700', border: 'border-red-600', bgLight: 'bg-red-50', textDark: 'text-red-700' }[type];
-      case 'purple':
-        return { bg: 'bg-purple-600', text: 'text-purple-600', hover: 'hover:bg-purple-700', border: 'border-purple-600', bgLight: 'bg-purple-50', textDark: 'text-purple-700' }[type];
-      case 'orange':
-        return { bg: 'bg-orange-600', text: 'text-orange-600', hover: 'hover:bg-orange-700', border: 'border-orange-600', bgLight: 'bg-orange-50', textDark: 'text-orange-700' }[type];
+        return {
+          bg: 'bg-rose-600 text-white',
+          text: 'text-rose-600 dark:text-rose-400',
+          hover: 'hover:bg-rose-700',
+          border: 'border-rose-600 dark:border-rose-500',
+          bgLight: 'bg-rose-50 dark:bg-rose-950/40',
+          textDark: 'text-rose-800 dark:text-rose-300',
+          badge: 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800',
+          ring: 'focus:ring-rose-500 ring-rose-500',
+          gradient: 'from-rose-600 to-red-700',
+          activeTab: 'bg-rose-600 text-white shadow-rose-600/30 ring-rose-400/30',
+          price: 'text-rose-600 dark:text-rose-400',
+          pageBg: 'bg-[#fff5f6] dark:bg-[#0f0507]',
+          cardBg: 'bg-white dark:bg-[#180a0e] border-rose-100/70 dark:border-rose-900/40',
+          headerBg: 'bg-white/95 dark:bg-[#13060a]/95 border-rose-100 dark:border-rose-950',
+          verified: 'text-rose-500 fill-white'
+        }[type] || 'bg-rose-600 text-white';
+
       case 'black':
-        return { bg: 'bg-black', text: 'text-black', hover: 'hover:bg-gray-800', border: 'border-black', bgLight: 'bg-gray-100', textDark: 'text-gray-900' }[type];
+        return {
+          bg: 'bg-zinc-950 text-white dark:bg-white dark:text-zinc-950',
+          text: 'text-zinc-950 dark:text-zinc-100',
+          hover: 'hover:bg-zinc-800 dark:hover:bg-zinc-200',
+          border: 'border-zinc-900 dark:border-zinc-700',
+          bgLight: 'bg-zinc-100 dark:bg-zinc-900',
+          textDark: 'text-zinc-950 dark:text-zinc-100',
+          badge: 'bg-zinc-100 text-zinc-900 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-100 dark:border-zinc-700',
+          ring: 'focus:ring-zinc-900 ring-zinc-900',
+          gradient: 'from-zinc-950 via-zinc-900 to-black',
+          activeTab: 'bg-zinc-950 text-white dark:bg-white dark:text-black shadow-zinc-950/30 ring-zinc-700/30',
+          price: 'text-zinc-950 dark:text-zinc-100',
+          pageBg: 'bg-[#f4f4f5] dark:bg-[#050505]',
+          cardBg: 'bg-white dark:bg-[#121214] border-zinc-200 dark:border-zinc-800',
+          headerBg: 'bg-white/95 dark:bg-[#09090b]/95 border-zinc-200 dark:border-zinc-800',
+          verified: 'text-zinc-900 dark:text-zinc-100 fill-white'
+        }[type] || 'bg-zinc-950 text-white';
+
+      case 'white':
+        return {
+          bg: 'bg-black text-white hover:bg-neutral-800 shadow-sm active:scale-98',
+          text: 'text-black',
+          hover: 'hover:bg-neutral-800',
+          border: 'border-neutral-300',
+          bgLight: 'bg-neutral-100 border border-neutral-200/80',
+          textDark: 'text-black font-black',
+          badge: 'bg-neutral-100 text-black border-neutral-300 shadow-xs font-black',
+          ring: 'focus:ring-black ring-black',
+          gradient: 'from-neutral-900 to-black',
+          activeTab: 'bg-black text-white shadow-neutral-900/30 ring-neutral-400/30',
+          price: 'text-black font-black',
+          pageBg: 'bg-white',
+          cardBg: 'bg-white border-neutral-200/90 shadow-sm',
+          headerBg: 'bg-white/95 border-neutral-200/90 shadow-xs',
+          verified: 'text-emerald-600 fill-white'
+        }[type] || 'bg-black text-white';
+
+      case 'green':
       default:
-        return { bg: 'bg-green-600', text: 'text-green-600', hover: 'hover:bg-green-700', border: 'border-green-600', bgLight: 'bg-green-50', textDark: 'text-green-700' }[type];
+        return {
+          bg: 'bg-emerald-600 text-white',
+          text: 'text-emerald-600 dark:text-emerald-400',
+          hover: 'hover:bg-emerald-700',
+          border: 'border-emerald-600 dark:border-emerald-500',
+          bgLight: 'bg-emerald-50 dark:bg-emerald-950/40',
+          textDark: 'text-emerald-800 dark:text-emerald-300',
+          badge: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800',
+          ring: 'focus:ring-emerald-500 ring-emerald-500',
+          gradient: 'from-emerald-600 to-teal-700',
+          activeTab: 'bg-emerald-600 text-white shadow-emerald-600/30 ring-emerald-400/30',
+          price: 'text-emerald-600 dark:text-emerald-400',
+          pageBg: 'bg-[#f2f9f5] dark:bg-[#02130b]',
+          cardBg: 'bg-white dark:bg-[#072216] border-emerald-100/70 dark:border-emerald-900/40',
+          headerBg: 'bg-white/95 dark:bg-[#041a0f]/95 border-emerald-100 dark:border-emerald-950',
+          verified: 'text-emerald-600 fill-white'
+        }[type] || 'bg-emerald-600 text-white';
     }
   };
 
@@ -872,8 +1016,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     unreadCount, 
     markMessagesAsRead,
     globalStats, 
+    effectiveTheme,
+    userTheme,
+    setUserTheme,
+    allowUserThemeOverride,
     getThemeClasses,
-    isDarkMode,
+    isDarkMode: effectiveIsDarkMode,
     toggleDarkMode,
     getAuthHeaders
   }), [
@@ -891,8 +1039,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     cart, 
     unreadCount, 
     globalStats,
+    effectiveTheme,
+    userTheme,
+    allowUserThemeOverride,
     getThemeClasses,
-    isDarkMode
+    effectiveIsDarkMode
   ]);
 
   return (

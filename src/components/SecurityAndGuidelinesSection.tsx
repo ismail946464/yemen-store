@@ -3,7 +3,7 @@ import { ShieldAlert, ShieldCheck, AlertTriangle, CheckCircle2, Truck, FileText,
 import { useAppContext } from '../AppContext';
 
 export default function SecurityAndGuidelinesSection() {
-  const { isDarkMode, settings } = useAppContext();
+  const { isDarkMode, settings, getThemeClasses } = useAppContext();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const handleOpenFullDisclaimer = () => {
@@ -15,19 +15,19 @@ export default function SecurityAndGuidelinesSection() {
       {/* Header Banner */}
       <div className={`p-6 sm:p-8 rounded-3xl border transition-all ${
         isDarkMode 
-          ? 'bg-gradient-to-br from-gray-900 via-gray-900/90 to-emerald-950/40 border-gray-800 text-white' 
-          : 'bg-gradient-to-br from-emerald-50/80 via-teal-50/50 to-white border-emerald-150 text-gray-900'
+          ? 'bg-gray-900/90 border-gray-800 text-white' 
+          : `${getThemeClasses('cardBg')} text-gray-900`
       } shadow-lg relative overflow-hidden`}>
         
         {/* Background decorative watermark */}
         <div className="absolute -left-10 -bottom-10 opacity-5 pointer-events-none">
-          <ShieldCheck className="w-64 h-64 text-emerald-600" />
+          <ShieldCheck className={`w-64 h-64 ${getThemeClasses('text')}`} />
         </div>
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-600/10 text-emerald-700 dark:text-emerald-400 border border-emerald-600/20 text-xs font-black">
-              <ShieldAlert className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full ${getThemeClasses('bgLight')} ${getThemeClasses('textDark')} border ${getThemeClasses('border')} text-xs font-black`}>
+              <ShieldAlert className={`w-4 h-4 ${getThemeClasses('text')}`} />
               <span>دليل الأمان والمصداقية ومكافحة الاحتيال</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black tracking-tight">
@@ -49,7 +49,7 @@ export default function SecurityAndGuidelinesSection() {
 
             <button
               onClick={handleOpenFullDisclaimer}
-              className="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition flex items-center gap-2 shadow-md shadow-emerald-600/20 active:scale-95"
+              className={`px-5 py-3 rounded-2xl ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white font-black text-xs transition flex items-center gap-2 shadow-md active:scale-95`}
             >
               <FileText className="w-4 h-4" />
               <span>وثيقة إخلاء المسؤولية والشروط الرسمية</span>
@@ -61,7 +61,7 @@ export default function SecurityAndGuidelinesSection() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
           {/* Rule 1: Passwords */}
           <div className={`p-4 rounded-2xl border ${
-            isDarkMode ? 'bg-gray-800/80 border-gray-700' : 'bg-white border-emerald-100'
+            isDarkMode ? 'bg-gray-800/80 border-gray-700' : 'bg-white border-gray-100'
           } shadow-sm space-y-2`}>
             <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 flex items-center justify-center">
               <Lock className="w-5 h-5" />
@@ -74,7 +74,7 @@ export default function SecurityAndGuidelinesSection() {
 
           {/* Rule 2: Official Transfers */}
           <div className={`p-4 rounded-2xl border ${
-            isDarkMode ? 'bg-gray-800/80 border-gray-700' : 'bg-white border-emerald-100'
+            isDarkMode ? 'bg-gray-800/80 border-gray-700' : 'bg-white border-gray-100'
           } shadow-sm space-y-2`}>
             <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 flex items-center justify-center">
               <ShieldCheck className="w-5 h-5" />
@@ -87,7 +87,7 @@ export default function SecurityAndGuidelinesSection() {
 
           {/* Rule 3: Inspection upon delivery */}
           <div className={`p-4 rounded-2xl border ${
-            isDarkMode ? 'bg-gray-800/80 border-gray-700' : 'bg-white border-emerald-100'
+            isDarkMode ? 'bg-gray-800/80 border-gray-700' : 'bg-white border-gray-100'
           } shadow-sm space-y-2`}>
             <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center">
               <CheckCircle2 className="w-5 h-5" />
@@ -100,7 +100,7 @@ export default function SecurityAndGuidelinesSection() {
 
           {/* Rule 4: Transfer receipts */}
           <div className={`p-4 rounded-2xl border ${
-            isDarkMode ? 'bg-gray-800/80 border-gray-700' : 'bg-white border-emerald-100'
+            isDarkMode ? 'bg-gray-800/80 border-gray-700' : 'bg-white border-gray-100'
           } shadow-sm space-y-2`}>
             <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-400 flex items-center justify-center">
               <Truck className="w-5 h-5" />
