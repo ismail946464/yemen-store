@@ -177,7 +177,7 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
             )}
           </div>
 
-          <h2 className="text-xl sm:text-2xl font-black tracking-tight">{settings?.storeName || 'متجر يمن ستور'}</h2>
+          <h2 className="text-xl sm:text-2xl font-black tracking-tight">{settings?.storeName || 'المتجر'}</h2>
           <p className="text-xs text-white/80 mt-0.5 font-medium">نظام الحسابات الخاص بالمتجر</p>
         </div>
 

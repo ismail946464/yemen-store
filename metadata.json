@@ -2,5 +2,5 @@
   "name": "Yemen Store",
   "description": "سوق مركزي رقمي يجمع بين المنتجات المحلية والماركات العالمية مع خدمات الحجز المسبق للمتاجر الموثقة في اليمن.",
   "requestFramePermissions": ["camera", "geolocation"],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

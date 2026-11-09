@@ -42,12 +42,12 @@ const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800, quali
   });
 };
 
-const DEFAULT_WALLETS: MerchantWallet[] = [
+const getDefaultWallets = (storeName: string = 'يمن ستور'): MerchantWallet[] => [
   {
     id: 'kuraimi-default',
     name: 'الكريمي كاش (Kuraimi)',
     accountNumber: '777000000',
-    accountName: 'متجر يمن ستور الرسمي',
+    accountName: `متجر ${storeName} الرسمي`,
     transferType: 'subscriber',
     isActive: true,
     notes: 'تحويل مباشر لحساب المشترك عبر تطبيق كريمي جوال أو صرافات الكريمي'
@@ -56,7 +56,7 @@ const DEFAULT_WALLETS: MerchantWallet[] = [
     id: 'jawali-default',
     name: 'محفظة جوالي (Jawali)',
     accountNumber: '777111222',
-    accountName: 'متجر يمن ستور الرسمي',
+    accountName: `متجر ${storeName} الرسمي`,
     transferType: 'subscriber',
     isActive: true,
     notes: 'تحويل لمشترك جوالي فوري'
@@ -65,7 +65,7 @@ const DEFAULT_WALLETS: MerchantWallet[] = [
     id: 'jeeb-default',
     name: 'محفظة جيب (Jeeb)',
     accountNumber: '777333444',
-    accountName: 'متجر يمن ستور الرسمي',
+    accountName: `متجر ${storeName} الرسمي`,
     transferType: 'subscriber',
     isActive: true,
     notes: 'تحويل مباشر عبر محفظة جيب'
@@ -79,7 +79,9 @@ interface PreOrderModalProps {
 }
 
 export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModalProps) {
-  const { user, userData, login, getThemeClasses, isDarkMode } = useAppContext();
+  const { user, userData, login, getThemeClasses, isDarkMode, settings } = useAppContext();
+  const currentStoreName = settings?.storeName || 'يمن ستور';
+  const defaultWallets = getDefaultWallets(currentStoreName);
   const navigate = useNavigate();
 
   // Reservation details from product configuration or calculated defaults
@@ -125,12 +127,12 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
             return;
           }
         }
-        setMerchantWallets(DEFAULT_WALLETS);
-        setSelectedWallet(DEFAULT_WALLETS[0]);
+        setMerchantWallets(defaultWallets);
+        setSelectedWallet(defaultWallets[0]);
       } catch (err) {
         console.warn("Failed to load store wallets, fallback to defaults:", err);
-        setMerchantWallets(DEFAULT_WALLETS);
-        setSelectedWallet(DEFAULT_WALLETS[0]);
+        setMerchantWallets(defaultWallets);
+        setSelectedWallet(defaultWallets[0]);
       }
     };
 

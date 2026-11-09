@@ -46,7 +46,11 @@ export async function getSenderConfig(): Promise<SenderConfig> {
       if (snap.exists) {
         const data = snap.data();
         if (data?.otpSenderEmail) senderEmail = data.otpSenderEmail;
-        if (data?.otpSenderName) senderName = data.otpSenderName;
+        if (data?.otpSenderName) {
+          senderName = data.otpSenderName;
+        } else if (data?.storeName) {
+          senderName = data.storeName;
+        }
         if (data?.smtpHost) smtpHost = data.smtpHost;
         if (data?.smtpPort) smtpPort = Number(data.smtpPort);
         if (data?.smtpUser) smtpUser = data.smtpUser;
@@ -111,16 +115,16 @@ export async function processSendOtp(email: string): Promise<{ success: boolean;
       await transporter.sendMail({
         from: senderString,
         to: normalizedEmail,
-        subject: `كود التحقق الخاص بك لمنصة اليمن: ${code}`,
+        subject: `كود التحقق الخاص بك لمنصة ${config.senderName}: ${code}`,
         html: `
           <div dir="rtl" style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
             <div style="background: linear-gradient(135deg, #15803d, #16a34a); padding: 32px 24px; text-align: center; color: #ffffff;">
-              <h1 style="margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">🇾🇪 متجر اليمن الإلكتروني</h1>
-              <p style="margin: 8px 0 0 0; font-size: 14px; opacity: 0.9;">بوابتك للتجارة والمتاجر الموثقة في اليمن</p>
+              <h1 style="margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">🇾🇪 ${config.senderName}</h1>
+              <p style="margin: 8px 0 0 0; font-size: 14px; opacity: 0.9;">بوابتك للتجارة والمتاجر الموثقة</p>
             </div>
             <div style="padding: 32px 24px; text-align: center;">
               <h2 style="color: #1e293b; font-size: 20px; margin-top: 0;">رمز التحقق السريع لتسجيل الدخول</h2>
-              <p style="color: #64748b; font-size: 14px; line-height: 1.6;">لقد طلبت تسجيل الدخول إلى منصة اليمن. يرجى استخدام الرمز التالي لتأكيد حسابك:</p>
+              <p style="color: #64748b; font-size: 14px; line-height: 1.6;">لقد طلبت تسجيل الدخول إلى منصة ${config.senderName}. يرجى استخدام الرمز التالي لتأكيد حسابك:</p>
               
               <div style="margin: 28px auto; display: inline-block; background: #f0fdf4; border: 2px dashed #86efac; border-radius: 16px; padding: 20px 40px;">
                 <span style="font-size: 40px; font-weight: 900; letter-spacing: 12px; color: #166534; display: inline-block; direction: ltr;">${code}</span>

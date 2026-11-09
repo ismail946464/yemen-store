@@ -170,7 +170,7 @@ export default function LoginPage() {
             )}
           </div>
 
-          <h1 className="text-xl sm:text-2xl font-black">{settings?.storeName || 'متجر يمن ستور'}</h1>
+          <h1 className="text-xl sm:text-2xl font-black">{settings?.storeName || 'المتجر'}</h1>
           <p className="text-xs text-white/80 mt-1 font-medium">نظام الحسابات الخاص بالمتجر</p>
         </div>
 

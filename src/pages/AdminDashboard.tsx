@@ -772,7 +772,7 @@ export default function AdminDashboard() {
             await setDoc(storeRef, {
               userId,
               name: targetUser?.name || 'متجر جديد',
-              description: 'متجر رسمي معتمد في منصة يمن ستور',
+              description: `متجر رسمي معتمد في منصة ${localSettings?.storeName || settings?.storeName || 'المتجر'}`,
               logoUrl: targetUser?.photoURL || '',
               verified: true,
               verifiedUntil: oneYearLater.toISOString(),
@@ -1367,7 +1367,7 @@ export default function AdminDashboard() {
                       onChange={(v: string) => setStoreProfile({...storeProfile, bannerUrl: v})} 
                     />
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                       <AdminInput label="اسم المتجر" value={storeProfile.name} onChange={v => setStoreProfile({...storeProfile, name: v})} placeholder="مثال: يمن ستور العالمي" />
+                       <AdminInput label="اسم المتجر" value={storeProfile.name} onChange={v => setStoreProfile({...storeProfile, name: v})} placeholder={`مثال: ${localSettings.storeName || "متجر صنعاء العالمي"}`} />
                        <AdminInput label="عنوان المتجر" value={storeProfile.address || ''} onChange={v => setStoreProfile({...storeProfile, address: v})} placeholder="صنعاء - شارع حدة" />
                     </div>
                     <AdminTextarea label="وصف المتجر" value={storeProfile.description} onChange={v => setStoreProfile({...storeProfile, description: v})} placeholder="اكتب نبذة عن متجرك ومنتجاتك..." />
@@ -3037,7 +3037,7 @@ export default function AdminDashboard() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div>
                   <span className="text-xs text-slate-400 block">الاسم:</span>
-                  <span className="font-black text-slate-800 dark:text-slate-200">{viewingOrder.customerName || 'عميل يمن ستور'}</span>
+                  <span className="font-black text-slate-800 dark:text-slate-200">{viewingOrder.customerName || `عميل ${localSettings?.storeName || settings?.storeName || 'المتجر'}`}</span>
                 </div>
 
                 <div>

@@ -34,7 +34,7 @@ export default function SecurityAndGuidelinesSection() {
               تعليمات استخدام المتجر وتنبيهات الحماية من النصب والاحتيال
             </h2>
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 max-w-2xl font-medium leading-relaxed">
-              حرصاً من إدارة {settings?.storeName || 'متجر يمن ستور'} على سلامتكم وحماية تعاملاتكم التجارية والمالية، يرجى الالتزام بالتعليمات والإرشادات الأمنية التالية قبل إتمام أي طلب.
+              حرصاً من إدارة {settings?.storeName || 'المتجر'} على سلامتكم وحماية تعاملاتكم التجارية والمالية، يرجى الالتزام بالتعليمات والإرشادات الأمنية التالية قبل إتمام أي طلب.
             </p>
           </div>
 

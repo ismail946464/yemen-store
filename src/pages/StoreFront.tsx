@@ -200,23 +200,40 @@ export default function StoreFront() {
       {/* Main Store Banner & Search Store Section */}
       <div id="products-section" className={`rounded-[3.5rem] p-8 md:p-14 shadow-sm border flex flex-col items-center text-center space-y-8 animate-in fade-in duration-700 transition-colors ${getThemeClasses('cardBg')}`}>
         <div className="max-w-3xl space-y-3">
-          <h1 className={`text-3xl md:text-5xl font-black leading-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>أهلاً بك في يمن ستور</h1>
-          <p className={`text-base md:text-lg font-black max-w-2xl mx-auto ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}>اكتشف أفضل العروض والمنتجات الموثقة من نخبة المتاجر اليمنية المعتمدة</p>
+          <h1 className={`text-3xl md:text-5xl font-black leading-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>أهلاً بك في {settings?.storeName || 'يمن ستور'}</h1>
+          <p className={`text-base md:text-lg font-black max-w-2xl mx-auto ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}>اكتشف أفضل العروض والمنتجات الموثقة من نخبة المتاجر المعتمدة في {settings?.storeName || 'يمن ستور'}</p>
         </div>
 
-        <div className="w-full max-w-xl">
+        <div className="w-full max-w-2xl flex flex-col sm:flex-row gap-3">
           <Link 
             to="/search-stores" 
-            className={`group flex flex-row-reverse items-center justify-between border p-3 pl-8 rounded-[2rem] shadow-xl shadow-black/5 transition-all duration-300 ${
+            className={`flex-1 group flex flex-row-reverse items-center justify-between border p-3 pl-6 rounded-[2rem] shadow-sm transition-all duration-300 ${
               isDarkMode ? 'bg-gray-800/80 border-gray-700 hover:border-gray-500' : 'bg-white border-gray-200 hover:border-gray-400'
             }`}
           >
-            <div className={`p-3 rounded-2xl border shadow-sm transition group-hover:scale-110 ${getThemeClasses('bgLight')} ${getThemeClasses('border')} ${getThemeClasses('text')}`}>
+            <div className={`p-2.5 rounded-2xl border shadow-sm transition group-hover:scale-110 ${getThemeClasses('bgLight')} ${getThemeClasses('border')} ${getThemeClasses('text')}`}>
                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                </svg>
             </div>
-            <span className={`text-base md:text-lg font-black transition ${isDarkMode ? 'text-gray-200' : 'text-slate-800'}`}>ابحث عن متاجر أخرى موثقة</span>
+            <span className={`text-sm md:text-base font-black transition ${isDarkMode ? 'text-gray-200' : 'text-slate-800'}`}>ابحث عن متاجر موثقة</span>
+          </Link>
+
+          <Link 
+            to="/contact?to=ai_assistant" 
+            className={`flex-1 group flex flex-row-reverse items-center justify-between border p-3 pl-6 rounded-[2rem] shadow-sm transition-all duration-300 ${
+              isDarkMode 
+                ? 'bg-purple-950/40 border-purple-800/60 hover:border-purple-500' 
+                : 'bg-purple-50/80 border-purple-200 hover:border-purple-300'
+            }`}
+          >
+            <div className="p-2.5 rounded-2xl bg-purple-600 text-white shadow-md transition group-hover:scale-110">
+               <Sparkles className="w-5 h-5 animate-pulse" />
+            </div>
+            <div className="text-right">
+              <span className={`text-sm md:text-base font-black transition block ${isDarkMode ? 'text-purple-200' : 'text-purple-900'}`}>مساعد {settings?.storeName || 'يمن ستور'} الذكي</span>
+              <span className="text-[11px] font-bold text-purple-500/80 block">بحث فوري بالذكاء الاصطناعي ✦</span>
+            </div>
           </Link>
         </div>
 

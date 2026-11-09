@@ -309,10 +309,19 @@ export async function processAdminUpdateAccount(payload: {
             if (!sSnap.exists()) {
               const oneYear = new Date();
               oneYear.setFullYear(oneYear.getFullYear() + 1);
+              let storePlatformName = "المنصة";
+              try {
+                const globalSnap = await getDoc(doc(db, "settings", "global"));
+                if (globalSnap.exists() && globalSnap.data()?.storeName) {
+                  storePlatformName = globalSnap.data().storeName;
+                }
+              } catch {
+                // ignore
+              }
               await setDoc(storeRef, {
                 userId: uidToUpdate,
                 name: payload.name || account?.name || "متجر جديد",
-                description: "متجر رسمي معتمد في منصة يمن ستور",
+                description: `متجر رسمي معتمد في منصة ${storePlatformName}`,
                 logoUrl: account?.photoURL || "",
                 verified: true,
                 verifiedUntil: oneYear.toISOString(),

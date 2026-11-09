@@ -4,7 +4,7 @@
  */
 
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Home, Store, MapPin, Search, ShoppingBag, User as UserIcon, Bot, Menu, X, MessageSquare, PhoneCall, Users, TrendingUp } from 'lucide-react';
+import { Home, Store, MapPin, Search, ShoppingBag, User as UserIcon, Bot, Menu, X, MessageSquare, PhoneCall, Users, TrendingUp, Sparkles } from 'lucide-react';
 import { AppProvider, useAppContext } from './AppContext';
 import { Toaster } from 'react-hot-toast';
 import { useState, useEffect } from 'react';
@@ -112,6 +112,21 @@ function Header() {
               </Link>
               
               <div className="flex items-center gap-1.5 sm:gap-4">
+                {/* AI Shopping Assistant Button */}
+                <Link 
+                  to="/contact?to=ai_assistant" 
+                  title={`مساعد ${settings?.storeName || 'يمن ستور'} الذكي (Gemini AI)`}
+                  className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-2xl text-xs font-bold transition shadow-sm border ${
+                    isDarkMode 
+                      ? 'bg-purple-950/40 border-purple-800/60 text-purple-200 hover:bg-purple-900/60 hover:border-purple-600' 
+                      : 'bg-purple-50/80 border-purple-200 text-purple-700 hover:bg-purple-100 hover:border-purple-300'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4 text-purple-500 animate-pulse" />
+                  <span className="hidden md:inline font-bold">المساعد الذكي</span>
+                  <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-purple-600 text-white leading-none">AI</span>
+                </Link>
+
                 {user ? (
                   <div className="flex items-center gap-1 sm:gap-3">
                     <NotificationCenter />
@@ -180,9 +195,9 @@ function MainLayout() {
 
       // Update PWA Manifest dynamically
       const manifest = {
-        short_name: settings.shortName || settings.storeName || "يمن ستور",
-        name: settings.storeName || "يمن ستور",
-        description: settings.storeDescription || "منصة يمن ستور للتجارة والمتاجر الموثوقة",
+        short_name: settings.shortName || settings.storeName || "المتجر",
+        name: settings.storeName || "متجر",
+        description: settings.storeDescription || `منصة ${settings.storeName || 'المتجر'} للتجارة والمتاجر الموثوقة`,
         start_url: "/",
         display: "standalone",
         theme_color: "#000000",
@@ -214,20 +229,23 @@ function MainLayout() {
     }
     
     // Update Document Title and Social Meta Tags
-    if (settings?.storeName) {
-      document.title = settings.storeName;
-      
-      // Update Open Graph and Twitter tags
-      const currentUrl = settings.storePublicUrl || 'https://www.yemenstoreonline.com';
-      const metaTags = [
-        { property: 'og:title', content: settings.storeName },
-        { property: 'og:description', content: settings.storeDescription || '' },
-        { property: 'og:image', content: settings.storeLogo || '' },
-        { property: 'og:url', content: currentUrl },
-        { name: 'twitter:title', content: settings.storeName },
-        { name: 'twitter:image', content: settings.storeLogo || '' },
-        { name: 'twitter:card', content: 'summary_large_image' },
-      ];
+    const currentStoreName = settings?.storeName || 'يمن ستور';
+    document.title = currentStoreName;
+    
+    // Update Open Graph, Twitter and description tags
+    const currentUrl = settings?.storePublicUrl || 'https://www.yemenstoreonline.com';
+    const dynamicDescription = settings?.storeDescription || `منصة ${currentStoreName} للتجارة والمتاجر الموثوقة`;
+    const metaTags = [
+      { property: 'og:title', content: currentStoreName },
+      { property: 'og:description', content: dynamicDescription },
+      { property: 'og:image', content: settings?.storeLogo || '' },
+      { property: 'og:url', content: currentUrl },
+      { name: 'description', content: dynamicDescription },
+      { name: 'twitter:title', content: currentStoreName },
+      { name: 'twitter:description', content: dynamicDescription },
+      { name: 'twitter:image', content: settings?.storeLogo || '' },
+      { name: 'twitter:card', content: 'summary_large_image' },
+    ];
 
       metaTags.forEach(tag => {
         const attr = tag.property ? `property="${tag.property}"` : `name="${tag.name}"`;
@@ -240,7 +258,6 @@ function MainLayout() {
         }
         element.setAttribute('content', tag.content);
       });
-    }
   }, [settings]);
 
   if (settingsLoading) {

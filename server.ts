@@ -13,6 +13,7 @@ import {
   processAdminDeleteAccount,
   processAdminCreateAccount
 } from "./api/_lib/accountService.js";
+import { processAssistantMessage } from "./api/_lib/geminiAssistant.js";
 
 async function startServer() {
   const app = express();
@@ -281,7 +282,41 @@ async function startServer() {
     }
   });
 
-  // 6. Health check
+  // 6. Gemini Store AI Assistant
+  app.post("/api/ai/assistant", async (req, res) => {
+    try {
+      const { message, history, catalogProducts, catalog, storeSettings } = req.body || {};
+
+      let products = catalogProducts || catalog;
+      if ((!products || products.length === 0) && db && hasServiceAccount) {
+        try {
+          const snap = await db.collection("products").where("status", "==", "active").limit(100).get();
+          products = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+        } catch {
+          // ignore
+        }
+      }
+
+      const response = await processAssistantMessage({
+        message: String(message || ""),
+        history: Array.isArray(history) ? history : [],
+        catalogProducts: Array.isArray(products) ? products : [],
+        storeSettings: storeSettings || {}
+      });
+
+      return res.json({ success: true, ...response });
+    } catch (err: any) {
+      console.error("AI Assistant route error:", err);
+      return res.status(500).json({ 
+        success: false, 
+        reply: "عذراً، حدث خطأ مؤقت في التواصل مع المساعد الذكي. يرجى المحاولة لاحقاً.",
+        products: [],
+        provider: "error"
+      });
+    }
+  });
+
+  // 7. Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });

@@ -190,8 +190,10 @@ service cloud.firestore {
     function isValidMessage(data) {
       return data.keys().hasAll(['createdAt', 'senderId', 'recipientId', 'conversationId', 'participants'])
         && (data.keys().hasAny(['text', 'images']))
-        && (!('text' in data) || (data.text is string && data.text.size() <= 6000))
+        && (!('text' in data) || (data.text is string && data.text.size() <= 10000))
         && (!('images' in data) || (data.images is list && data.images.size() <= 10))
+        && (!('productCards' in data) || data.productCards is list)
+        && (!('suggestedQuestions' in data) || data.suggestedQuestions is list)
         && data.senderId is string && data.senderId.size() <= 128
         && data.recipientId is string && data.recipientId.size() <= 128
         && data.conversationId is string && data.conversationId.size() <= 300

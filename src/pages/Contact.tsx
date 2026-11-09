@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageSquare, Send, ArrowRight, User, Hash, Clock, Check, CheckCheck, Loader2, Mic, Search, PenSquare, ChevronDown, Camera, BadgeCheck, Trash2, X, Download, Maximize2 } from 'lucide-react';
+import { 
+  MessageSquare, Send, ArrowRight, User, Hash, Clock, Check, CheckCheck, 
+  Loader2, Mic, Search, PenSquare, ChevronDown, Camera, BadgeCheck, Trash2, 
+  X, Download, Maximize2, Sparkles, Bot, ShoppingBag, CheckCircle, ExternalLink, Store 
+} from 'lucide-react';
 import { db, auth } from '../firebase';
 import { 
   collection, 
@@ -24,9 +28,12 @@ import toast from 'react-hot-toast';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
 import { motion, AnimatePresence } from 'motion/react';
+import { askStoreAssistant } from '../services/geminiService';
 
 export default function Contact() {
   const { userData, user, getThemeClasses, isAdmin, isStore, settings, markMessagesAsRead, isDarkMode } = useAppContext();
+  const currentStoreName = settings?.storeName || 'يمن ستور';
+  const aiAssistantName = `مساعد ${currentStoreName} الذكي`;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const rawRecipientId = searchParams.get('to');
@@ -36,6 +43,8 @@ export default function Contact() {
   const [userSearchResults, setUserSearchResults] = useState<any[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [isAiThinking, setIsAiThinking] = useState(false);
+  const [catalogProducts, setCatalogProducts] = useState<any[]>([]);
 
   // Prevent user from starting a conversation with themselves
   useEffect(() => {
@@ -52,6 +61,18 @@ export default function Contact() {
     }
   }, [user]);
 
+  // Load active products from store so the AI assistant can reference the real-time catalog
+  useEffect(() => {
+    const q = query(collection(db, 'products'), where('status', '==', 'active'), limit(80));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const prods = snap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+      setCatalogProducts(prods);
+    }, (err) => {
+      console.warn('Catalog products sync notice:', err.message);
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Search users functionality
   useEffect(() => {
     const searchUsers = async () => {
@@ -62,15 +83,11 @@ export default function Contact() {
 
       setSearchingUsers(true);
       try {
-        // Query users by name or email
-        // Note: Firestore doesn't support full-text search easily, so we fetch and filter
-        // In a real app, you'd use a server-side search or specific partial match queries
         const usersRef = collection(db, 'users');
         const q = query(usersRef, limit(20));
         const snapshot = await getDocs(q);
         const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
 
-        // Filter based on roles and search term
         const filtered = results.filter(u => {
           if (u.id === user?.uid) return false;
           
@@ -80,7 +97,6 @@ export default function Contact() {
           
           if (!match) return false;
 
-          // RESTRICTION: Regular users can only find stores or admins
           const currentUserRole = userData?.role || 'user';
           if (currentUserRole === 'user') {
             return u.role === 'store' || u.role === 'admin';
@@ -128,12 +144,22 @@ export default function Contact() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, isAiThinking]);
 
   // Fetch recipient info for the ACTIVE conversation header
   useEffect(() => {
     if (!recipientId || !user) {
       setRecipientProfile(null);
+      return;
+    }
+
+    if (recipientId === 'ai_assistant') {
+      setRecipientProfile({
+        name: aiAssistantName,
+        role: 'ai',
+        displayName: `${aiAssistantName} (Gemini)`,
+        isOnline: true
+      });
       return;
     }
     
@@ -317,6 +343,56 @@ export default function Contact() {
         [`unreadCount.${recipientId || 'admin'}`]: increment(1)
       }, { merge: true });
 
+      // If talking to Gemini AI Assistant, trigger AI response
+      if (recipientId === 'ai_assistant') {
+        setIsAiThinking(true);
+        try {
+          const aiHistory = messages.slice(-6).map(m => ({
+            role: (m.senderId === 'ai_assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
+            text: m.text || ''
+          }));
+
+          const aiRes = await askStoreAssistant({
+            message: msgText,
+            history: aiHistory,
+            catalogProducts: catalogProducts,
+            storeSettings: settings
+          });
+
+          await addDoc(collection(db, 'messages'), {
+            text: aiRes.reply || 'أهلاً بك! يمكنك تصفح المنتجات المتوفرة في المتجر حالياً.',
+            productCards: aiRes.products || [],
+            suggestedQuestions: aiRes.suggestedQuestions || [],
+            senderId: 'ai_assistant',
+            recipientId: user.uid,
+            conversationId: conversationId,
+            participants: participants,
+            createdAt: new Date().toISOString(),
+            isRead: true
+          });
+
+          await setDoc(doc(db, 'conversations', conversationId), {
+            participants: participants,
+            lastMessage: aiRes.reply || 'رد المساعد الذكي',
+            lastMessageAt: new Date().toISOString(),
+            [`unreadCount.${user.uid}`]: 0
+          }, { merge: true });
+        } catch (aiErr) {
+          console.error("AI Assistant error:", aiErr);
+          await addDoc(collection(db, 'messages'), {
+            text: 'أعتذر، حدث تأخير بسيط في معالجة طلبك عبر الذكاء الاصطناعي. يمكنك البحث عن منتج محدد وسأقوم بعرضه فوراً (مثال: "ابحث عن عسل" أو "ما هي الهواتف المتاحة؟").',
+            senderId: 'ai_assistant',
+            recipientId: user.uid,
+            conversationId: conversationId,
+            participants: participants,
+            createdAt: new Date().toISOString(),
+            isRead: true
+          });
+        } finally {
+          setIsAiThinking(false);
+        }
+      }
+
     } catch (e) {
       console.error("Message send error:", e);
       handleFirestoreError(e, OperationType.WRITE, `messages_in_${conversationId}`, auth);
@@ -324,6 +400,73 @@ export default function Contact() {
       setSelectedImages(msgImages);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const sendQuickMessage = async (quickPrompt: string) => {
+    if (!quickPrompt.trim() || !user || isSending || isAiThinking) return;
+    setIsSending(true);
+
+    const promptText = quickPrompt.trim();
+    try {
+      const msgData = {
+        text: promptText,
+        senderId: user.uid,
+        recipientId: recipientId || 'admin',
+        conversationId: conversationId,
+        participants: participants,
+        createdAt: new Date().toISOString(),
+        isRead: false
+      };
+
+      await addDoc(collection(db, 'messages'), msgData);
+
+      await setDoc(doc(db, 'conversations', conversationId), {
+        participants: participants,
+        lastMessage: promptText,
+        lastMessageAt: new Date().toISOString(),
+        [`unreadCount.${recipientId || 'admin'}`]: increment(1)
+      }, { merge: true });
+
+      if (recipientId === 'ai_assistant') {
+        setIsAiThinking(true);
+        const aiHistory = messages.slice(-6).map(m => ({
+          role: (m.senderId === 'ai_assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
+          text: m.text || ''
+        }));
+
+        const aiRes = await askStoreAssistant({
+          message: promptText,
+          history: aiHistory,
+          catalogProducts: catalogProducts,
+          storeSettings: settings
+        });
+
+        await addDoc(collection(db, 'messages'), {
+          text: aiRes.reply,
+          productCards: aiRes.products || [],
+          suggestedQuestions: aiRes.suggestedQuestions || [],
+          senderId: 'ai_assistant',
+          recipientId: user.uid,
+          conversationId: conversationId,
+          participants: participants,
+          createdAt: new Date().toISOString(),
+          isRead: true
+        });
+
+        await setDoc(doc(db, 'conversations', conversationId), {
+          participants: participants,
+          lastMessage: aiRes.reply,
+          lastMessageAt: new Date().toISOString(),
+          [`unreadCount.${user.uid}`]: 0
+        }, { merge: true });
+        setIsAiThinking(false);
+      }
+    } catch (err) {
+      console.error("sendQuickMessage error:", err);
+    } finally {
+      setIsSending(false);
+      setIsAiThinking(false);
     }
   };
 
@@ -423,7 +566,7 @@ export default function Contact() {
   const listToRender = allConversations;
 
   return (
-    <div className={`max-w-6xl mx-auto h-[calc(100vh-140px)] flex flex-col md:flex-row rounded-3xl shadow-2xl border overflow-hidden m-4 font-tajawal relative ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+    <div className={`max-w-6xl mx-auto h-[calc(100dvh-130px)] md:h-[calc(100vh-140px)] flex flex-col md:flex-row rounded-2xl md:rounded-3xl shadow-xl border overflow-hidden mx-2 sm:mx-4 my-2 mb-20 md:mb-4 font-tajawal relative ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
       
       {/* Sidebar */}
       <div className={`md:w-96 border-l flex flex-col min-h-0 ${isDarkMode ? 'border-slate-800' : 'border-gray-100'} ${recipientId ? 'hidden md:flex' : 'flex'}`}>
@@ -570,8 +713,48 @@ export default function Contact() {
         </div>
 
         {/* Conversation List */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+          {/* Pinned Gemini AI Store Assistant */}
+          <Link
+            to="/contact?to=ai_assistant"
+            className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all duration-300 relative group ${
+              recipientId === 'ai_assistant'
+                ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white shadow-xl shadow-indigo-500/25 border-transparent ring-2 ring-indigo-400 scale-[1.01]'
+                : isDarkMode
+                  ? 'bg-gradient-to-r from-slate-800/90 to-indigo-950/40 border-indigo-500/30 hover:border-indigo-500/60 text-white'
+                  : 'bg-gradient-to-r from-indigo-50/90 via-blue-50/50 to-purple-50/80 border-indigo-200/80 hover:border-indigo-400 text-slate-900 shadow-sm'
+            }`}
+          >
+            <div className="relative shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-400 via-pink-500 to-indigo-600 p-[2px] shadow-md group-hover:scale-105 transition-transform">
+                <div className="w-full h-full rounded-[14px] bg-slate-950 flex items-center justify-center text-white">
+                  <Sparkles className="w-6 h-6 text-yellow-300 animate-pulse" />
+                </div>
+              </div>
+              <div className="absolute -bottom-0.5 -left-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full"></div>
+            </div>
+
+            <div className="flex-1 min-w-0 text-right">
+              <div className="flex items-center justify-between gap-1 mb-0.5">
+                <span className={`text-[15px] font-black ${recipientId === 'ai_assistant' ? 'text-white' : (isDarkMode ? 'text-white' : 'text-slate-900')}`}>
+                  {aiAssistantName}
+                </span>
+                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
+                  recipientId === 'ai_assistant'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-indigo-600 text-white'
+                }`}>
+                  Gemini AI
+                </span>
+              </div>
+              <p className={`text-xs truncate ${recipientId === 'ai_assistant' ? 'text-white/90 font-bold' : (isDarkMode ? 'text-indigo-300 font-medium' : 'text-indigo-800 font-medium')}`}>
+                ابحث عن المنتجات واستفسر عن كل شيء في المتجر 24/7
+              </p>
+            </div>
+          </Link>
+
           {listToRender.filter(c => {
+            if (c.participants.includes('ai_assistant')) return false;
             if (!searchTerm) return true;
             return c.lastMessage?.toLowerCase().includes(searchTerm.toLowerCase());
           }).map(conv => {
@@ -768,34 +951,58 @@ export default function Contact() {
                      <ArrowRight className="w-5 h-5" />
                    </Link>
                    <div className="relative">
-                     <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full bg-gray-200 p-[2px]`}>
-                        <div className="w-full h-full rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-white">
-                           {recipientProfile?.logoUrl || recipientProfile?.photoURL ? (
-                             <img src={recipientProfile.logoUrl || recipientProfile.photoURL} className="w-full h-full object-cover" />
-                           ) : <User className="text-gray-300 w-6 h-6" />}
-                        </div>
-                     </div>
+                     {recipientId === 'ai_assistant' ? (
+                       <div className="w-11 h-11 md:w-13 md:h-13 rounded-2xl bg-gradient-to-tr from-amber-400 via-pink-500 to-indigo-600 p-[2px] shadow-md">
+                         <div className="w-full h-full rounded-[14px] bg-slate-950 flex items-center justify-center text-white">
+                           <Sparkles className="w-6 h-6 text-yellow-300 animate-pulse" />
+                         </div>
+                       </div>
+                     ) : (
+                       <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-gray-200 p-[2px]">
+                          <div className="w-full h-full rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-white">
+                             {recipientProfile?.logoUrl || recipientProfile?.photoURL ? (
+                               <img src={recipientProfile.logoUrl || recipientProfile.photoURL} className="w-full h-full object-cover" alt="" />
+                             ) : <User className="text-gray-300 w-6 h-6" />}
+                          </div>
+                       </div>
+                     )}
                      <div className="absolute -bottom-0.5 -left-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></div>
                    </div>
                    <div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2">
                         <h3 className="font-black text-gray-900 dark:text-white text-sm md:text-lg">
-                          {recipientProfile?.name || recipientProfile?.displayName || recipientProfile?.username || recipientProfile?.storeName || (recipientId ? `مستخدم (${recipientId.slice(0, 5)})` : 'جاري التحميل...')}
+                          {recipientId === 'ai_assistant' ? aiAssistantName : (recipientProfile?.name || recipientProfile?.displayName || recipientProfile?.username || recipientProfile?.storeName || (recipientId ? `مستخدم (${recipientId.slice(0, 5)})` : 'جاري التحميل...'))}
                         </h3>
-                        {recipientId === 'admin' && <BadgeCheck className="w-4 h-4 text-blue-500 fill-current" />}
+                        {recipientId === 'ai_assistant' ? (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-indigo-600 text-white flex items-center gap-1 shadow-sm">
+                            <Sparkles className="w-3 h-3 text-yellow-300" />
+                            Gemini AI
+                          </span>
+                        ) : recipientId === 'admin' ? (
+                          <BadgeCheck className="w-4 h-4 text-blue-500 fill-current" />
+                        ) : null}
                       </div>
-                      <p className="text-[10px] md:text-xs text-blue-600 font-bold flex items-center gap-1">
-                        نشط الآن
+                      <p className={`text-[10px] md:text-xs font-bold flex items-center gap-1 ${recipientId === 'ai_assistant' ? 'text-indigo-600 dark:text-indigo-400' : 'text-blue-600'}`}>
+                        {recipientId === 'ai_assistant' ? 'متصل دائماً • خبير المنتجات والتسوق بالمتجر 24/7' : 'نشط الآن'}
                       </p>
                    </div>
                 </div>
                 <div className="flex gap-2">
-                   <button className="p-2.5 hover:bg-gray-50 rounded-full transition text-gray-500">
-                      <Clock className="w-5 h-5" />
-                   </button>
-                   <button className="p-2.5 hover:bg-gray-50 rounded-full transition text-gray-500">
-                      <Hash className="w-5 h-5" />
-                   </button>
+                   {recipientId === 'ai_assistant' ? (
+                     <span className="text-[11px] font-black px-3 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hidden sm:inline-flex items-center gap-1.5">
+                       <Bot className="w-3.5 h-3.5" />
+                       خاص بالمتجر فقط
+                     </span>
+                   ) : (
+                     <>
+                       <button className="p-2.5 hover:bg-gray-50 rounded-full transition text-gray-500">
+                          <Clock className="w-5 h-5" />
+                       </button>
+                       <button className="p-2.5 hover:bg-gray-50 rounded-full transition text-gray-500">
+                          <Hash className="w-5 h-5" />
+                       </button>
+                     </>
+                   )}
                 </div>
              </div>
 
@@ -806,18 +1013,55 @@ export default function Contact() {
                      <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
                   </div>
                 ) : messages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center px-10">
-                     <div className="w-20 h-20 rounded-full bg-white shadow-xl flex items-center justify-center mb-6 ring-4 ring-blue-50">
-                        <MessageSquare className="w-10 h-10 text-blue-500" />
-                     </div>
-                     <h4 className="text-lg font-black text-gray-900 dark:text-white">أهلاً بك في الدردشة!</h4>
-                     <p className="text-xs text-gray-500 mt-2 max-w-xs leading-relaxed">
-                       ابدأ المحادثة مع الإدارة أو البائع حالاً، استفسر عن السعر أو الجودة أو موعد التوصيل.
-                     </p>
-                  </div>
+                  recipientId === 'ai_assistant' ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center px-4 py-8 max-w-lg mx-auto">
+                       <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-400 via-pink-500 to-indigo-600 p-1 shadow-xl shadow-indigo-500/25 mb-4 animate-in zoom-in duration-300">
+                          <div className="w-full h-full rounded-[22px] bg-slate-950 flex items-center justify-center text-white">
+                             <Sparkles className="w-10 h-10 text-yellow-300 animate-pulse" />
+                          </div>
+                       </div>
+                       <h4 className="text-xl font-black text-gray-900 dark:text-white mb-2">مرحباً بك! أنا {aiAssistantName} 🤖✨</h4>
+                       <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed font-medium">
+                         أنا هنا لمساعدتك في كل ما يخص المتجر: اسألني عن أي منتج، قارن الأسعار، استفسر عن خدمات التوصيل، أو شروط الحجز المسبق ودفع العربون.
+                       </p>
+
+                       <div className="mt-6 w-full space-y-2 text-right">
+                         <span className="text-[11px] font-black text-gray-500 dark:text-gray-400 block px-1">أسئلة يمكنك طرحها بنقرة واحدة:</span>
+                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                           {[
+                             '🔍 ابحث لي عن عسل يمني أصلي',
+                             '📱 ما هي أحدث الهواتف المتوفرة؟',
+                             '📦 كيف يعمل نظام الحجز المسبق والعربون؟',
+                             '🛡️ ما هي سياسة الضمان والتوصيل في المنصة؟'
+                           ].map((prompt, pIdx) => (
+                             <button
+                               key={pIdx}
+                               type="button"
+                               onClick={() => sendQuickMessage(prompt)}
+                               className="p-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 shadow-sm hover:shadow transition text-xs font-bold text-gray-800 dark:text-gray-200 text-right active:scale-95 flex items-center gap-2 group"
+                             >
+                               <span className="text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition">✦</span>
+                               <span className="truncate">{prompt}</span>
+                             </button>
+                           ))}
+                         </div>
+                       </div>
+                    </div>
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-center px-10">
+                       <div className="w-20 h-20 rounded-full bg-white shadow-xl flex items-center justify-center mb-6 ring-4 ring-blue-50">
+                          <MessageSquare className="w-10 h-10 text-blue-500" />
+                       </div>
+                       <h4 className="text-lg font-black text-gray-900 dark:text-white">أهلاً بك في الدردشة!</h4>
+                       <p className="text-xs text-gray-500 mt-2 max-w-xs leading-relaxed">
+                         ابدأ المحادثة مع الإدارة أو البائع حالاً، استفسر عن السعر أو الجودة أو موعد التوصيل.
+                       </p>
+                    </div>
+                  )
                 ) : (
                   messages.map((m, i) => {
                     const isMine = m.senderId === user.uid;
+                    const isAi = m.senderId === 'ai_assistant';
                     const showDate = i === 0 || new Date(messages[i-1].createdAt).toDateString() !== new Date(m.createdAt).toDateString();
                     
                     return (
@@ -826,7 +1070,6 @@ export default function Contact() {
                           <div className="flex justify-center my-8 relative">
                             <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-gray-100"></div>
                             <span className={`relative text-[10px] font-black px-4 py-1.5 rounded-full border uppercase tracking-widest ${isDarkMode ? "bg-slate-800 text-gray-200 border-slate-700" : "bg-white text-gray-900 border-gray-100"}`}>
-
                               {new Date(m.createdAt).toLocaleDateString('ar-YE', { weekday: 'long', day: 'numeric', month: 'long' })}
                             </span>
                           </div>
@@ -836,11 +1079,21 @@ export default function Contact() {
                           animate={{ opacity: 1, x: 0 }}
                           className={`flex ${isMine ? 'justify-start' : 'justify-end'}`}
                         >
-                          <div className={`max-w-[85%] md:max-w-[70%] px-5 py-3.5 rounded-3xl shadow-sm relative group ${
+                          <div className={`max-w-[92%] sm:max-w-[85%] md:max-w-[75%] px-5 py-4 rounded-3xl shadow-sm relative group ${
                             isMine 
                             ? (isDarkMode ? 'bg-slate-800 text-slate-100 rounded-br-none border border-slate-700' : 'bg-white text-gray-800 rounded-br-none border border-gray-100') 
-                            : `${getThemeClasses('bg')} text-white rounded-bl-none shadow-blue-500/10`
+                            : isAi
+                              ? 'bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-bl-none border border-indigo-500/30 shadow-xl shadow-indigo-950/20'
+                              : `${getThemeClasses('bg')} text-white rounded-bl-none shadow-blue-500/10`
                           }`}>
+                            {/* AI Header inside bubble */}
+                            {isAi && (
+                              <div className="flex items-center gap-1.5 pb-2 mb-2 border-b border-white/10 text-xs font-black text-indigo-300">
+                                <Sparkles className="w-3.5 h-3.5 text-yellow-300 animate-pulse" />
+                                <span>{aiAssistantName}</span>
+                              </div>
+                            )}
+
                             {m.images && m.images.length > 0 && (
                               <div className={`grid gap-2 mb-2 ${m.images.length === 1 ? 'grid-cols-1' : m.images.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
                                 {m.images.map((img: string, idx: number) => (
@@ -854,7 +1107,82 @@ export default function Contact() {
                                 ))}
                               </div>
                             )}
-                            {m.text && <p className="text-sm md:text-[15px] leading-relaxed whitespace-pre-wrap">{m.text}</p>}
+                            {m.text && <p className="text-sm md:text-[15px] leading-relaxed whitespace-pre-wrap font-medium">{m.text}</p>}
+
+                            {/* Product Cards Attachment from AI Store Assistant */}
+                            {m.productCards && Array.isArray(m.productCards) && m.productCards.length > 0 && (
+                              <div className="mt-3.5 pt-3 border-t border-white/15 space-y-2.5">
+                                <div className="flex items-center justify-between text-[11px] font-black text-amber-300">
+                                  <span className="flex items-center gap-1.5">
+                                    <ShoppingBag className="w-3.5 h-3.5" />
+                                    منتجات متوفرة بالمتجر ({m.productCards.length}):
+                                  </span>
+                                  <span className="text-[10px] text-white/70">اضغط للمعاينة والشراء</span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {m.productCards.map((p: any) => (
+                                    <div
+                                      key={p.id}
+                                      onClick={() => navigate(`/product/${p.id}`)}
+                                      className="flex items-center gap-2.5 p-2 rounded-2xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-white/20 dark:border-slate-800 shadow-md hover:shadow-xl hover:scale-[1.02] active:scale-95 transition-all cursor-pointer group/card text-right"
+                                    >
+                                      {/* Thumbnail image */}
+                                      <div className="w-16 h-16 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0 border border-slate-200/50 dark:border-slate-700 relative">
+                                        {p.image || (p.images && p.images[0]) ? (
+                                          <img
+                                            src={p.image || p.images[0]}
+                                            alt={p.title}
+                                            className="w-full h-full object-cover group-hover/card:scale-110 transition duration-300"
+                                          />
+                                        ) : (
+                                          <div className="w-full h-full flex items-center justify-center text-slate-400">
+                                            <ShoppingBag className="w-6 h-6" />
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <div className="flex-1 min-w-0">
+                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 inline-block mb-0.5">
+                                          {p.category || 'منتج'}
+                                        </span>
+                                        <h5 className="font-black text-xs truncate leading-tight group-hover/card:text-indigo-600 dark:group-hover/card:text-indigo-400 transition">
+                                          {p.title}
+                                        </h5>
+                                        <div className="flex items-center justify-between mt-1">
+                                          <span className="font-black text-xs text-emerald-600 dark:text-emerald-400">
+                                            {Number(p.price || 0).toLocaleString()} <span className="text-[9px]">ر.ي</span>
+                                          </span>
+                                          {p.ownerVerified && (
+                                            <span className="text-[9px] font-bold text-blue-500 flex items-center gap-0.5">
+                                              <CheckCircle className="w-3 h-3 fill-current" />
+                                              موثق
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Suggested Questions Chips */}
+                            {m.suggestedQuestions && Array.isArray(m.suggestedQuestions) && m.suggestedQuestions.length > 0 && (
+                              <div className="mt-3 flex flex-wrap gap-1.5 pt-2 border-t border-white/10">
+                                {m.suggestedQuestions.map((sq: string, sqIdx: number) => (
+                                  <button
+                                    key={sqIdx}
+                                    type="button"
+                                    onClick={() => sendQuickMessage(sq)}
+                                    className="text-[10px] font-bold px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur-sm text-white transition active:scale-95 border border-white/15 text-right"
+                                  >
+                                    💬 {sq}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
                             <div className={`flex items-center gap-1.5 mt-2 justify-end ${isMine ? 'text-gray-400' : 'text-white/60'}`}>
                               <span className="text-[10px] font-black">
                                 {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -869,18 +1197,60 @@ export default function Contact() {
                     );
                   })
                 )}
-                <div ref={messagesEndRef} />
-             </div>
 
-             {/* Bottom Action Bar */}
-             <div className={`p-2 md:p-6 border-t shrink-0 z-10 ${isDarkMode ? "border-slate-800 bg-slate-900" : "border-gray-100 bg-white"}`}>
+                {/* AI Thinking / Typing Indicator */}
+                {isAiThinking && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex justify-end"
+                  >
+                    <div className="p-4 rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-bl-none shadow-xl border border-indigo-500/30 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                        <Sparkles className="w-4 h-4 text-yellow-300 animate-spin" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-black text-white">{aiAssistantName} يبحث في المتجر...</p>
+                        <span className="text-[10px] text-indigo-300 font-medium">جاري صياغة الرد وتحضير المنتجات عبر Gemini</span>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Bottom Action Bar */}
+              <div className={`p-2.5 sm:p-3 md:p-4 border-t shrink-0 z-10 space-y-2 ${isDarkMode ? "border-slate-800 bg-slate-900" : "border-gray-100 bg-white"}`}>
+                
+                {/* AI Quick Prompts Ribbon (Above Input) */}
+                {recipientId === 'ai_assistant' && (
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2 px-1 text-xs">
+                    <span className="text-[10px] font-black text-gray-400 shrink-0">اقتراحات سريعة:</span>
+                    {[
+                      '🔍 ابحث لي عن هاتف',
+                      '🍯 عسل يمني أصلي',
+                      '📦 شروط الحجز والعربون',
+                      '🚚 ضمان وشحن المنصة'
+                    ].map((chip, cIdx) => (
+                      <button
+                        key={cIdx}
+                        type="button"
+                        onClick={() => sendQuickMessage(chip)}
+                        className="text-[11px] font-bold px-3 py-1 rounded-full bg-indigo-50 dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-slate-700 hover:border-indigo-400 shrink-0 transition active:scale-95"
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {/* Image Previews */}
                 {selectedImages.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-2 animate-in slide-in-from-bottom-2 px-2">
                     {selectedImages.map((img, idx) => (
                       <div key={idx} className="relative group w-14 h-14 md:w-20 md:h-20">
-                        <img src={img} className="w-full h-full object-cover rounded-xl border border-gray-100" />
+                        <img src={img} className="w-full h-full object-cover rounded-xl border border-gray-100" alt="" />
                         <button 
                           type="button"
                           onClick={() => removeImage(idx)}
@@ -892,7 +1262,19 @@ export default function Contact() {
                     ))}
                   </div>
                 )}
-                <form onSubmit={handleSendMessage} className="flex items-center gap-3">
+                <form onSubmit={handleSendMessage} className="flex items-center gap-2 sm:gap-3">
+                   <button 
+                      type="button" 
+                      onClick={() => imageInputRef.current?.click()}
+                      className={`w-11 h-11 md:w-12 md:h-12 rounded-2xl flex items-center justify-center transition shrink-0 border ${
+                        isDarkMode 
+                          ? 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700' 
+                          : 'bg-gray-50 border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                      }`}
+                      title="إرفاق صور"
+                   >
+                      <Camera className="w-5 h-5" />
+                   </button>
                    <input 
                       type="file" 
                       multiple 
@@ -901,35 +1283,48 @@ export default function Contact() {
                       onChange={handleImageSelect} 
                       className="hidden" 
                    />
-                   <button 
-                      type="button" 
-                      onClick={() => imageInputRef.current?.click()}
-                      className="p-3 text-gray-400 hover:bg-gray-50 rounded-full transition shrink-0"
-                   >
-                      <Camera className="w-6 h-6" />
-                   </button>
                    <div className="flex-1 relative">
                       <textarea 
+                        rows={1}
                         value={text}
-                        onChange={e => setText(e.target.value)}
+                        onChange={e => {
+                          setText(e.target.value);
+                          e.target.style.height = 'auto';
+                          e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                        }}
                         onKeyDown={e => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
                             handleSendMessage(e);
                           }
                         }}
-                        placeholder="اكتب رسالتك بلهجتك اليمنية..."
-                        className={`w-full ${isDarkMode ? "bg-slate-800 border-slate-700 text-white placeholder-slate-500" : "bg-gray-50 border-gray-100 text-slate-900 placeholder-slate-400"} border rounded-2xl px-6 py-3.5 text-[15px] resize-none outline-none transition-all max-h-32`}
-
-                        rows={1}
+                        placeholder={
+                          recipientId === 'ai_assistant'
+                            ? "اسأل المساعد الذكي عن أي منتج أو خدمة..."
+                            : "اكتب رسالتك هنا..."
+                        }
+                        className={`w-full min-h-[44px] max-h-32 leading-relaxed ${
+                          isDarkMode 
+                            ? "bg-slate-800/90 border-slate-700 text-white placeholder-slate-400 focus:border-indigo-500" 
+                            : "bg-gray-50 border-gray-200 text-slate-900 placeholder-gray-400 focus:border-blue-500"
+                        } border rounded-2xl px-4 py-2.5 text-sm md:text-[15px] resize-none outline-none transition-all`}
+                        disabled={isAiThinking}
                       />
                    </div>
                    <button 
                       type="submit"
-                      disabled={isSending || (!text.trim() && selectedImages.length === 0)}
-                      className={`${getThemeClasses('bg')} text-white p-4 rounded-2xl shadow-xl transition-all duration-300 active:scale-95 disabled:grayscale disabled:opacity-20 flex items-center justify-center shrink-0 hover:brightness-110 shadow-blue-500/20`}
+                      disabled={isSending || isAiThinking || (!text.trim() && selectedImages.length === 0)}
+                      className={`w-11 h-11 md:w-12 md:h-12 rounded-2xl shadow-md transition-all duration-300 active:scale-95 flex items-center justify-center shrink-0 ${
+                        isSending || isAiThinking || (!text.trim() && selectedImages.length === 0)
+                          ? (isDarkMode ? 'bg-slate-800 text-slate-500 border border-slate-700' : 'bg-gray-100 text-gray-400 border border-gray-200')
+                          : `${getThemeClasses('bg')} text-white hover:brightness-110 shadow-blue-500/20`
+                      }`}
                    >
-                      <Send className="w-6 h-6 rtl:-scale-x-100" />
+                      {isAiThinking ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <Send className="w-5 h-5 rtl:-scale-x-100" />
+                      )}
                    </button>
                 </form>
              </div>

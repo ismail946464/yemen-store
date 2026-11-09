@@ -40,12 +40,12 @@ const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800, quali
   });
 };
 
-const DEFAULT_FALLBACK_WALLETS: MerchantWallet[] = [
+const getDefaultFallbackWallets = (storeName: string = 'يمن ستور'): MerchantWallet[] => [
   {
     id: 'kuraimi-default',
     name: 'الكريمي كاش (Kuraimi)',
     accountNumber: '777000000',
-    accountName: 'متجر يمن ستور الرسمي',
+    accountName: `متجر ${storeName} الرسمي`,
     transferType: 'subscriber',
     isActive: true,
     notes: 'تحويل مباشر لحساب المشترك عبر تطبيق كريمي جوال أو صرافات الكريمي'
@@ -54,7 +54,7 @@ const DEFAULT_FALLBACK_WALLETS: MerchantWallet[] = [
     id: 'jawali-default',
     name: 'محفظة جوالي (Jawali)',
     accountNumber: '777111222',
-    accountName: 'متجر يمن ستور الرسمي',
+    accountName: `متجر ${storeName} الرسمي`,
     transferType: 'subscriber',
     isActive: true,
     notes: 'تحويل لمشترك جوالي فوري'
@@ -63,7 +63,7 @@ const DEFAULT_FALLBACK_WALLETS: MerchantWallet[] = [
     id: 'jeeb-default',
     name: 'محفظة جيب (Jeeb)',
     accountNumber: '777333444',
-    accountName: 'متجر يمن ستور الرسمي',
+    accountName: `متجر ${storeName} الرسمي`,
     transferType: 'subscriber',
     isActive: true,
     notes: 'تحويل مباشر عبر محفظة جيب'
@@ -71,7 +71,9 @@ const DEFAULT_FALLBACK_WALLETS: MerchantWallet[] = [
 ];
 
 export default function Cart() {
-  const { cart, removeFromCart, cartTotal, user, userData, clearCart, isDarkMode, getThemeClasses } = useAppContext();
+  const { cart, removeFromCart, cartTotal, user, userData, clearCart, isDarkMode, getThemeClasses, settings } = useAppContext();
+  const currentStoreName = settings?.storeName || 'يمن ستور';
+  const defaultWallets = getDefaultFallbackWallets(currentStoreName);
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'wallet'>('cod');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [location, setLocation] = useState<{lat: number, lng: number} | null>(null);
@@ -117,7 +119,7 @@ export default function Cart() {
 
         // If still none, use defaults
         if (loaded.length === 0) {
-          loaded = DEFAULT_FALLBACK_WALLETS;
+          loaded = defaultWallets;
         }
 
         setMerchantWallets(loaded);
@@ -126,8 +128,8 @@ export default function Cart() {
         }
       } catch (err) {
         console.error('Error fetching wallets in cart:', err);
-        setMerchantWallets(DEFAULT_FALLBACK_WALLETS);
-        setSelectedWallet(DEFAULT_FALLBACK_WALLETS[0]);
+        setMerchantWallets(defaultWallets);
+        setSelectedWallet(defaultWallets[0]);
       }
     };
 
@@ -276,7 +278,7 @@ export default function Cart() {
     try {
       const orderData = {
         userId: user?.uid,
-        customerName: userData?.displayName || userData?.name || user?.displayName || 'عميل يمن ستور',
+        customerName: userData?.displayName || userData?.name || user?.displayName || `عميل ${currentStoreName}`,
         customerEmail: user?.email || '',
         customerPhone: customerPhone.trim() || userData?.phone || '',
         customerNotes: customerNotes.trim(),
