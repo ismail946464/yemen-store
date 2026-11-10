@@ -73,6 +73,7 @@ export default function Orders() {
     switch (status) {
       case 'pending': return <Clock className="h-5 w-5 text-orange-500" />;
       case 'processing': return <Package className="h-5 w-5 text-blue-500" />;
+      case 'out_for_delivery': return <Truck className="h-5 w-5 text-amber-500 animate-pulse" />;
       case 'shipped': return <Truck className="h-5 w-5 text-purple-500" />;
       case 'delivered': return <CheckCircle2 className="h-5 w-5 text-green-500" />;
       case 'cancelled': return <XCircle className="h-5 w-5 text-red-500" />;
@@ -86,14 +87,14 @@ export default function Orders() {
   const getStatusText = (status: string, isPreOrder?: boolean) => {
     switch (status) {
       case 'pending': return isPreOrder ? 'بانتظار تأكيد العربون' : 'قيد الانتظار';
+      case 'out_for_delivery': return 'في الطريق مع المندوب 🛵';
       case 'reserved': return 'حجز مسبق مؤكد';
       case 'deposit_paid': return 'تم سداد العربون بنجاح';
-      case 'processing': return 'قيد التجهيز';
-      case 'shipped': return 'في الطريق';
-      case 'delivered': return 'تم التسليم النهائي';
+      case 'processing': return 'جاري التجهيز';
+      case 'shipped': return 'تم الشحن';
+      case 'delivered': return 'تم الاستلام بنجاح';
       case 'cancelled': return 'ملغي';
-      case 'reservation_expired': return 'انتهت مدة الحجز (مُصادر)';
-      default: return status;
+      case 'reservation_expired': return 'انتهت مهلة الحجز المسبق';
     }
   };
 

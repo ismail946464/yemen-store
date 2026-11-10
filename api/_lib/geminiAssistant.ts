@@ -31,19 +31,49 @@ export interface AssistantChatResponse {
   provider: 'gemini' | 'local_catalog';
 }
 
-function getGeminiClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.trim() === '') {
+export function getGeminiClient(customApiKey?: string): GoogleGenAI | null {
+  const apiKey = (customApiKey && customApiKey.trim() !== '') 
+    ? customApiKey.trim() 
+    : (process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY || process.env.API_KEY || '').trim();
+
+  if (!apiKey) {
     return null;
   }
   return new GoogleGenAI({
-    apiKey: apiKey.trim(),
+    apiKey,
     httpOptions: {
       headers: {
         'User-Agent': 'aistudio-build'
       }
     }
   });
+}
+
+export async function testGeminiConnection(customApiKey?: string): Promise<{ success: boolean; message: string; model?: string }> {
+  const ai = getGeminiClient(customApiKey);
+  if (!ai) {
+    return {
+      success: false,
+      message: 'لم يتم العثور على مفتاح Gemini API. يرجى إدخال المفتاح أولاً.'
+    };
+  }
+
+  try {
+    const res = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: 'مرحباً، أجب بكلمة واحدة: متصل'
+    });
+    return {
+      success: true,
+      message: 'تم الاتصال بنموذج Google Gemini بنجاح! الذكاء الاصطناعي جاهز للعمل.',
+      model: 'gemini-3.8-flash'
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: `فشل الاتصال بـ Gemini: ${err?.message || 'تأكد من صحة المفتاح وتفعيل الحصة'}`
+    };
+  }
 }
 
 /**
@@ -125,7 +155,7 @@ export async function processAssistantMessage(
     };
   }
 
-  const ai = getGeminiClient();
+  const ai = getGeminiClient(storeSettings?.geminiApiKey);
 
   // If no Gemini client / API key, use rich local catalog search
   if (!ai) {

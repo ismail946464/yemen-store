@@ -281,6 +281,29 @@ export default function AdminDashboard() {
   const [showQrModal, setShowQrModal] = useState(false);
   const [storePublicUrl, setStorePublicUrl] = useState('');
   const [viewingOrder, setViewingOrder] = useState<any | null>(null);
+  const [isTestingGemini, setIsTestingGemini] = useState(false);
+
+  const handleTestGeminiKey = async () => {
+    setIsTestingGemini(true);
+    const toastId = toast.loading('جاري اختبار الاتصال بنموذج Google Gemini...');
+    try {
+      const res = await fetch('/api/ai/test-gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: localSettings.geminiApiKey })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message || 'تم الاتصال بنجاح بـ Google Gemini!', { id: toastId });
+      } else {
+        toast.error(data.message || 'فشل الاتصال بـ Gemini', { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error('حدث خطأ في الاتصال: ' + err.message, { id: toastId });
+    } finally {
+      setIsTestingGemini(false);
+    }
+  };
 
   // Initial Data Fetch
   useEffect(() => {
@@ -1869,6 +1892,7 @@ export default function AdminDashboard() {
                                        }`}
                                      >
                                         <option value="user">عضو عادي</option>
+                                        <option value="delivery">مندوب توصيل 🛵</option>
                                         <option value="store">متجر رسمي</option>
                                         <option value="admin">مدير نظام</option>
                                      </select>
@@ -1949,6 +1973,62 @@ export default function AdminDashboard() {
                                placeholder="انسخ الرابط من زر 'Share' في الأعلى"
                                extra="هذا الرابط هو الذي يجب أن تشاركه مع الآخرين"
                              />
+                           </div>
+
+                           {/* Google Gemini API Key Section for Production */}
+                           <div className="bg-gradient-to-br from-indigo-50/90 via-purple-50/50 to-blue-50/80 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-slate-900 p-6 rounded-3xl border border-indigo-200 dark:border-indigo-800 space-y-4">
+                             <div className="flex items-center justify-between">
+                               <div className="flex items-center gap-2.5">
+                                 <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md">
+                                   <Sparkles className="w-5 h-5 text-yellow-300 animate-pulse" />
+                                 </div>
+                                 <div>
+                                   <h4 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+                                     <span>🤖</span>
+                                     مفتاح Google Gemini API للذكاء الاصطناعي
+                                   </h4>
+                                   <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                                     يربط مساعد المتجر الذكي في المحادثات بنموذج Gemini ليعمل في بيئة النشر 24/7 دون توقف
+                                   </p>
+                                 </div>
+                               </div>
+                                <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${localSettings.geminiApiKey ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"}`}>
+
+                                 {localSettings.geminiApiKey ? 'مفتاح مضاف ✓' : 'مطلوب مفتاح'}
+                               </span>
+                             </div>
+
+                             <div className="space-y-2">
+                               <AdminInput 
+                                 label="مفتاح Gemini API" 
+                                 value={localSettings.geminiApiKey || ''} 
+                                 onChange={(v: any) => setLocalSettings({...localSettings, geminiApiKey: v})} 
+                                 placeholder="AIzaSy..." 
+                                 extra="احصل على مفتاح مجاني وسريع من Google AI Studio (aistudio.google.com/app/apikey)."
+                               />
+                             </div>
+
+                             <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                               <button
+                                 type="button"
+                                 onClick={handleTestGeminiKey}
+                                 disabled={isTestingGemini}
+                                 className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-md shadow-indigo-600/20 active:scale-95 transition flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                               >
+                                 <Sparkles className="w-4 h-4 text-yellow-300" />
+                                 {isTestingGemini ? 'جاري الفحص...' : 'اختبار اتصال Gemini ⚡'}
+                               </button>
+
+                               <a 
+                                 href="https://aistudio.google.com/app/apikey" 
+                                 target="_blank" 
+                                 rel="noopener noreferrer" 
+                                 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                               >
+                                 الحصول على مفتاح API مجاناً
+                                 <ExternalLink className="w-3.5 h-3.5" />
+                               </a>
+                             </div>
                            </div>
                            <AdminInput label="المعرف العالمي (Handle)" value={localSettings.storeHandle || ''} onChange={(v: any) => setLocalSettings({...localSettings, storeHandle: v})} />
                         </div>

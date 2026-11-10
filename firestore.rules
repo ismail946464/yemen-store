@@ -47,7 +47,7 @@ service cloud.firestore {
         && (!('phone' in data) || (data.phone is string && data.phone.size() <= 50))
         && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 2000000))
         && (!('pointsBalance' in data) || (data.pointsBalance is number))
-        && (!('role' in data) || data.role in ['user', 'store', 'admin'])
+        && (!('role' in data) || data.role in ['user', 'store', 'admin', 'delivery'])
         && (!('agreedToDisclaimer' in data) || data.agreedToDisclaimer is bool)
         && (!('lastSeen' in data) || data.lastSeen is string)
         && (!('isOnline' in data) || data.isOnline is bool)
@@ -55,7 +55,7 @@ service cloud.firestore {
     }
 
     function isValidStoreProfile(data) {
-      return data.keys().hasAny(['userId', 'name', 'description', 'bannerUrl', 'logoUrl', 'whatsapp', 'tiktok', 'instagram', 'ratingCount', 'averageRating', 'averageCredibility', 'updatedAt', 'lastSeen', 'seoTitle', 'seoDescription', 'verified', 'verifiedUntil'])
+      return data.keys().hasAny(['userId', 'name', 'description', 'bannerUrl', 'logoUrl', 'whatsapp', 'tiktok', 'instagram', 'ratingCount', 'averageRating', 'averageCredibility', 'updatedAt', 'lastSeen', 'seoTitle', 'seoDescription', 'verified', 'verifiedUntil', 'address', 'city', 'phone'])
         && (!('userId' in data) || (data.userId is string && data.userId.size() <= 128))
         && (!('name' in data) || (data.name is string && data.name.size() <= 200))
         && (!('description' in data) || (data.description is string && data.description.size() <= 2000))
@@ -64,6 +64,9 @@ service cloud.firestore {
         && (!('verified' in data) || data.verified is bool)
         && (!('verifiedUntil' in data) || data.verifiedUntil is string || data.verifiedUntil == null)
         && (!('whatsapp' in data) || (data.whatsapp is string && data.whatsapp.size() <= 100))
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 100))
+        && (!('address' in data) || (data.address is string && data.address.size() <= 500))
+        && (!('city' in data) || (data.city is string && data.city.size() <= 100))
         && (!('tiktok' in data) || (data.tiktok is string && data.tiktok.size() <= 500))
         && (!('instagram' in data) || (data.instagram is string && data.instagram.size() <= 500))
         && (!('seoTitle' in data) || (data.seoTitle is string && data.seoTitle.size() <= 200))
@@ -224,9 +227,17 @@ service cloud.firestore {
     }
     
     function isValidSettings(data) {
-      return data.keys().hasAny(['storeName', 'storeLogo', 'storeTheme', 'storeFont', 'heroBanner', 'heroTitle', 'heroSubtitle', 'heroButtonText', 'heroLink', 'showHeroBanner', 'adminContacts', 'bannerMessage', 'themeColor', 'customCss', 'features', 'storeFonts', 'seoTitle', 'seoDescription', 'seoKeywords', 'cleanupMonths', 'autoCleanupEnabled'])
+      return data.keys().hasAny(['storeName', 'storeLogo', 'storeTheme', 'storeFont', 'heroBanner', 'heroTitle', 'heroSubtitle', 'heroButtonText', 'heroLink', 'showHeroBanner', 'adminContacts', 'bannerMessage', 'themeColor', 'customCss', 'features', 'storeFonts', 'seoTitle', 'seoDescription', 'seoKeywords', 'cleanupMonths', 'autoCleanupEnabled', 'geminiApiKey', 'siteIcon', 'siteIconShape', 'siteIconBg', 'siteIconSize', 'siteIconBorder', 'storePublicUrl', 'storeHandle'])
         && (!('storeName' in data) || (data.storeName is string && data.storeName.size() <= 1000))
         && (!('storeLogo' in data) || (data.storeLogo is string && data.storeLogo.size() <= 2000000))
+        && (!('siteIcon' in data) || (data.siteIcon is string && data.siteIcon.size() <= 2000000))
+        && (!('siteIconShape' in data) || (data.siteIconShape is string && data.siteIconShape.size() <= 50))
+        && (!('siteIconBg' in data) || (data.siteIconBg is string && data.siteIconBg.size() <= 50))
+        && (!('siteIconSize' in data) || (data.siteIconSize is string && data.siteIconSize.size() <= 50))
+        && (!('siteIconBorder' in data) || data.siteIconBorder is bool)
+        && (!('storePublicUrl' in data) || (data.storePublicUrl is string && data.storePublicUrl.size() <= 2000))
+        && (!('storeHandle' in data) || (data.storeHandle is string && data.storeHandle.size() <= 100))
+        && (!('geminiApiKey' in data) || (data.geminiApiKey is string && data.geminiApiKey.size() <= 300))
         && (!('storeTheme' in data) || (data.storeTheme is string && data.storeTheme.size() <= 100))
         && (!('storeFont' in data) || (data.storeFont is string && data.storeFont.size() <= 100))
         && (!('heroBanner' in data) || (data.heroBanner is string && data.heroBanner.size() <= 2000000))
@@ -277,7 +288,7 @@ service cloud.firestore {
         && data.userId is string 
         && data.items is list && data.items.size() > 0 && data.items.size() <= 100
         && data.total is number && data.total >= 0
-        && data.status in ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'reserved', 'deposit_paid', 'reservation_expired']
+        && data.status in ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'reserved', 'deposit_paid', 'reservation_expired', 'out_for_delivery']
         && (!('paymentMethod' in data) || (data.paymentMethod is string && data.paymentMethod.size() <= 50))
         && (!('createdAt' in data) || data.createdAt is string)
         && (!('storeId' in data) || (data.storeId is string && data.storeId.size() <= 128))
@@ -296,7 +307,17 @@ service cloud.firestore {
         && (!('reservationExpiresAt' in data) || (data.reservationExpiresAt is string && data.reservationExpiresAt.size() <= 100))
         && (!('reservationStatus' in data) || (data.reservationStatus is string && data.reservationStatus.size() <= 50))
         && (!('reservationTerms' in data) || (data.reservationTerms is string && data.reservationTerms.size() <= 2000))
-        && (!('location' in data) || (data.location == null || (data.location.keys().hasAll(['lat', 'lng']) && data.location.lat is number && data.location.lng is number)));
+        && (!('location' in data) || (data.location == null || (data.location.keys().hasAll(['lat', 'lng']) && data.location.lat is number && data.location.lng is number)))
+        && (!('courierId' in data) || data.courierId == null || (data.courierId is string && data.courierId.size() <= 128))
+        && (!('courierName' in data) || data.courierName == null || (data.courierName is string && data.courierName.size() <= 200))
+        && (!('courierPhone' in data) || data.courierPhone == null || (data.courierPhone is string && data.courierPhone.size() <= 100))
+        && (!('deliveryStatus' in data) || data.deliveryStatus == null || (data.deliveryStatus is string && data.deliveryStatus.size() <= 50))
+        && (!('deliveryNotes' in data) || data.deliveryNotes == null || (data.deliveryNotes is string && data.deliveryNotes.size() <= 2000))
+        && (!('storeName' in data) || (data.storeName is string && data.storeName.size() <= 200))
+        && (!('storeAddress' in data) || (data.storeAddress is string && data.storeAddress.size() <= 500))
+        && (!('storePhone' in data) || (data.storePhone is string && data.storePhone.size() <= 100))
+        && (!('customerAddress' in data) || (data.customerAddress is string && data.customerAddress.size() <= 500))
+        && (!('deliveryFee' in data) || data.deliveryFee is number);
     }
 
     match /orders/{orderId} {
@@ -387,7 +408,7 @@ service cloud.firestore {
         && data.email is string && data.email.size() <= 200
         && data.name is string && data.name.size() <= 100
         && data.password is string && data.password.size() <= 100
-        && data.role in ['admin', 'store', 'user']
+        && data.role in ['admin', 'store', 'user', 'delivery']
         && data.status in ['active', 'suspended']
         && (!('phone' in data) || (data.phone is string && data.phone.size() <= 50))
         && (!('pointsBalance' in data) || data.pointsBalance is number)

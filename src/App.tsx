@@ -4,7 +4,7 @@
  */
 
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Home, Store, MapPin, Search, ShoppingBag, User as UserIcon, Bot, Menu, X, MessageSquare, PhoneCall, Users, TrendingUp, Sparkles } from 'lucide-react';
+import { Home, Store, MapPin, Search, ShoppingBag, User as UserIcon, Bot, Menu, X, MessageSquare, PhoneCall, Users, TrendingUp, Sparkles, Bike } from 'lucide-react';
 import { AppProvider, useAppContext } from './AppContext';
 import { Toaster } from 'react-hot-toast';
 import { useState, useEffect } from 'react';
@@ -21,6 +21,7 @@ import Contact from './pages/Contact';
 import StoreProfile from './pages/StoreProfile';
 import ProductDetail from './pages/ProductDetail';
 import StoreSearch from './pages/StoreSearch';
+import DeliveryPortal from './pages/DeliveryPortal';
 import NotificationCenter from './components/NotificationCenter';
 import BottomNav from './components/BottomNav';
 import LoginModal from './components/LoginModal';
@@ -28,7 +29,7 @@ import LoginPage from './pages/LoginPage';
 import SafetyGuide from './pages/SafetyGuide';
 
 function Header() {
-    const { user, userData, isAdmin, isStore, login, logout, cart, settings, getThemeClasses, unreadCount, globalStats, isDarkMode } = useAppContext();
+    const { user, userData, isAdmin, isStore, isDelivery, login, logout, cart, settings, getThemeClasses, unreadCount, globalStats, isDarkMode } = useAppContext();
     const navigate = useNavigate();
     const [showContactModal, setShowContactModal] = useState(false);
     
@@ -126,6 +127,19 @@ function Header() {
                   <span className="hidden md:inline font-bold">المساعد الذكي</span>
                   <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-purple-600 text-white leading-none">AI</span>
                 </Link>
+
+                {/* Delivery Courier Shortcut */}
+                {(isDelivery || isAdmin) && (
+                  <Link 
+                    to="/delivery"
+                    title="بوابة مندوب التوصيل"
+                    className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-2xl text-xs font-bold transition shadow-sm border bg-amber-50/80 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60"
+                  >
+                    <Bike className="w-4 h-4 text-amber-600 animate-pulse" />
+                    <span className="hidden md:inline font-bold">التوصيل</span>
+                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-amber-600 text-white leading-none">🛵</span>
+                  </Link>
+                )}
 
                 {user ? (
                   <div className="flex items-center gap-1 sm:gap-3">
@@ -278,12 +292,13 @@ function MainLayout() {
 
   const storeFont = settings?.storeFont || 'tajawal';
   const fontClass = `font-${storeFont}`;
+  const isContactPage = location.pathname === '/contact';
 
   return (
     <div 
       id="app-root" 
       data-theme={effectiveTheme}
-      className={`min-h-screen flex flex-col transition-all duration-300 ${getThemeClasses('pageBg')} ${isDarkMode ? 'dark text-white' : 'text-neutral-950 font-medium'} ${fontClass}`} 
+      className={`${isContactPage ? 'h-[100dvh] max-h-[100dvh] overflow-hidden' : 'min-h-screen'} flex flex-col transition-all duration-300 ${getThemeClasses('pageBg')} ${isDarkMode ? 'dark text-white' : 'text-neutral-950 font-medium'} ${fontClass}`} 
       dir="rtl"
     >
       {settings?.customCss && (
@@ -298,7 +313,7 @@ function MainLayout() {
         onClose={closeLoginModal} 
         initialEmail={loginModalInitialEmail} 
       />
-      <main className={`flex-1 w-full pb-24 sm:pb-28 ${isIndependentStore ? '' : 'max-w-7xl mx-auto p-4 sm:p-6 lg:p-8'}`}>
+      <main className={`flex-1 w-full ${isIndependentStore ? '' : isContactPage ? 'p-0 m-0 pb-16 md:pb-0 overflow-hidden flex flex-col min-h-0' : 'pb-24 sm:pb-28 max-w-7xl mx-auto p-4 sm:p-6 lg:p-8'}`}>
         <Routes>
           <Route path="/" element={<StoreFront />} />
           <Route path="/login" element={<LoginPage />} />
@@ -308,6 +323,7 @@ function MainLayout() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/product/:productId" element={<ProductDetail />} />
           <Route path="/contact" element={<Contact />} />
+          <Route path="/delivery" element={<DeliveryPortal />} />
           <Route path="/store/:userId" element={<StoreProfile />} />
           <Route path="/s/:slug" element={<StoreSite />} />
           <Route path="/s/:slug/cart" element={<Cart />} />

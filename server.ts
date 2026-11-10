@@ -13,7 +13,7 @@ import {
   processAdminDeleteAccount,
   processAdminCreateAccount
 } from "./api/_lib/accountService.js";
-import { processAssistantMessage } from "./api/_lib/geminiAssistant.js";
+import { processAssistantMessage, testGeminiConnection } from "./api/_lib/geminiAssistant.js";
 
 async function startServer() {
   const app = express();
@@ -287,6 +287,23 @@ async function startServer() {
     try {
       const { message, history, catalogProducts, catalog, storeSettings } = req.body || {};
 
+      let effectiveSettings = storeSettings || {};
+
+      // If geminiApiKey not provided in request and db has settings/global, fetch from DB
+      if (!effectiveSettings.geminiApiKey && db && hasServiceAccount) {
+        try {
+          const settingsSnap = await db.collection("settings").doc("global").get();
+          if (settingsSnap.exists) {
+            const data = settingsSnap.data();
+            if (data?.geminiApiKey) {
+              effectiveSettings = { ...effectiveSettings, geminiApiKey: data.geminiApiKey };
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       let products = catalogProducts || catalog;
       if ((!products || products.length === 0) && db && hasServiceAccount) {
         try {
@@ -301,7 +318,7 @@ async function startServer() {
         message: String(message || ""),
         history: Array.isArray(history) ? history : [],
         catalogProducts: Array.isArray(products) ? products : [],
-        storeSettings: storeSettings || {}
+        storeSettings: effectiveSettings
       });
 
       return res.json({ success: true, ...response });
@@ -313,6 +330,28 @@ async function startServer() {
         products: [],
         provider: "error"
       });
+    }
+  });
+
+  // 6.1 Test Gemini API Connection
+  app.post("/api/ai/test-gemini", async (req, res) => {
+    try {
+      const { apiKey } = req.body || {};
+      let keyToTest = apiKey;
+
+      if (!keyToTest && db && hasServiceAccount) {
+        try {
+          const snap = await db.collection("settings").doc("global").get();
+          if (snap.exists && snap.data()?.geminiApiKey) {
+            keyToTest = snap.data()?.geminiApiKey;
+          }
+        } catch {}
+      }
+
+      const result = await testGeminiConnection(keyToTest);
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err?.message || "Internal error" });
     }
   });
 

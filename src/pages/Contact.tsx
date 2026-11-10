@@ -31,7 +31,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { askStoreAssistant } from '../services/geminiService';
 
 export default function Contact() {
-  const { userData, user, getThemeClasses, isAdmin, isStore, settings, markMessagesAsRead, isDarkMode } = useAppContext();
+  const { userData, user, getThemeClasses, isAdmin, isStore, settings, markMessagesAsRead, isDarkMode, openLoginModal } = useAppContext();
   const currentStoreName = settings?.storeName || 'يمن ستور';
   const aiAssistantName = `مساعد ${currentStoreName} الذكي`;
   const navigate = useNavigate();
@@ -120,6 +120,20 @@ export default function Contact() {
   const [activeTab, setActiveTab] = useState<'messages' | 'orders'>('messages');
   
   const [messages, setMessages] = useState<any[]>([]);
+  const [guestMessages, setGuestMessages] = useState<any[]>(() => [
+    {
+      id: 'guest_welcome',
+      text: `مرحباً بك في متجر ${currentStoreName}! ✨\nأنا مساعدك الذكي المعتمد المدعوم بنموذج Google Gemini. أنا هنا لمساعدتك في البحث عن أي منتج، معرفة الأسعار، أو الاستفسار عن الشحن والتوصيل والحجز المسبق في المتجر. بماذا تود البدء اليوم؟`,
+      productCards: [],
+      suggestedQuestions: [
+        'ما هي المنتجات الأكثر طلباً؟',
+        'ابحث لي عن هاتف',
+        'كيف يعمل نظام دفع العربون والحجز؟'
+      ],
+      senderId: 'ai_assistant',
+      createdAt: new Date().toISOString()
+    }
+  ]);
   const [conversations, setConversations] = useState<any[]>([]);
   const [userProfilesCache, setUserProfilesCache] = useState<Record<string, any>>({});
   const [text, setText] = useState('');
@@ -144,11 +158,11 @@ export default function Contact() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isAiThinking]);
+  }, [messages, guestMessages, isAiThinking]);
 
   // Fetch recipient info for the ACTIVE conversation header
   useEffect(() => {
-    if (!recipientId || !user) {
+    if (!recipientId || (!user && recipientId !== 'ai_assistant')) {
       setRecipientProfile(null);
       return;
     }
@@ -305,8 +319,9 @@ export default function Contact() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!text.trim() && selectedImages.length === 0) || !user) return;
-    if (recipientId && recipientId === user.uid) {
+    if (!text.trim() && selectedImages.length === 0) return;
+    if (!user && recipientId !== 'ai_assistant') return;
+    if (user && recipientId && recipientId === user.uid) {
       toast.error('لا يمكنك إرسال رسالة لنفسك');
       return;
     }
@@ -320,6 +335,52 @@ export default function Contact() {
     setText('');
     setSelectedImages([]);
     setIsSending(true);
+
+    // Guest Chat with AI Assistant
+    if (!user && recipientId === 'ai_assistant') {
+      const userGuestMsg = {
+        id: `guest_u_${Date.now()}`,
+        text: msgText,
+        senderId: 'guest',
+        createdAt: new Date().toISOString()
+      };
+      setGuestMessages(prev => [...prev, userGuestMsg]);
+      setIsAiThinking(true);
+      try {
+        const aiHistory = guestMessages.slice(-6).map(m => ({
+          role: (m.senderId === 'ai_assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
+          text: m.text || ''
+        }));
+
+        const aiRes = await askStoreAssistant({
+          message: msgText,
+          history: aiHistory,
+          catalogProducts: catalogProducts,
+          storeSettings: settings
+        });
+
+        const aiReplyMsg = {
+          id: `guest_ai_${Date.now()}`,
+          text: aiRes.reply || 'أهلاً بك! يمكنك تصفح المنتجات المتوفرة في المتجر حالياً.',
+          productCards: aiRes.products || [],
+          suggestedQuestions: aiRes.suggestedQuestions || [],
+          senderId: 'ai_assistant',
+          createdAt: new Date().toISOString()
+        };
+        setGuestMessages(prev => [...prev, aiReplyMsg]);
+      } catch (err) {
+        setGuestMessages(prev => [...prev, {
+          id: `guest_err_${Date.now()}`,
+          text: 'أعتذر، حدث تأخير بسيط. يمكنك إعادة السؤال أو البحث باسم المنتج.',
+          senderId: 'ai_assistant',
+          createdAt: new Date().toISOString()
+        }]);
+      } finally {
+        setIsAiThinking(false);
+        setIsSending(false);
+      }
+      return;
+    }
 
     try {
       const msgData = {
@@ -404,10 +465,57 @@ export default function Contact() {
   };
 
   const sendQuickMessage = async (quickPrompt: string) => {
-    if (!quickPrompt.trim() || !user || isSending || isAiThinking) return;
-    setIsSending(true);
+    if (!quickPrompt.trim() || isSending || isAiThinking) return;
+    if (!user && recipientId !== 'ai_assistant') return;
 
     const promptText = quickPrompt.trim();
+
+    // Guest AI
+    if (!user && recipientId === 'ai_assistant') {
+      setIsSending(true);
+      const userGuestMsg = {
+        id: `guest_q_${Date.now()}`,
+        text: promptText,
+        senderId: 'guest',
+        createdAt: new Date().toISOString()
+      };
+      setGuestMessages(prev => [...prev, userGuestMsg]);
+      setIsAiThinking(true);
+      try {
+        const aiHistory = guestMessages.slice(-6).map(m => ({
+          role: (m.senderId === 'ai_assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
+          text: m.text || ''
+        }));
+        const aiRes = await askStoreAssistant({
+          message: promptText,
+          history: aiHistory,
+          catalogProducts: catalogProducts,
+          storeSettings: settings
+        });
+        const aiReplyMsg = {
+          id: `guest_ai_${Date.now()}`,
+          text: aiRes.reply,
+          productCards: aiRes.products || [],
+          suggestedQuestions: aiRes.suggestedQuestions || [],
+          senderId: 'ai_assistant',
+          createdAt: new Date().toISOString()
+        };
+        setGuestMessages(prev => [...prev, aiReplyMsg]);
+      } catch (err) {
+        setGuestMessages(prev => [...prev, {
+          id: `guest_err_${Date.now()}`,
+          text: 'أعتذر، حدث تأخير بسيط. يمكنك إعادة السؤال أو كتابة استفسارك.',
+          senderId: 'ai_assistant',
+          createdAt: new Date().toISOString()
+        }]);
+      } finally {
+        setIsAiThinking(false);
+        setIsSending(false);
+      }
+      return;
+    }
+
+    setIsSending(true);
     try {
       const msgData = {
         text: promptText,
@@ -548,13 +656,35 @@ export default function Contact() {
     }
   };
 
-  if (!user) {
+  if (!user && recipientId !== 'ai_assistant') {
     return (
-      <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 m-4">
-        <MessageSquare className="w-16 h-16 text-gray-300 mb-4" />
-        <h2 className="text-xl font-bold text-gray-900 mb-2">يرجى تسجيل الدخول للمراسلة</h2>
-        <p className="text-gray-500 mb-6">يجب أن تكون عضواً لتتمكن من الدردشة مع البائعين</p>
-        <button onClick={() => window.location.href = '/'} className={`${getThemeClasses('bg')} text-white px-8 py-3 rounded-xl font-bold transition shadow-lg`}>العودة للرئيسية</button>
+      <div className="w-full max-w-xl mx-auto my-auto p-6 flex flex-col items-center justify-center text-center space-y-6">
+        <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-400 via-pink-500 to-indigo-600 p-1 shadow-xl shadow-indigo-500/20">
+          <div className="w-full h-full rounded-[22px] bg-slate-950 flex items-center justify-center text-white">
+            <Sparkles className="w-10 h-10 text-yellow-300 animate-pulse" />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-black text-gray-900 dark:text-white">مركز المحادثات والمساعد الذكي</h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm font-medium max-w-sm mx-auto leading-relaxed">
+            يمكنك الآن التحدث فوراً مع مساعد {currentStoreName} الذكي (Gemini AI) للبحث عن أي منتج ومعرفة الأسعار دون الحاجة لتسجيل الدخول.
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 w-full max-w-md pt-2">
+          <Link
+            to="/contact?to=ai_assistant"
+            className="flex-1 px-6 py-3.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-indigo-500/25 flex items-center justify-center gap-2 hover:brightness-110 active:scale-95 transition"
+          >
+            <Sparkles className="w-4 h-4 text-yellow-300" />
+            بدء محادثة المساعد الذكي
+          </Link>
+          <button
+            onClick={() => openLoginModal()}
+            className="flex-1 px-6 py-3.5 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-800 dark:text-gray-200 rounded-2xl font-black text-sm active:scale-95 transition"
+          >
+            تسجيل الدخول للمراسلة
+          </button>
+        </div>
       </div>
     );
   }
@@ -564,9 +694,10 @@ export default function Contact() {
   });
 
   const listToRender = allConversations;
+  const activeMessages = (!user && recipientId === 'ai_assistant') ? guestMessages : messages;
 
   return (
-    <div className={`max-w-6xl mx-auto h-[calc(100dvh-130px)] md:h-[calc(100vh-140px)] flex flex-col md:flex-row rounded-2xl md:rounded-3xl shadow-xl border overflow-hidden mx-2 sm:mx-4 my-2 mb-20 md:mb-4 font-tajawal relative ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+    <div className={`w-full max-w-6xl mx-auto h-full flex flex-col md:flex-row md:rounded-3xl shadow-xl md:border overflow-hidden md:my-1 min-h-0 font-tajawal relative ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
       
       {/* Sidebar */}
       <div className={`md:w-96 border-l flex flex-col min-h-0 ${isDarkMode ? 'border-slate-800' : 'border-gray-100'} ${recipientId ? 'hidden md:flex' : 'flex'}`}>
@@ -1006,13 +1137,13 @@ export default function Contact() {
                 </div>
              </div>
 
-             {/* Chat Bubbles */}
-              <div className={`flex-1 overflow-y-auto min-h-0 p-4 md:p-6 space-y-6 ${isDarkMode ? 'bg-slate-950/40' : 'bg-gray-50/20'} custom-scrollbar`}>
+              {/* Chat Bubbles */}
+              <div className={`flex-1 overflow-y-auto min-h-0 p-4 md:p-6 space-y-6 ${isDarkMode ? 'bg-slate-950/40' : 'bg-gray-50/20'} overscroll-contain touch-pan-y custom-scrollbar`}>
                 {loading ? (
                   <div className="flex items-center justify-center h-full">
                      <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
                   </div>
-                ) : messages.length === 0 ? (
+                ) : activeMessages.length === 0 ? (
                   recipientId === 'ai_assistant' ? (
                     <div className="h-full flex flex-col items-center justify-center text-center px-4 py-8 max-w-lg mx-auto">
                        <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-400 via-pink-500 to-indigo-600 p-1 shadow-xl shadow-indigo-500/25 mb-4 animate-in zoom-in duration-300">
@@ -1059,10 +1190,11 @@ export default function Contact() {
                     </div>
                   )
                 ) : (
-                  messages.map((m, i) => {
-                    const isMine = m.senderId === user.uid;
+                  activeMessages.map((m, i) => {
+                    const currentUid = user?.uid || 'guest';
+                    const isMine = m.senderId === currentUid;
                     const isAi = m.senderId === 'ai_assistant';
-                    const showDate = i === 0 || new Date(messages[i-1].createdAt).toDateString() !== new Date(m.createdAt).toDateString();
+                    const showDate = i === 0 || new Date(activeMessages[i-1].createdAt).toDateString() !== new Date(m.createdAt).toDateString();
                     
                     return (
                       <div key={m.id} className="space-y-4">
@@ -1343,9 +1475,6 @@ export default function Contact() {
            </div>
          )}
       </div>
-
-      {/* Bottom Padding for selection mode on mobile */}
-      <div className="md:hidden h-20" />
 
       {/* Delete Confirmation Modal */}
       <AnimatePresence>

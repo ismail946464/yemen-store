@@ -1,9 +1,9 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Search, ShoppingBag, MessageSquare, User, LayoutDashboard } from 'lucide-react';
+import { Home, Search, ShoppingBag, MessageSquare, User, LayoutDashboard, Bike } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 
 export default function BottomNav() {
-  const { user, cart, unreadCount, isStore, isAdmin, isDarkMode, getThemeClasses } = useAppContext();
+  const { user, cart, unreadCount, isStore, isAdmin, isDelivery, isDarkMode, getThemeClasses } = useAppContext();
   const location = useLocation();
 
   // Hide bottom nav on specific independent store URLs if needed, but show by default on all main routes
@@ -47,6 +47,16 @@ export default function BottomNav() {
       icon: User
     }
   ];
+
+  // If user is courier or admin, append quick delivery button
+  if (user && (isDelivery || isAdmin)) {
+    navItems.push({
+      id: 'delivery',
+      label: 'التوصيل',
+      path: '/delivery',
+      icon: Bike
+    });
+  }
 
   // If user is store owner or admin, append a quick dashboard button
   if (user && (isStore || isAdmin)) {

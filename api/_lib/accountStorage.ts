@@ -24,7 +24,7 @@ export interface StoreAccount {
   photoURL?: string;
   password: string;
   passwordHash?: string;
-  role: "admin" | "store" | "user";
+  role: "admin" | "store" | "user" | "delivery";
   status: "active" | "suspended";
   pointsBalance: number;
   agreedToDisclaimer: boolean;

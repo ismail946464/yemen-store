@@ -12,7 +12,7 @@ interface StoreAccountItem {
   name: string;
   phone?: string;
   password: string;
-  role: 'admin' | 'store' | 'user';
+  role: 'admin' | 'store' | 'user' | 'delivery';
   status: 'active' | 'suspended';
   createdAt: string;
   lastLoginAt?: string;
@@ -33,13 +33,13 @@ export default function StoreAccountsManagement() {
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState<'user' | 'store' | 'admin'>('user');
+  const [newRole, setNewRole] = useState<'user' | 'store' | 'admin' | 'delivery'>('user');
   const [isCreating, setIsCreating] = useState(false);
 
   // Edit password modal
   const [editingAccount, setEditingAccount] = useState<StoreAccountItem | null>(null);
   const [updatedPassword, setUpdatedPassword] = useState('');
-  const [updatedRole, setUpdatedRole] = useState<'user' | 'store' | 'admin'>('user');
+  const [updatedRole, setUpdatedRole] = useState<'user' | 'store' | 'admin' | 'delivery'>('user');
   const [isUpdating, setIsUpdating] = useState(false);
 
   // Delete modal
@@ -392,7 +392,7 @@ export default function StoreAccountsManagement() {
                               ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300'
                               : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
                         }`}>
-                          {acc.role === 'admin' ? 'مدير' : acc.role === 'store' ? 'صاحب متجر' : 'عميل'}
+                          {acc.role === 'admin' ? 'مدير' : acc.role === 'store' ? 'صاحب متجر' : acc.role === 'delivery' ? 'مندوب توصيل 🛵' : 'عميل'}
                         </span>
                       </td>
 
@@ -513,6 +513,7 @@ export default function StoreAccountsManagement() {
                   className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
                 >
                   <option value="user">عميل (User)</option>
+                  <option value="delivery">مندوب توصيل (Delivery 🛵)</option>
                   <option value="store">صاحب متجر (Store)</option>
                   <option value="admin">مسؤول نظام (Admin)</option>
                 </select>
@@ -582,6 +583,7 @@ export default function StoreAccountsManagement() {
                   className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
                 >
                   <option value="user">عميل (User)</option>
+                  <option value="delivery">مندوب توصيل (Delivery 🛵)</option>
                   <option value="store">صاحب متجر (Store)</option>
                   <option value="admin">مسؤول نظام (Admin)</option>
                 </select>

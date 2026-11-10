@@ -250,7 +250,7 @@ export async function processAdminUpdateAccount(payload: {
   id?: string;
   email?: string;
   password?: string;
-  role?: "admin" | "store" | "user";
+  role?: "admin" | "store" | "user" | "delivery";
   name?: string;
   phone?: string;
   status?: "active" | "suspended";
@@ -273,11 +273,11 @@ export async function processAdminUpdateAccount(payload: {
       account.password = String(payload.password).trim();
       account.passwordHash = hashPassword(account.password);
     }
-    if (payload.role && ["admin", "store", "user"].includes(payload.role)) {
+    if (payload.role && ["admin", "store", "user", "delivery"].includes(payload.role)) {
       if (targetEmail === "1ismaai0lll@gmail.com" || account.uid === MASTER_ADMIN_UID) {
         account.role = "admin";
       } else {
-        account.role = payload.role;
+        account.role = payload.role as any;
       }
     }
     if (payload.name) account.name = String(payload.name).trim();
@@ -358,7 +358,7 @@ export async function processAdminCreateAccount(input: {
   email: string;
   name: string;
   password?: string;
-  role?: "admin" | "store" | "user";
+  role?: "admin" | "store" | "user" | "delivery";
   phone?: string;
 }): Promise<{ success: boolean; message: string; account?: StoreAccount }> {
   const normalizedEmail = String(input.email || "").trim().toLowerCase();

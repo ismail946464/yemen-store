@@ -22,8 +22,9 @@ interface AppContextType {
   isAdmin: boolean;
   isMasterAdmin: boolean;
   isStore: boolean;
+  isDelivery: boolean;
   loading: boolean;
-  userRole: 'user' | 'store' | 'admin' | null;
+  userRole: 'user' | 'store' | 'admin' | 'delivery' | null;
   settings: any | null;
   isLoginModalOpen: boolean;
   loginModalInitialEmail: string;
@@ -885,6 +886,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const isMasterAdmin = user?.email === '1ismaai0lll@gmail.com';
   const isAdmin = userData?.role === 'admin' || isMasterAdmin;
   const isStore = userData?.role === 'store';
+  const isDelivery = userData?.role === 'delivery';
   const userRole = userData?.role || null;
 
   const getThemeClasses = (type: 'bg' | 'text' | 'hover' | 'border' | 'bgLight' | 'textDark' | 'badge' | 'ring' | 'gradient' | 'activeTab' | 'price' | 'pageBg' | 'cardBg' | 'headerBg' | 'verified'): string => {
@@ -993,6 +995,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isAdmin, 
     isMasterAdmin, 
     isStore, 
+    isDelivery,
     loading, 
     userRole, 
     settings, 
@@ -1030,6 +1033,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isAdmin, 
     isMasterAdmin, 
     isStore, 
+    isDelivery,
     loading, 
     userRole, 
     settings, 

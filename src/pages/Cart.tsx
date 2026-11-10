@@ -283,6 +283,10 @@ export default function Cart() {
         customerPhone: customerPhone.trim() || userData?.phone || '',
         customerNotes: customerNotes.trim(),
         storeId: cart[0]?.product?.ownerId || 'global',
+        storeName: cart[0]?.product?.ownerName || (settings?.storeName || 'يمن ستور'),
+        deliveryFee: cart[0]?.product?.deliveryFee || 1500,
+        deliveryStatus: 'pending_pickup',
+        customerAddress: customerNotes.trim() || 'العنوان محدد عبر الخريطة',
         items: cart.map(item => ({
           productId: item.product.id,
           title: item.product.title,
