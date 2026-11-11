@@ -46,10 +46,11 @@ function Header() {
     
     const location = useLocation();
     const isIndependentStore = location.pathname.startsWith('/s/') || location.pathname.startsWith('/store-site/');
+    const isContactPage = location.pathname === '/contact';
 
     return (
-      <header className={`${isIndependentStore ? 'hidden' : 'sticky top-0 z-50 transition-colors duration-300'}`}>
-        <div className={`border-b relative z-10 py-5 transition-colors duration-300 backdrop-blur-md ${getThemeClasses('headerBg')}`}>
+      <header className={`${isIndependentStore ? 'hidden' : isContactPage ? 'hidden md:block sticky top-0 z-50 transition-colors duration-300' : 'sticky top-0 z-50 transition-colors duration-300'}`}>
+        <div className={`border-b relative z-10 py-3.5 sm:py-4 transition-colors duration-300 backdrop-blur-md ${getThemeClasses('headerBg')}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
               <Link to="/" className="flex items-center gap-3 group">
                 <div className="relative">
@@ -61,10 +62,10 @@ function Header() {
                     const withBorder = settings?.siteIconBorder !== false && shape !== 'transparent' && bgChoice !== 'transparent';
 
                     const sizeCls = sizeChoice === 'large' 
-                      ? 'h-13 sm:h-14 min-w-[52px]' 
+                      ? 'h-11 sm:h-13 min-w-[48px]' 
                       : sizeChoice === 'compact' 
-                        ? 'h-9 sm:h-9 min-w-[36px]' 
-                        : 'h-10 sm:h-12 min-w-[42px]';
+                        ? 'h-8 sm:h-9 min-w-[34px]' 
+                        : 'h-9 sm:h-11 min-w-[38px]';
 
                     const shapeCls = shape === 'circle' 
                       ? 'rounded-full' 
@@ -77,55 +78,55 @@ function Header() {
                       : bgChoice === 'theme'
                         ? `${getThemeClasses('bg')} text-white`
                         : bgChoice === 'dark'
-                          ? 'bg-slate-900 dark:bg-black text-white'
+                          ? 'bg-neutral-900 text-white'
                           : isDarkMode 
                             ? 'bg-slate-900 border-slate-800' 
-                            : 'bg-white border-slate-100';
+                            : 'bg-white border-neutral-200';
 
                     const borderCls = withBorder 
-                      ? `border shadow-sm p-1 ${isDarkMode ? 'border-slate-800' : 'border-slate-200/80'}` 
+                      ? `border shadow-xs p-1 ${isDarkMode ? 'border-slate-800' : 'border-neutral-200'}` 
                       : 'border-0 p-0';
 
                     if (logoUrl && logoUrl.trim() !== '') {
                       return (
-                        <div className={`relative flex items-center justify-center overflow-hidden transition-transform duration-300 group-hover:scale-105 ${shapeCls} ${bgCls} ${borderCls}`}>
+                        <div className={`relative flex items-center justify-center overflow-hidden transition-transform duration-200 group-hover:scale-102 ${shapeCls} ${bgCls} ${borderCls}`}>
                           <img 
                             src={logoUrl} 
                             alt="Site Logo" 
-                            className={`${sizeCls} w-auto max-w-[150px] object-contain transition-all duration-300`} 
+                            className={`${sizeCls} w-auto max-w-[140px] object-contain transition-all duration-200`} 
                           />
                         </div>
                       );
                     }
 
                     return (
-                      <div className={`${getThemeClasses('bg')} p-2.5 rounded-2xl shadow-xl shadow-blue-500/10 group-hover:rotate-3 transition`}>
-                        <Store className="h-6 w-6 text-white" />
+                      <div className="bg-neutral-900 text-white p-2.5 rounded-2xl shadow-xs transition group-hover:bg-black">
+                        <Store className="h-5 w-5 text-white" />
                       </div>
                     );
                   })()}
                 </div>
                 <div className="flex flex-col leading-tight">
-                  <h1 className={`text-xl sm:text-2xl font-black tracking-tight transition ${getThemeClasses('text')} ${isDarkMode ? 'dark:text-white' : ''}`}>
+                  <h1 className={`text-lg sm:text-xl font-black tracking-tight transition ${getThemeClasses('text')} ${isDarkMode ? 'dark:text-white' : ''}`}>
                     {settings?.storeName || 'يمن ستور'}
                   </h1>
                 </div>
               </Link>
               
-              <div className="flex items-center gap-1.5 sm:gap-4">
-                {/* AI Shopping Assistant Button */}
+              <div className="flex items-center gap-2 sm:gap-3">
+                {/* Shopping Assistant Button - Human, clean, un-pilled */}
                 <Link 
                   to="/contact?to=ai_assistant" 
-                  title={`مساعد ${settings?.storeName || 'يمن ستور'} الذكي (Gemini AI)`}
-                  className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-2xl text-xs font-bold transition shadow-sm border ${
+                  title={`مستشار ${settings?.storeName || 'يمن ستور'} للمنتجات والأسعار`}
+                  className={`flex items-center gap-2 px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition border ${
                     isDarkMode 
-                      ? 'bg-purple-950/40 border-purple-800/60 text-purple-200 hover:bg-purple-900/60 hover:border-purple-600' 
-                      : 'bg-purple-50/80 border-purple-200 text-purple-700 hover:bg-purple-100 hover:border-purple-300'
+                      ? 'bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800' 
+                      : 'bg-neutral-50 border-neutral-200 text-neutral-800 hover:bg-neutral-100 hover:border-neutral-300'
                   }`}
                 >
-                  <Sparkles className="w-4 h-4 text-purple-500 animate-pulse" />
-                  <span className="hidden md:inline font-bold">المساعد الذكي</span>
-                  <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-purple-600 text-white leading-none">AI</span>
+                  <Bot className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
+                  <span className="hidden sm:inline font-bold">مساعد المتجر</span>
+                  <span className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 border-r pr-1.5 border-neutral-200 dark:border-neutral-700">ذكاء المتجر</span>
                 </Link>
 
                 {/* Delivery Courier Shortcut */}
@@ -133,16 +134,15 @@ function Header() {
                   <Link 
                     to="/delivery"
                     title="بوابة مندوب التوصيل"
-                    className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-2xl text-xs font-bold transition shadow-sm border bg-amber-50/80 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60"
+                    className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition border bg-neutral-100 dark:bg-slate-800 border-neutral-200 dark:border-slate-700 text-neutral-800 dark:text-slate-200 hover:bg-neutral-200"
                   >
-                    <Bike className="w-4 h-4 text-amber-600 animate-pulse" />
-                    <span className="hidden md:inline font-bold">التوصيل</span>
-                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-amber-600 text-white leading-none">🛵</span>
+                    <Bike className="w-4 h-4 text-neutral-700 dark:text-slate-300" />
+                    <span className="hidden sm:inline font-bold">التوصيل</span>
                   </Link>
                 )}
 
                 {user ? (
-                  <div className="flex items-center gap-1 sm:gap-3">
+                  <div className="flex items-center gap-1.5 sm:gap-3">
                     <NotificationCenter />
                     {/* On desktop, keep quick message and profile buttons; on mobile, BottomNav provides instant access */}
                     <Link to="/contact" className={`hidden sm:flex w-10 h-10 items-center justify-center rounded-2xl transition relative group border ${isDarkMode ? 'bg-gray-900 border-gray-800 text-gray-300 hover:bg-gray-800 hover:text-white' : 'bg-gray-50 border-gray-100 text-gray-900 hover:bg-gray-100 hover:text-black'}`}>
@@ -292,6 +292,8 @@ function MainLayout() {
 
   const storeFont = settings?.storeFont || 'tajawal';
   const fontClass = `font-${storeFont}`;
+  const searchParams = new URLSearchParams(location.search);
+  const isChatSession = location.pathname === '/contact' && (searchParams.has('to') || searchParams.has('userId'));
   const isContactPage = location.pathname === '/contact';
 
   return (
@@ -313,7 +315,15 @@ function MainLayout() {
         onClose={closeLoginModal} 
         initialEmail={loginModalInitialEmail} 
       />
-      <main className={`flex-1 w-full ${isIndependentStore ? '' : isContactPage ? 'p-0 m-0 pb-16 md:pb-0 overflow-hidden flex flex-col min-h-0' : 'pb-24 sm:pb-28 max-w-7xl mx-auto p-4 sm:p-6 lg:p-8'}`}>
+      <main className={`flex-1 w-full ${
+        isIndependentStore 
+          ? '' 
+          : isChatSession 
+            ? 'p-0 m-0 overflow-hidden flex flex-col min-h-0 h-full' 
+            : isContactPage 
+              ? 'p-0 m-0 pb-16 md:pb-0 overflow-hidden flex flex-col min-h-0' 
+              : 'pb-24 sm:pb-28 max-w-7xl mx-auto p-4 sm:p-6 lg:p-8'
+      }`}>
         <Routes>
           <Route path="/" element={<StoreFront />} />
           <Route path="/login" element={<LoginPage />} />

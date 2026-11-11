@@ -89,23 +89,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [userTheme, setUserThemeState] = useState<ThemeColor | null>(() => {
     try {
+      const resetDone = localStorage.getItem('default_white_theme_v1');
+      if (!resetDone) {
+        localStorage.setItem('user_preferred_theme', 'white');
+        localStorage.setItem('isDarkMode', JSON.stringify(false));
+        localStorage.setItem('default_white_theme_v1', 'true');
+        return 'white';
+      }
       const saved = localStorage.getItem('user_preferred_theme');
       if (saved && ['green', 'blue', 'red', 'black', 'white'].includes(saved)) {
         return saved as ThemeColor;
       }
     } catch {}
-    return null;
+    return 'white';
   });
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    const saved = localStorage.getItem('isDarkMode');
-    return saved ? JSON.parse(saved) : false;
+    try {
+      const resetDone = localStorage.getItem('default_white_theme_v1');
+      if (!resetDone) return false;
+      const savedTheme = localStorage.getItem('user_preferred_theme');
+      if (savedTheme === 'white') return false;
+      const saved = localStorage.getItem('isDarkMode');
+      return saved ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
   });
   const prevUnreadCount = useRef(0);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [globalStats, setGlobalStats] = useState({ totalVisitors: 0, totalRegistered: 0, onlineCount: 0, mainStoreLastSeen: null as string | null });
 
   const toggleDarkMode = () => {
+    if (effectiveTheme === 'white') {
+      toast('الستايل الأبيض النقي مفعل افتراضياً', { icon: '⚪' });
+      return;
+    }
     setIsDarkMode((prev: boolean) => !prev);
   };
 
@@ -119,11 +138,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ? userTheme
     : adminTheme;
 
-  // When white theme is active, enforce light mode so dark slate backgrounds do not override the pure white style
+  // When white theme is active, strictly enforce light mode so dark slate backgrounds do not override the pure white style
   const effectiveIsDarkMode = effectiveTheme === 'white' ? false : isDarkMode;
 
   const setUserTheme = async (theme: ThemeColor) => {
     setUserThemeState(theme);
+    if (theme === 'white') {
+      setIsDarkMode(false);
+      try {
+        localStorage.setItem('isDarkMode', JSON.stringify(false));
+      } catch {}
+    }
     try {
       localStorage.setItem('user_preferred_theme', theme);
       if (user) {

@@ -141,89 +141,88 @@ export default function StoreSearch() {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className={`rounded-[2.5rem] border overflow-hidden shadow-sm hover:shadow-2xl transition-all group flex flex-col h-full ${getThemeClasses('cardBg')}`}
+                className={`rounded-2xl border overflow-hidden transition-all group flex flex-col h-full ${
+                  isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-neutral-200 shadow-xs hover:border-neutral-300'
+                }`}
               >
                 {/* Store Header Image */}
-                <div className="relative h-40 bg-gray-200 overflow-hidden">
+                <div className="relative h-36 bg-neutral-100 overflow-hidden">
                   {store.profile?.bannerUrl ? (
-                    <img src={store.profile.bannerUrl} alt={store.name} className="w-full h-full object-cover group-hover:scale-110 transition duration-1000" />
+                    <img src={store.profile.bannerUrl} alt={store.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
                   ) : (
-                    <div className={`w-full h-full ${getThemeClasses('bg')} opacity-10 flex items-center justify-center`}>
-                       <Store className={`w-16 h-16 ${getThemeClasses('text')} opacity-10`} />
+                    <div className="w-full h-full bg-neutral-100 dark:bg-slate-800 flex items-center justify-center">
+                       <Store className="w-12 h-12 text-neutral-300 dark:text-neutral-600" />
                     </div>
                   )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent"></div>
                 </div>
 
-                <div className="p-6 pt-0 relative flex-1 flex flex-col">
+                <div className="p-5 pt-0 relative flex-1 flex flex-col">
                   {/* Logo Overlay */}
-                  <div className="flex justify-between items-start -mt-8 mb-4">
-                    <div className="w-20 h-20 rounded-2xl border-4 border-white overflow-hidden bg-white shadow-xl relative z-10">
+                  <div className="flex justify-between items-start -mt-7 mb-3">
+                    <div className="w-16 h-16 rounded-xl border-2 border-white dark:border-slate-900 overflow-hidden bg-white shadow-xs relative z-10">
                        {store.profile?.logoUrl || store.photoURL ? (
                          <img src={store.profile?.logoUrl || store.photoURL} alt="Logo" className="w-full h-full object-cover" />
                        ) : (
-                         <div className={`w-full h-full flex items-center justify-center ${getThemeClasses('bg')} text-white text-2xl font-black`}>
+                         <div className="w-full h-full flex items-center justify-center bg-neutral-900 text-white text-xl font-black">
                            {store.name?.charAt(0) || 'S'}
                          </div>
                        )}
                     </div>
-                    {/* Actual Rating or 'جديد' */}
-                    <div className="pt-10 flex items-center gap-1.5 text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded-full shadow-sm border border-yellow-200">
-                      <Star className="w-3.5 h-3.5 fill-yellow-500 text-yellow-500" />
-                      <span className="text-xs font-black">
+                    {/* Unboxed Tabular Rating */}
+                    <div className="pt-8 flex items-center gap-1 text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                      <span className="tabular-nums font-bold">
                         {store.profile?.averageRating && Number(store.profile.averageRating) > 0 
                           ? Number(store.profile.averageRating).toFixed(1) 
                           : 'جديد'}
                       </span>
                       {store.profile?.ratingCount && Number(store.profile.ratingCount) > 0 ? (
-                        <span className="text-[10px] text-gray-400 font-bold">({store.profile.ratingCount})</span>
+                        <span className="text-[10px] text-neutral-400 font-normal">({store.profile.ratingCount})</span>
                       ) : null}
                     </div>
                   </div>
 
-                  {/* Store Name & Verification Badge SIDE BY SIDE */}
-                  <div className="flex items-center gap-2 mb-2 flex-wrap" dir="rtl">
-                    <h3 className={`text-xl font-black transition ${isDarkMode ? 'text-white' : 'text-gray-900'} group-hover:${getThemeClasses('text')}`}>
+                  {/* Store Name & Verification Badge */}
+                  <div className="flex items-center gap-1.5 mb-2 flex-wrap" dir="rtl">
+                    <h3 className="text-base font-bold text-neutral-900 dark:text-white group-hover:text-neutral-950">
                       {store.profile?.name || store.name}
                     </h3>
                     {store.isVerified && (
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full ${getThemeClasses('bg')} text-white text-[11px] font-black shrink-0 shadow-sm`} title="متجر موثق ومعتمد رسمياً">
-                        <CheckCircle className="w-3.5 h-3.5" />
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600" title="متجر موثق ومعتمد">
+                        <CheckCircle className="w-3.5 h-3.5 fill-emerald-600 text-white" />
                         <span>موثق</span>
                       </span>
                     )}
                   </div>
 
-                  <p className={`text-sm leading-relaxed mb-6 line-clamp-2 italic font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
-                    {store.profile?.description || 'هذا المتجر لم يقم بإضافة وصف بعد، لكنه يقدم أفضل المنتجات والخدمات للعملاء.'}
+                  <p className="text-xs leading-relaxed mb-4 line-clamp-2 text-neutral-600 dark:text-neutral-400 font-medium">
+                    {store.profile?.description || 'يقدم تشكيلة مختارة من المنتجات الموثوقة مع ضمان الشحن والتوصيل السريع.'}
                   </p>
 
-                  <div className="mt-auto space-y-4">
-                    <div className="flex items-center justify-between text-[11px] font-black text-gray-700 border-t border-gray-100 dark:border-gray-800 pt-4 flex-wrap gap-2">
-                       <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
-                          <MapPin className="w-3.5 h-3.5" />
+                  <div className="mt-auto space-y-3">
+                    <div className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400 border-t border-neutral-100 dark:border-slate-800 pt-3 flex-wrap gap-2">
+                       <div className="flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-neutral-400" />
                           <span>{store.profile?.address || store.profile?.city || 'اليمن'}</span>
                        </div>
-                       <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-1 text-purple-700 bg-purple-50 dark:bg-purple-950/40 px-2 py-0.5 rounded-lg border border-purple-100 dark:border-purple-900/50">
-                             <Store className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-                             <span>{store.productCount || 0} منتج</span>
-                          </div>
+                       <div className="flex items-center gap-2 text-[11px]">
+                          <span>{store.productCount || 0} منتج</span>
                           {store.salesCount > 0 && (
-                            <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border ${getThemeClasses('bgLight')} ${getThemeClasses('border')} ${getThemeClasses('textDark')}`}>
-                               <PackageCheck className={`w-3 h-3 ${getThemeClasses('text')}`} />
-                               <span>{store.salesCount} مبيعة</span>
-                            </div>
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span>{store.salesCount} مبيعة</span>
+                            </>
                           )}
                        </div>
                     </div>
 
                     <Link
                       to={`/store/${store.id}`}
-                      className={`w-full flex items-center justify-center gap-3 py-4 rounded-[1.2rem] ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white font-bold transition shadow-lg hover:scale-[1.02] active:scale-[0.98]`}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-neutral-900 hover:bg-black text-white text-xs font-bold transition active:scale-95 shadow-xs"
                     >
                       <span>زيارة المتجر</span>
-                      <ArrowRight className="w-4 h-4 rtl:rotate-180" />
+                      <ArrowRight className="w-3.5 h-3.5 rtl:-scale-x-100" />
                     </Link>
                   </div>
                 </div>

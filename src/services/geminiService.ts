@@ -52,10 +52,18 @@ export async function askStoreAssistant(params: {
     return data;
   } catch (error: any) {
     console.warn('Store Assistant error (handled):', error?.message || error);
+    const q = (params.message || '').toLowerCase().trim();
+    const matching = (params.catalogProducts || [])
+      .filter(p => (p.title || '').toLowerCase().includes(q) || ((p.category || '')).toLowerCase().includes(q))
+      .slice(0, 4);
+
     return {
-      success: false,
-      reply: 'أهلاً بك! يمكنك البحث عن أي منتج بالاسم وسأقوم بعرض المنتجات المتاحة والأسعار فوراً.',
-      products: []
+      success: true,
+      reply: matching.length > 0 
+        ? `أهلاً بك! وجدت لك ${matching.length} منتج متوفر في المتجر يطابق استفسارك:` 
+        : 'أهلاً بك! يمكنك البحث عن أي منتج بالاسم وسأقوم بعرض تفاصيل السعر والشحن فوراً.',
+      products: matching,
+      provider: 'client_fallback'
     };
   }
 }

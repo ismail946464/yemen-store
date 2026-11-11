@@ -117,7 +117,7 @@ export default function Orders() {
           <h2 className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white mb-1">طلباتي وحجوزاتي المسبقة</h2>
           <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 font-bold">متابعة حالة طلبات الشراء والحجوزات المدفوعة بالعربون</p>
         </div>
-        <div className={`text-xs font-black px-3 py-1.5 rounded-full ${isDarkMode ? 'bg-slate-800 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+        <div className={`text-xs font-semibold px-2.5 py-1 rounded-lg border ${isDarkMode ? 'bg-slate-800 text-neutral-300 border-slate-700' : 'bg-neutral-100 text-neutral-700 border-neutral-200'}`}>
           إجمالي العمليات: {orders.length}
         </div>
       </div>
@@ -129,39 +129,39 @@ export default function Orders() {
         return (
           <div 
             key={order.id} 
-            className={`rounded-3xl shadow-sm border p-6 space-y-4 transition ${
-              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'
+            className={`rounded-2xl shadow-xs border p-5 sm:p-6 space-y-4 transition ${
+              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-neutral-200'
             } ${
-              isPreOrder ? 'border-amber-400 dark:border-amber-500 ring-2 ring-amber-400/20' : 'hover:shadow-md'
+              isPreOrder ? 'border-amber-400 dark:border-amber-500' : ''
             }`}
           >
             {/* Header info */}
-            <div className={`flex flex-wrap justify-between items-center border-b pb-4 gap-4 ${isDarkMode ? 'border-slate-800' : 'border-gray-100'}`}>
+            <div className={`flex flex-wrap justify-between items-center border-b pb-4 gap-4 ${isDarkMode ? 'border-slate-800' : 'border-neutral-200'}`}>
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
-                  isPreOrder ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400' : (isDarkMode ? 'bg-slate-800 text-gray-200' : 'bg-gray-100 text-gray-700')
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
+                  isPreOrder ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900' : (isDarkMode ? 'bg-slate-800 text-neutral-200 border-slate-700' : 'bg-neutral-100 text-neutral-700 border-neutral-200')
                 }`}>
                   {isPreOrder ? <BookmarkCheck className="w-5 h-5" /> : <Package className="w-5 h-5" />}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-black text-gray-900 dark:text-white">رقم {isPreOrder ? 'الحجز' : 'الطلب'}</p>
-                    <span className="font-mono text-xs font-bold text-gray-500 dark:text-gray-400">#{order.id.slice(0, 8)}</span>
+                    <p className="text-sm font-bold text-neutral-900 dark:text-white">رقم {isPreOrder ? 'الحجز' : 'الطلب'}</p>
+                    <span className="font-mono text-xs font-medium text-neutral-500 dark:text-neutral-400">#{order.id.slice(0, 8)}</span>
                     {isPreOrder && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-black shadow-sm">
+                      <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 text-[10px] font-bold border border-amber-300 dark:border-amber-800">
                         حجز مسبق بعربون
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 font-bold">{new Date(order.createdAt).toLocaleDateString('ar-YE')} - {new Date(order.createdAt).toLocaleTimeString('ar-YE', { hour: '2-digit', minute: '2-digit' })}</p>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">{new Date(order.createdAt).toLocaleDateString('ar-YE')} - {new Date(order.createdAt).toLocaleTimeString('ar-YE', { hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-black ${
+                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
                   isPreOrder 
-                    ? (order.status === 'reservation_expired' || isExpired ? 'bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900' : 'bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800')
-                    : (isDarkMode ? 'bg-slate-800 text-gray-200 border border-slate-700' : 'bg-gray-50 text-gray-700 border border-gray-200')
+                    ? (order.status === 'reservation_expired' || isExpired ? 'bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900' : 'bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800')
+                    : (isDarkMode ? 'bg-slate-800 text-neutral-200 border-slate-700' : 'bg-neutral-50 text-neutral-800 border-neutral-200')
                 }`}>
                   {getStatusIcon(order.status, isPreOrder)}
                   <span>{getStatusText(order.status, isPreOrder)}</span>
@@ -205,19 +205,19 @@ export default function Orders() {
             
             {/* Items */}
             <div className="space-y-2 pt-1">
-              <span className="text-[11px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest block">عناصر {isPreOrder ? 'الحجز' : 'الطلب'}:</span>
+              <span className="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest block">عناصر {isPreOrder ? 'الحجز' : 'الطلب'}:</span>
               {order.items?.map((item: any, idx: number) => (
-                <div key={idx} className={`flex justify-between items-center text-xs sm:text-sm p-3 rounded-2xl ${isDarkMode ? 'bg-slate-800/60 border border-slate-750' : 'bg-gray-50/60'}`}>
-                  <span className="font-black text-gray-800 dark:text-gray-200">{item.quantity}x {item.title}</span>
-                  <span className="font-black text-gray-900 dark:text-white">{((item.price || 0) * (item.quantity || 1)).toLocaleString()} ريال</span>
+                <div key={idx} className={`flex justify-between items-center text-xs sm:text-sm p-3 rounded-xl border ${isDarkMode ? 'bg-slate-850 border-slate-700' : 'bg-neutral-50 border-neutral-200'}`}>
+                  <span className="font-bold text-neutral-800 dark:text-neutral-200">{item.quantity}x {item.title}</span>
+                  <span className="font-black text-neutral-950 dark:text-white tabular-nums">{((item.price || 0) * (item.quantity || 1)).toLocaleString()} ريال</span>
                 </div>
               ))}
             </div>
 
             {/* Total Footer */}
-            <div className={`flex justify-between items-center pt-3 border-t ${isDarkMode ? 'border-slate-800' : 'border-gray-100'}`}>
-              <span className="text-xs font-black text-gray-600 dark:text-gray-400">القيمة الإجمالية للمنتج:</span>
-              <span className={`text-lg font-black ${getThemeClasses('price')}`}>{order.total?.toLocaleString()} ريال</span>
+            <div className={`flex justify-between items-center pt-3 border-t ${isDarkMode ? 'border-slate-800' : 'border-neutral-200'}`}>
+              <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">القيمة الإجمالية للمنتج:</span>
+              <span className="text-lg font-black text-neutral-950 dark:text-white tabular-nums">{order.total?.toLocaleString()} ريال</span>
             </div>
           </div>
         );

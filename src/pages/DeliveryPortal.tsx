@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import { 
   Bike, Package, MapPin, Navigation, Phone, MessageCircle, CheckCircle2, 
-  Clock, AlertCircle, ExternalLink, ChevronLeft, Store, User, DollarSign, 
-  TrendingUp, RefreshCw, Search, ShieldCheck
+  Clock, AlertCircle, ExternalLink, Store, User, DollarSign, 
+  RefreshCw, Search
 } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { 
   collection, 
   query, 
-  where, 
   orderBy, 
   onSnapshot, 
   doc, 
@@ -56,7 +55,7 @@ interface DeliveryOrder {
 }
 
 export default function DeliveryPortal() {
-  const { user, userData, isDelivery, isAdmin, isDarkMode, getThemeClasses, settings } = useAppContext();
+  const { user, userData, isDelivery, isAdmin, isDarkMode, settings } = useAppContext();
   const currentStoreName = settings?.storeName || 'يمن ستور';
 
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
@@ -78,7 +77,6 @@ export default function DeliveryPortal() {
 
     setLoading(true);
     const ordersRef = collection(db, 'orders');
-    // Listen to recent orders
     const q = query(ordersRef, orderBy('createdAt', 'desc'), limit(100));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -99,66 +97,44 @@ export default function DeliveryPortal() {
               setStoreProfilesCache(prev => ({ ...prev, [sid]: sSnap.data() }));
             }
           } catch {
-            // Silently continue
+            // Handled
           }
         }
       });
-    }, (err) => {
-      console.warn("Delivery orders sync notice:", err.message);
+    }, (error) => {
+      console.warn("Orders sync error:", error);
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, [user]);
 
-  // Authorization check
-  const isAuthorizedCourier = isDelivery || isAdmin;
-
-  if (!user) {
+  // Access check: only delivery or admin can access
+  if (!user || (!isDelivery && !isAdmin)) {
     return (
-      <div className="max-w-md mx-auto my-12 p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-xl space-y-5" dir="rtl">
-        <div className="w-20 h-20 mx-auto rounded-3xl bg-amber-50 dark:bg-amber-950/50 flex items-center justify-center text-amber-600">
-          <Bike className="w-10 h-10 animate-bounce" />
-        </div>
-        <h2 className="text-2xl font-black text-gray-900 dark:text-white">بوابة مندوبي التوصيل</h2>
-        <p className="text-gray-500 text-sm font-medium leading-relaxed">
-          يرجى تسجيل الدخول بحساب مندوب التوصيل المعتمد للوصول لطلبات التوصيل ومواقع المتاجر والزبائن.
-        </p>
-        <Link 
-          to="/login"
-          className="block w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-black text-sm shadow-lg shadow-amber-500/25 active:scale-95 transition"
-        >
-          تسجيل الدخول الآن
-        </Link>
-      </div>
-    );
-  }
-
-  if (!isAuthorizedCourier) {
-    return (
-      <div className="max-w-lg mx-auto my-12 p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-xl space-y-6" dir="rtl">
-        <div className="w-20 h-20 mx-auto rounded-3xl bg-amber-50 dark:bg-amber-950/50 flex items-center justify-center text-amber-600">
-          <ShieldCheck className="w-10 h-10" />
+      <div className="max-w-xl mx-auto my-12 p-6 sm:p-8 bg-white dark:bg-slate-900 rounded-2xl border border-neutral-200 dark:border-slate-800 shadow-xs text-center space-y-6 font-tajawal" dir="rtl">
+        <div className="w-16 h-16 bg-neutral-100 dark:bg-slate-800 text-neutral-800 dark:text-neutral-200 rounded-2xl flex items-center justify-center mx-auto border border-neutral-200 dark:border-slate-700">
+          <Bike className="w-8 h-8" />
         </div>
         <div className="space-y-2">
-          <h2 className="text-2xl font-black text-gray-900 dark:text-white">بوابة مندوبي التوصيل المعتمدين</h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm font-medium leading-relaxed">
-            هذا القسم مخصص حصرياً للمندوبين برتبة <span className="font-black text-amber-600">"توصيل"</span> لاستلام وتوصيل طلبات الشراء بين المتاجر والزبائن.
+          <h2 className="text-xl sm:text-2xl font-bold text-neutral-950 dark:text-white">بوابة مندوب التوصيل المعتمد</h2>
+          <p className="text-neutral-600 dark:text-neutral-400 text-xs sm:text-sm font-medium leading-relaxed max-w-md mx-auto">
+            هذه الصفحة مخصصة لمناديب التوصيل المعتمدين في منصة {currentStoreName} لتلقي طلبات الشراء، تتبع مواقع المتاجر والزبائن على الخرائط، وتأكيد التسليم الميداني.
           </p>
         </div>
-        <div className="bg-amber-50 dark:bg-slate-800 p-4 rounded-2xl border border-amber-200 dark:border-slate-700 text-xs font-bold text-amber-900 dark:text-amber-200">
-          إذا كنت ترغب بالانضمام كمندوب توصيل معتمد في منصة {currentStoreName}، يرجى التواصل مع إدارة المتجر لترقية حسابك لرتبة توصيل.
+        <div className="p-3.5 bg-neutral-50 dark:bg-slate-800/40 rounded-xl border border-neutral-200 dark:border-slate-700 text-xs font-medium text-neutral-600 dark:text-neutral-400 leading-relaxed">
+          إذا كنت ترغب بالانضمام كمندوب توصيل معتمد في المنصة، يرجى التواصل مع إدارة المتجر لترقية حسابك لرتبة توصيل.
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3 pt-2">
           <Link
             to="/contact?to=admin"
-            className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-black text-xs shadow-md active:scale-95 transition"
+            className="flex-1 py-3 bg-neutral-900 hover:bg-black text-white rounded-xl font-bold text-xs shadow-xs active:scale-95 transition"
           >
-            مراسلة الإدارة لطلب رتبة توصيل 🛵
+            مراسلة الإدارة لطلب رتبة توصيل
           </Link>
           <Link
             to="/"
-            className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-800 dark:text-gray-200 rounded-2xl font-black text-xs active:scale-95 transition"
+            className="flex-1 py-3 bg-neutral-100 hover:bg-neutral-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-neutral-800 dark:text-neutral-200 rounded-xl font-bold text-xs active:scale-95 transition border border-neutral-200 dark:border-slate-700"
           >
             العودة للرئيسية
           </Link>
@@ -305,70 +281,91 @@ export default function DeliveryPortal() {
   return (
     <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4 space-y-6 font-tajawal" dir="rtl">
       
-      {/* Courier Identity Banner */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-amber-500 via-orange-600 to-amber-700 rounded-3xl p-6 sm:p-8 text-white shadow-2xl shadow-amber-500/20">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/20 backdrop-blur-md p-1 border border-white/30 shrink-0 flex items-center justify-center">
-              <Bike className="w-10 h-10 sm:w-12 sm:h-12 text-white" />
+      {/* Courier Identity Card - Clean Executive Architecture */}
+      <div className="bg-white dark:bg-slate-900 border border-neutral-200 dark:border-slate-800 rounded-2xl p-5 sm:p-7 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div className="flex items-start sm:items-center gap-4">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-neutral-900 text-white shrink-0 flex items-center justify-center shadow-xs">
+              <Bike className="w-6 h-6 text-white" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950 dark:text-white">
                   بوابة مندوب التوصيل
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full bg-white text-amber-900 text-[11px] font-black shadow-sm">
-                  رتبة توصيل 🛵
+                <span className="px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-slate-800 text-neutral-800 dark:text-neutral-200 text-xs font-bold border border-neutral-200 dark:border-slate-700">
+                  رتبة توصيل معتمدة
                 </span>
               </div>
-              <p className="text-white/90 text-xs sm:text-sm font-medium mt-1">
-                مرحباً بك {userData?.name || userData?.displayName || user.email}! استلم الطلبات من المتاجر وتوجه بها للزبائن بكل سهولة وملاحة GPS فورية.
+              <p className="text-neutral-500 dark:text-neutral-400 text-xs sm:text-sm font-medium leading-relaxed">
+                مرحباً بك، {userData?.name || userData?.displayName || user.displayName || 'مندوب التوصيل'} · إدارة واستلام الشحنات من المتاجر وتوصيلها للزبائن مع ملاحة GPS دقيقة
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-start md:self-auto bg-black/20 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20 text-xs font-black">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>حالة المندوب: متاح وجاهز للاستلام 🟢</span>
+          <div className="flex items-center gap-2 self-start md:self-auto px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>حالة المندوب: متاح وجاهز للاستلام</span>
           </div>
         </div>
 
-        {/* Quick Stat Badges */}
-        <div className="relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-white/20">
-          <div className="bg-white/10 backdrop-blur-sm p-3.5 rounded-2xl">
-            <div className="text-[11px] font-bold text-white/80">طلبات متاحة للاستلام</div>
-            <div className="text-2xl font-black mt-1">{availableOrders.length}</div>
+        {/* 4 Metric KPI Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-neutral-100 dark:border-slate-800">
+          <div className="bg-neutral-50 dark:bg-slate-800/40 p-3.5 rounded-xl border border-neutral-200/80 dark:border-slate-800">
+            <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400 mb-1">
+              <span className="text-[11px] font-medium">طلبات متاحة للاستلام</span>
+              <Package className="w-3.5 h-3.5" />
+            </div>
+            <div className="text-2xl font-black text-neutral-950 dark:text-white tabular-nums">{availableOrders.length}</div>
+            <span className="text-[10px] text-neutral-400 font-normal">بانتظار قبول المندوب</span>
           </div>
-          <div className="bg-white/10 backdrop-blur-sm p-3.5 rounded-2xl">
-            <div className="text-[11px] font-bold text-white/80">قيد التوصيل معي</div>
-            <div className="text-2xl font-black mt-1 text-yellow-200">{activeCourierOrders.length}</div>
+
+          <div className="bg-neutral-50 dark:bg-slate-800/40 p-3.5 rounded-xl border border-neutral-200/80 dark:border-slate-800">
+            <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400 mb-1">
+              <span className="text-[11px] font-medium">قيد التوصيل معي</span>
+              <Bike className="w-3.5 h-3.5" />
+            </div>
+            <div className="text-2xl font-black text-neutral-950 dark:text-white tabular-nums">{activeCourierOrders.length}</div>
+            <span className="text-[10px] text-neutral-400 font-normal">شحنات جارية قيد التنفيذ</span>
           </div>
-          <div className="bg-white/10 backdrop-blur-sm p-3.5 rounded-2xl">
-            <div className="text-[11px] font-bold text-white/80">تم تسليمها بنجاح</div>
-            <div className="text-2xl font-black mt-1 text-emerald-200">{deliveredOrders.length}</div>
+
+          <div className="bg-neutral-50 dark:bg-slate-800/40 p-3.5 rounded-xl border border-neutral-200/80 dark:border-slate-800">
+            <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400 mb-1">
+              <span className="text-[11px] font-medium">تم تسليمها بنجاح</span>
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            </div>
+            <div className="text-2xl font-black text-neutral-950 dark:text-white tabular-nums">{deliveredOrders.length}</div>
+            <span className="text-[10px] text-neutral-400 font-normal">عمليات تسليم مكتملة</span>
           </div>
-          <div className="bg-white/10 backdrop-blur-sm p-3.5 rounded-2xl">
-            <div className="text-[11px] font-bold text-white/80">أجور التوصيل المحققة</div>
-            <div className="text-xl sm:text-2xl font-black mt-1">{totalEarnedDeliveryFees.toLocaleString('ar-YE')} <span className="text-xs font-bold">ر.ي</span></div>
+
+          <div className="bg-neutral-50 dark:bg-slate-800/40 p-3.5 rounded-xl border border-neutral-200/80 dark:border-slate-800">
+            <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400 mb-1">
+              <span className="text-[11px] font-medium">أجور التوصيل المحققة</span>
+              <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+            </div>
+            <div className="text-xl sm:text-2xl font-black text-neutral-950 dark:text-white tabular-nums">
+              {totalEarnedDeliveryFees.toLocaleString('ar-YE')} <span className="text-xs font-normal text-neutral-500">ر.ي</span>
+            </div>
+            <span className="text-[10px] text-emerald-600 font-bold">مستحقاتك النقدية المحصلة</span>
           </div>
         </div>
       </div>
 
       {/* Tabs and Search Controls */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-1.5 p-1.5 bg-gray-100 dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="flex items-center p-1 bg-neutral-100 dark:bg-slate-800/80 rounded-xl border border-neutral-200 dark:border-slate-700 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setActiveTab('available')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
               activeTab === 'available'
-                ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                ? 'bg-white dark:bg-slate-900 text-neutral-950 dark:text-white shadow-2xs border border-neutral-200/60 dark:border-slate-700'
+                : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
             }`}
           >
-            <Package className="w-4 h-4" />
+            <Package className="w-3.5 h-3.5" />
             <span>طلبات متاحة للاستلام</span>
             {availableOrders.length > 0 && (
-              <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center">
+              <span className="px-1.5 py-0.5 rounded-md bg-neutral-900 text-white text-[10px] font-bold tabular-nums">
                 {availableOrders.length}
               </span>
             )}
@@ -376,16 +373,16 @@ export default function DeliveryPortal() {
 
           <button
             onClick={() => setActiveTab('active')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
               activeTab === 'active'
-                ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                ? 'bg-white dark:bg-slate-900 text-neutral-950 dark:text-white shadow-2xs border border-neutral-200/60 dark:border-slate-700'
+                : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
             }`}
           >
-            <Bike className="w-4 h-4" />
+            <Bike className="w-3.5 h-3.5" />
             <span>قيد التوصيل معي</span>
             {activeCourierOrders.length > 0 && (
-              <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center">
+              <span className="px-1.5 py-0.5 rounded-md bg-blue-600 text-white text-[10px] font-bold tabular-nums">
                 {activeCourierOrders.length}
               </span>
             )}
@@ -393,16 +390,16 @@ export default function DeliveryPortal() {
 
           <button
             onClick={() => setActiveTab('delivered')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
               activeTab === 'delivered'
-                ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                ? 'bg-white dark:bg-slate-900 text-neutral-950 dark:text-white shadow-2xs border border-neutral-200/60 dark:border-slate-700'
+                : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
             }`}
           >
-            <CheckCircle2 className="w-4 h-4" />
+            <CheckCircle2 className="w-3.5 h-3.5" />
             <span>تم تسليمها</span>
             {deliveredOrders.length > 0 && (
-              <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center">
+              <span className="px-1.5 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-bold tabular-nums">
                 {deliveredOrders.length}
               </span>
             )}
@@ -411,13 +408,13 @@ export default function DeliveryPortal() {
 
         {/* Search Bar */}
         <div className="relative sm:w-72">
-          <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
           <input 
             type="text"
-            placeholder="بحث برقم الطلب أو اسم الزبون..."
+            placeholder="بحث برقم الطلب، الزبون، أو المتجر..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl pr-10 pl-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500 transition-all text-gray-900 dark:text-white"
+            className="w-full bg-white dark:bg-slate-900 border border-neutral-200 dark:border-slate-800 rounded-xl pr-10 pl-4 py-2 text-xs font-medium outline-none focus:border-neutral-900 transition-all text-neutral-950 dark:text-white placeholder:text-neutral-400"
           />
         </div>
       </div>
@@ -425,23 +422,23 @@ export default function DeliveryPortal() {
       {/* Orders List */}
       {loading ? (
         <div className="p-16 text-center">
-          <RefreshCw className="w-8 h-8 text-amber-500 animate-spin mx-auto mb-3" />
-          <p className="text-xs font-bold text-gray-400">جاري تحميل طلبات التوصيل...</p>
+          <RefreshCw className="w-8 h-8 text-neutral-400 animate-spin mx-auto mb-3" />
+          <p className="text-xs font-medium text-neutral-400">جاري تحميل بيانات الشحنات والمهام اللوجستية...</p>
         </div>
       ) : filteredOrders.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border border-gray-100 dark:border-slate-800 shadow-sm space-y-4">
-          <div className="w-16 h-16 rounded-3xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 mx-auto flex items-center justify-center">
-            <Package className="w-8 h-8" />
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-12 text-center border border-neutral-200 dark:border-slate-800 shadow-xs space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-neutral-100 dark:bg-slate-800 text-neutral-800 dark:text-neutral-200 mx-auto flex items-center justify-center border border-neutral-200 dark:border-slate-700">
+            <Package className="w-7 h-7" />
           </div>
-          <h3 className="text-lg font-black text-gray-900 dark:text-white">
+          <h3 className="text-base font-bold text-neutral-900 dark:text-white">
             {activeTab === 'available' ? 'لا توجد طلبات جديدة بانتظار مندوب حالياً' : activeTab === 'active' ? 'ليس لديك أي طلبات جارية قيد التوصيل الآن' : 'لم تسجل أي طلبات مكتملة بعد'}
           </h3>
-          <p className="text-xs text-gray-500 max-w-sm mx-auto">
+          <p className="text-xs text-neutral-500 max-w-sm mx-auto leading-relaxed">
             {activeTab === 'available' ? 'عند قيام أي زبون بطلب شراء من المتجر، سيظهر هنا فوراً مع موقع المتجر وموقع الزبون لتتمكن من قبوله والتوجه لتوصيله.' : 'يمكنك تصفح تبويب "طلبات متاحة للاستلام" وقبول الطلبات الجديدة.'}
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-6">
+        <div className="grid grid-cols-1 gap-5">
           {filteredOrders.map((order) => {
             const storeProfile = order.storeId ? storeProfilesCache[order.storeId] : null;
             const storeName = order.storeName || storeProfile?.name || 'متجر معتمد';
@@ -456,54 +453,54 @@ export default function DeliveryPortal() {
             return (
               <div 
                 key={order.id}
-                className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden"
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-neutral-200 dark:border-slate-800 shadow-xs hover:border-neutral-300 transition-all duration-200 overflow-hidden"
               >
                 {/* Order Top Bar */}
-                <div className="p-4 sm:p-5 border-b border-gray-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-gray-50/70 dark:bg-slate-950/40">
+                <div className="p-4 sm:p-5 border-b border-neutral-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-neutral-50/60 dark:bg-slate-950/40">
                   <div className="flex items-center gap-3">
-                    <span className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-black text-xs shrink-0">
-                      📦
+                    <span className="w-9 h-9 rounded-lg bg-neutral-100 dark:bg-slate-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-slate-700 flex items-center justify-center font-bold text-xs shrink-0">
+                      <Package className="w-4 h-4" />
                     </span>
                     <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm font-black text-gray-900 dark:text-white dir-ltr">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-sm font-bold text-neutral-950 dark:text-white dir-ltr">
                           #{order.id.slice(0, 8)}
                         </span>
-                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
                           isDelivered 
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800' 
                             : isOutForDelivery 
-                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                              ? 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800'
                               : isAssignedToMe
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                                : 'bg-gray-200 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
+                                ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
+                                : 'bg-neutral-100 text-neutral-800 border-neutral-200 dark:bg-slate-800 dark:text-neutral-300 dark:border-slate-700'
                         }`}>
                           {isDelivered 
-                            ? 'تم التسليم بنجاح ✓' 
+                            ? 'تم التسليم بنجاح' 
                             : isOutForDelivery 
-                              ? 'في الطريق للزبون 🛵' 
+                              ? 'في الطريق للزبون' 
                               : isAssignedToMe 
                                 ? 'معي - جاري الاستلام من المتجر' 
-                                : 'متاح للاستلام ⚡'}
+                                : 'متاح للاستلام والتوصيل'}
                         </span>
                       </div>
-                      <span className="text-[10px] font-bold text-gray-400">
+                      <span className="text-[11px] font-medium text-neutral-500 tabular-nums">
                         {order.createdAt ? new Date(order.createdAt).toLocaleString('ar-YE', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Financial Overview Pill */}
-                  <div className="flex items-center gap-3">
+                  {/* Financial Overview */}
+                  <div className="flex items-center gap-4">
                     <div className="text-right">
-                      <div className="text-[10px] text-gray-400 font-bold">المطلوب تحصيله من الزبون:</div>
-                      <div className="text-base font-black text-emerald-600 dark:text-emerald-400">
-                        {order.paymentMethod === 'wallet' ? '0 ر.ي (مدفوع مسبقاً)' : `${order.total.toLocaleString('ar-YE')} ر.ي`}
+                      <div className="text-[10px] text-neutral-500 font-medium">التحصيل من الزبون:</div>
+                      <div className="text-sm sm:text-base font-black text-neutral-950 dark:text-white tabular-nums">
+                        {order.paymentMethod === 'wallet' ? '0 ر.ي (مدفوع بالمحفظة)' : `${order.total.toLocaleString('ar-YE')} ر.ي`}
                       </div>
                     </div>
-                    <div className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-right">
-                      <div className="text-[9px] text-amber-700 dark:text-amber-300 font-bold">أجرة التوصيل لك</div>
-                      <div className="text-xs font-black text-amber-900 dark:text-amber-100">
+                    <div className="px-3 py-1.5 rounded-lg bg-neutral-100 dark:bg-slate-800 border border-neutral-200 dark:border-slate-700 text-right">
+                      <div className="text-[10px] text-neutral-500 font-medium">أجرة التوصيل لك</div>
+                      <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
                         {(order.deliveryFee || 1500).toLocaleString('ar-YE')} ر.ي
                       </div>
                     </div>
@@ -511,57 +508,57 @@ export default function DeliveryPortal() {
                 </div>
 
                 {/* Main Content: Store Location (Pickup) & Customer Location (Delivery) */}
-                <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
                   
                   {/* 1. STORE (PICKUP STATION) */}
-                  <div className="bg-blue-50/50 dark:bg-slate-800/40 p-4 sm:p-5 rounded-2xl border border-blue-100 dark:border-slate-700 space-y-4">
-                    <div className="flex items-center justify-between border-b border-blue-100 dark:border-slate-700 pb-3">
+                  <div className="bg-neutral-50/70 dark:bg-slate-800/40 p-4 rounded-xl border border-neutral-200 dark:border-slate-700 space-y-3">
+                    <div className="flex items-center justify-between border-b border-neutral-200 dark:border-slate-700 pb-2.5">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
-                          <Store className="w-4 h-4" />
+                        <div className="w-7 h-7 rounded-lg bg-neutral-900 text-white flex items-center justify-center shrink-0">
+                          <Store className="w-3.5 h-3.5" />
                         </div>
                         <div>
-                          <div className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                          <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
                             محطة الاستلام (المتجر)
                           </div>
-                          <h4 className="font-black text-sm sm:text-base text-gray-900 dark:text-white">
+                          <h4 className="font-bold text-sm text-neutral-950 dark:text-white">
                             {storeName}
                           </h4>
                         </div>
                       </div>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
-                        الخطوة 1: استلام البضاعة
+                      <span className="text-[10px] font-semibold text-neutral-500">
+                        الخطوة 1: استلام الشحنة
                       </span>
                     </div>
 
-                    <div className="space-y-2 text-xs">
-                      <div className="flex items-start gap-2 text-gray-600 dark:text-gray-300">
-                        <MapPin className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex items-start gap-2 text-neutral-600 dark:text-neutral-300">
+                        <MapPin className="w-3.5 h-3.5 text-neutral-500 shrink-0 mt-0.5" />
                         <div>
-                          <span className="font-bold text-gray-900 dark:text-white">عنوان المتجر: </span>
+                          <span className="font-semibold text-neutral-900 dark:text-white">العنوان: </span>
                           <span>{storeAddress}</span>
                         </div>
                       </div>
 
                       {storePhone && (
-                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-                          <Phone className="w-4 h-4 text-blue-500 shrink-0" />
-                          <span className="font-bold text-gray-900 dark:text-white">هاتف المتجر: </span>
+                        <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+                          <Phone className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+                          <span className="font-semibold text-neutral-900 dark:text-white">الهاتف: </span>
                           <span className="font-mono dir-ltr">{storePhone}</span>
                         </div>
                       )}
                     </div>
 
                     {/* Action buttons for Store */}
-                    <div className="flex flex-wrap items-center gap-2 pt-2">
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
                       <a
                         href={getStoreMapUrl(order)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex-1 min-w-[140px] px-3.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-md shadow-blue-500/20 active:scale-95 transition flex items-center justify-center gap-2"
+                        className="flex-1 min-w-[140px] px-3 py-2 bg-neutral-900 hover:bg-black text-white rounded-lg text-xs font-bold shadow-xs active:scale-95 transition flex items-center justify-center gap-1.5"
                       >
-                        <Navigation className="w-4 h-4" />
-                        <span>ملاحة خرائط Google للمتجر</span>
+                        <Navigation className="w-3.5 h-3.5" />
+                        <span>ملاحة الخرائط للمتجر</span>
                         <ExternalLink className="w-3 h-3 opacity-70" />
                       </a>
 
@@ -569,19 +566,19 @@ export default function DeliveryPortal() {
                         <>
                           <a
                             href={`tel:${storePhone}`}
-                            className="p-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 text-gray-800 dark:text-gray-200 rounded-xl transition"
+                            className="p-2 bg-white dark:bg-slate-700 border border-neutral-200 dark:border-slate-600 text-neutral-700 dark:text-neutral-200 rounded-lg hover:bg-neutral-100 transition"
                             title="اتصال بالمتجر"
                           >
-                            <Phone className="w-4 h-4" />
+                            <Phone className="w-3.5 h-3.5" />
                           </a>
                           <a
                             href={`https://wa.me/${storePhone.replace(/[^0-9]/g, '')}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl transition"
+                            className="p-2 bg-white dark:bg-slate-700 border border-neutral-200 dark:border-slate-600 text-emerald-600 rounded-lg hover:bg-neutral-100 transition"
                             title="واتساب المتجر"
                           >
-                            <MessageCircle className="w-4 h-4" />
+                            <MessageCircle className="w-3.5 h-3.5" />
                           </a>
                         </>
                       )}
@@ -589,54 +586,54 @@ export default function DeliveryPortal() {
                   </div>
 
                   {/* 2. CUSTOMER (DELIVERY STATION) */}
-                  <div className="bg-emerald-50/50 dark:bg-slate-800/40 p-4 sm:p-5 rounded-2xl border border-emerald-100 dark:border-slate-700 space-y-4">
-                    <div className="flex items-center justify-between border-b border-emerald-100 dark:border-slate-700 pb-3">
+                  <div className="bg-neutral-50/70 dark:bg-slate-800/40 p-4 rounded-xl border border-neutral-200 dark:border-slate-700 space-y-3">
+                    <div className="flex items-center justify-between border-b border-neutral-200 dark:border-slate-700 pb-2.5">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                          <User className="w-4 h-4" />
+                        <div className="w-7 h-7 rounded-lg bg-neutral-900 text-white flex items-center justify-center shrink-0">
+                          <User className="w-3.5 h-3.5" />
                         </div>
                         <div>
-                          <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+                          <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
                             محطة التسليم (الزبون المستلم)
                           </div>
-                          <h4 className="font-black text-sm sm:text-base text-gray-900 dark:text-white">
+                          <h4 className="font-bold text-sm text-neutral-950 dark:text-white">
                             {order.customerName || 'عميل المتجر'}
                           </h4>
                         </div>
                       </div>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
+                      <span className="text-[10px] font-semibold text-neutral-500">
                         الخطوة 2: التسليم
                       </span>
                     </div>
 
-                    <div className="space-y-2 text-xs">
-                      <div className="flex items-start gap-2 text-gray-600 dark:text-gray-300">
-                        <MapPin className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex items-start gap-2 text-neutral-600 dark:text-neutral-300">
+                        <MapPin className="w-3.5 h-3.5 text-neutral-500 shrink-0 mt-0.5" />
                         <div>
-                          <span className="font-bold text-gray-900 dark:text-white">عنوان وملاحظات الزبون: </span>
+                          <span className="font-semibold text-neutral-900 dark:text-white">العنوان: </span>
                           <span>{customerAddress}</span>
                         </div>
                       </div>
 
                       {customerPhone && (
-                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-                          <Phone className="w-4 h-4 text-emerald-500 shrink-0" />
-                          <span className="font-bold text-gray-900 dark:text-white">رقم هاتف الزبون: </span>
+                        <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+                          <Phone className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+                          <span className="font-semibold text-neutral-900 dark:text-white">الهاتف: </span>
                           <span className="font-mono dir-ltr">{customerPhone}</span>
                         </div>
                       )}
                     </div>
 
                     {/* Action buttons for Customer */}
-                    <div className="flex flex-wrap items-center gap-2 pt-2">
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
                       <a
                         href={getCustomerMapUrl(order)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex-1 min-w-[140px] px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-500/20 active:scale-95 transition flex items-center justify-center gap-2"
+                        className="flex-1 min-w-[140px] px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs active:scale-95 transition flex items-center justify-center gap-1.5"
                       >
-                        <Navigation className="w-4 h-4" />
-                        <span>ملاحة خرائط Google للزبون {order.location ? '(GPS دقيق 📍)' : ''}</span>
+                        <Navigation className="w-3.5 h-3.5" />
+                        <span>ملاحة الخرائط للزبون {order.location ? '(GPS دقيق)' : ''}</span>
                         <ExternalLink className="w-3 h-3 opacity-70" />
                       </a>
 
@@ -644,19 +641,19 @@ export default function DeliveryPortal() {
                         <>
                           <a
                             href={`tel:${customerPhone}`}
-                            className="p-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 text-gray-800 dark:text-gray-200 rounded-xl transition"
+                            className="p-2 bg-white dark:bg-slate-700 border border-neutral-200 dark:border-slate-600 text-neutral-700 dark:text-neutral-200 rounded-lg hover:bg-neutral-100 transition"
                             title="اتصال بالزبون"
                           >
-                            <Phone className="w-4 h-4" />
+                            <Phone className="w-3.5 h-3.5" />
                           </a>
                           <a
                             href={`https://wa.me/${customerPhone.replace(/[^0-9]/g, '')}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl transition"
+                            className="p-2 bg-white dark:bg-slate-700 border border-neutral-200 dark:border-slate-600 text-emerald-600 rounded-lg hover:bg-neutral-100 transition"
                             title="واتساب الزبون"
                           >
-                            <MessageCircle className="w-4 h-4" />
+                            <MessageCircle className="w-3.5 h-3.5" />
                           </a>
                         </>
                       )}
@@ -666,36 +663,34 @@ export default function DeliveryPortal() {
                 </div>
 
                 {/* Package Items Snippet */}
-                <div className="px-4 sm:px-6 py-3 bg-gray-50/50 dark:bg-slate-950/20 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between text-xs">
+                <div className="px-4 sm:px-5 py-2.5 bg-neutral-50/50 dark:bg-slate-950/20 border-t border-neutral-100 dark:border-slate-800 flex items-center justify-between text-xs flex-wrap gap-2">
                   <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-                    <span className="font-bold text-gray-500 shrink-0">محتويات الطرد:</span>
+                    <span className="font-bold text-neutral-500 shrink-0 text-[11px]">محتويات الشحنة:</span>
                     {order.items.map((it, idx) => (
-                      <span key={idx} className="px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-[11px] font-bold shrink-0">
+                      <span key={idx} className="px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-neutral-200 dark:border-slate-700 text-[11px] font-medium text-neutral-800 dark:text-neutral-200 shrink-0">
                         {it.title} × {it.quantity}
                       </span>
                     ))}
                   </div>
 
                   {order.deliveryNotes && (
-                    <div className="text-[11px] text-amber-600 font-bold">
+                    <div className="text-[11px] text-neutral-600 dark:text-neutral-400 font-medium">
                       ملاحظة: {order.deliveryNotes}
                     </div>
                   )}
                 </div>
 
                 {/* Action Buttons for Courier based on order state */}
-                <div className="p-4 sm:p-5 border-t border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        setSelectedOrderForNotes(order);
-                        setDeliveryNoteText(order.deliveryNotes || '');
-                      }}
-                      className="px-3.5 py-2 rounded-xl border border-gray-200 dark:border-slate-700 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 transition"
-                    >
-                      إضافة ملاحظة على الطلب
-                    </button>
-                  </div>
+                <div className="p-4 sm:p-5 border-t border-neutral-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-wrap items-center justify-between gap-3">
+                  <button
+                    onClick={() => {
+                      setSelectedOrderForNotes(order);
+                      setDeliveryNoteText(order.deliveryNotes || '');
+                    }}
+                    className="px-3 py-2 rounded-lg border border-neutral-200 dark:border-slate-700 text-xs font-semibold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 transition"
+                  >
+                    تدوين ملاحظة على الطلب
+                  </button>
 
                   <div className="flex items-center gap-2">
                     {/* State 1: Order is available -> Courier claims it */}
@@ -703,10 +698,10 @@ export default function DeliveryPortal() {
                       <button
                         onClick={() => handleClaimOrder(order)}
                         disabled={actionLoadingId === order.id}
-                        className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-black text-xs shadow-lg shadow-amber-500/25 active:scale-95 transition flex items-center gap-2 disabled:opacity-50"
+                        className="px-5 py-2.5 bg-neutral-900 hover:bg-black text-white rounded-lg font-bold text-xs shadow-xs active:scale-95 transition flex items-center gap-2 disabled:opacity-50"
                       >
-                        <Bike className="w-4 h-4" />
-                        <span>قبول واستلام الطلب للتوصيل 🛵</span>
+                        <Bike className="w-3.5 h-3.5" />
+                        <span>قبول واستلام الطلب للتوصيل</span>
                       </button>
                     )}
 
@@ -715,10 +710,10 @@ export default function DeliveryPortal() {
                       <button
                         onClick={() => handleConfirmStorePickup(order)}
                         disabled={actionLoadingId === order.id}
-                        className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-xs shadow-lg shadow-blue-600/25 active:scale-95 transition flex items-center gap-2 disabled:opacity-50"
+                        className="px-5 py-2.5 bg-neutral-900 hover:bg-black text-white rounded-lg font-bold text-xs shadow-xs active:scale-95 transition flex items-center gap-2 disabled:opacity-50"
                       >
-                        <Package className="w-4 h-4" />
-                        <span>تم استلام الطرد من المتجر وجاري التوجه للزبون 📦</span>
+                        <Package className="w-3.5 h-3.5" />
+                        <span>تأكيد الاستلام من المتجر والانطلاق</span>
                       </button>
                     )}
 
@@ -727,18 +722,18 @@ export default function DeliveryPortal() {
                       <button
                         onClick={() => handleCompleteDelivery(order)}
                         disabled={actionLoadingId === order.id}
-                        className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs shadow-lg shadow-emerald-600/25 active:scale-95 transition flex items-center gap-2 disabled:opacity-50"
+                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-xs active:scale-95 transition flex items-center gap-2 disabled:opacity-50"
                       >
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>تم التسليم للزبون واستلام المبلغ بنجاح ✅</span>
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>تم التسليم للزبون وتحصيل المبلغ</span>
                       </button>
                     )}
 
                     {/* State 4: Already delivered */}
                     {isDelivered && (
-                      <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-black text-xs px-4 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>مكتمل ومسلم بنجاح</span>
+                      <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-bold text-xs px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>تم التسليم بنجاح</span>
                       </div>
                     )}
                   </div>
@@ -752,13 +747,13 @@ export default function DeliveryPortal() {
 
       {/* Note / Issue Modal */}
       {selectedOrderForNotes && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 w-full max-w-md shadow-2xl border border-gray-100 dark:border-slate-800 space-y-4">
-            <h3 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-amber-500" />
+        <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 w-full max-w-md shadow-xl border border-neutral-200 dark:border-slate-800 space-y-4">
+            <h3 className="text-base font-bold text-neutral-950 dark:text-white flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-neutral-700" />
               ملاحظة التوصيل على طلب #{selectedOrderForNotes.id.slice(0, 8)}
             </h3>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-neutral-500 font-medium">
               يمكنك تدوين أي تفاصيل تخص التسليم (مثل: الزبون غير متواجد حالياً، تم الاتفاق على موعد لاحق، تم تسليم الطرد للحارس).
             </p>
             <textarea
@@ -766,18 +761,18 @@ export default function DeliveryPortal() {
               value={deliveryNoteText}
               onChange={(e) => setDeliveryNoteText(e.target.value)}
               placeholder="اكتب ملاحظتك هنا..."
-              className="w-full p-3 rounded-2xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500 text-gray-900 dark:text-white"
+              className="w-full p-3 rounded-xl border border-neutral-300 dark:border-slate-700 bg-neutral-50 dark:bg-slate-800 text-xs font-medium outline-none focus:bg-white focus:border-neutral-900 text-neutral-950 dark:text-white"
             />
             <div className="flex gap-2">
               <button
                 onClick={handleSaveDeliveryNote}
-                className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-xs shadow-md transition"
+                className="flex-1 py-2.5 bg-neutral-900 hover:bg-black text-white rounded-xl font-bold text-xs shadow-xs transition"
               >
                 حفظ الملاحظة
               </button>
               <button
                 onClick={() => setSelectedOrderForNotes(null)}
-                className="px-5 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 text-gray-700 dark:text-gray-300 rounded-xl font-black text-xs transition"
+                className="px-5 py-2.5 bg-neutral-100 hover:bg-neutral-200 dark:bg-slate-800 text-neutral-700 dark:text-neutral-300 rounded-xl font-bold text-xs transition border border-neutral-200 dark:border-slate-700"
               >
                 إلغاء
               </button>

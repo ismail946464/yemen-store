@@ -166,9 +166,18 @@ export async function processAssistantMessage(
     const storeName = storeSettings?.storeName || 'يمن ستور';
     const storeDesc = storeSettings?.storeDescription || 'سوق مركزي رقمي في اليمن يجمع المنتجات والماركات العالمية مع خدمات الحجز المسبق';
 
-    // Prepare catalog summary for Gemini (limit to top 60 to prevent token bloat)
-    const catalogSnippet = catalogProducts.slice(0, 70).map(p => {
-      return `[ID: ${p.id}] ${p.title} | السعر: ${p.price} ر.ي | القسم: ${p.category || 'عام'} | متجر: ${p.ownerName || 'متجر معتمد'} ${p.ownerVerified ? '(موثق ✓)' : ''} | متوفر: ${p.stock !== undefined && p.stock !== null ? p.stock : 'كمية متوفرة'}`;
+    // Intelligently select the most relevant products rather than dumping 70 raw products
+    const queryTokens = userMessage.toLowerCase().split(/\s+/).filter(t => t.length > 1);
+    const sortedProducts = [...catalogProducts].sort((a, b) => {
+      const aTitle = (a.title || '').toLowerCase();
+      const bTitle = (b.title || '').toLowerCase();
+      const aMatches = queryTokens.filter(t => aTitle.includes(t)).length;
+      const bMatches = queryTokens.filter(t => bTitle.includes(t)).length;
+      return bMatches - aMatches;
+    }).slice(0, 30);
+
+    const catalogSnippet = sortedProducts.map(p => {
+      return `[ID: ${p.id}] ${p.title} | ${p.price} ر.ي | ${p.category || 'عام'}`;
     }).join('\n');
 
     const systemInstruction = `
@@ -196,8 +205,8 @@ ${catalogSnippet || 'لا توجد منتجات حالياً'}
     // Build chat contents from recent history
     const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
 
-    // Keep up to last 6 history messages
-    const recentHistory = history.slice(-6);
+    // Keep up to last 4 history messages to keep context lean and fast
+    const recentHistory = history.slice(-4);
     for (const h of recentHistory) {
       contents.push({
         role: h.role === 'assistant' ? 'model' : 'user',
@@ -211,9 +220,10 @@ ${catalogSnippet || 'لا توجد منتجات حالياً'}
       parts: [{ text: userMessage }]
     });
 
-    const timeoutPromise = new Promise<never>((_, reject) => 
-      setTimeout(() => reject(new Error('Gemini request timeout')), 12000)
-    );
+    let timeoutTimer: NodeJS.Timeout | null = null;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutTimer = setTimeout(() => reject(new Error('Gemini request timeout')), 25000);
+    });
 
     const generatePromise = ai.models.generateContent({
       model: 'gemini-3.8-flash',
@@ -244,7 +254,12 @@ ${catalogSnippet || 'لا توجد منتجات حالياً'}
       }
     });
 
-    const response = await Promise.race([generatePromise, timeoutPromise]);
+    let response: any;
+    try {
+      response = await Promise.race([generatePromise, timeoutPromise]);
+    } finally {
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+    }
 
     const rawText = response.text || '';
     let parsed: any = null;
@@ -279,7 +294,7 @@ ${catalogSnippet || 'لا توجد منتجات حالياً'}
     return searchLocalCatalog(userMessage, catalogProducts, storeSettings);
 
   } catch (error: any) {
-    console.error('Gemini Assistant Error:', error?.message || error);
+    console.warn('Gemini Assistant Notice (served via local catalog):', error?.message || error);
     // Graceful fallback to local catalog search
     const fallback = searchLocalCatalog(userMessage, catalogProducts, storeSettings);
     return fallback;

@@ -6,9 +6,11 @@ export default function BottomNav() {
   const { user, cart, unreadCount, isStore, isAdmin, isDelivery, isDarkMode, getThemeClasses } = useAppContext();
   const location = useLocation();
 
-  // Hide bottom nav on specific independent store URLs if needed, but show by default on all main routes
+  // Hide bottom nav on specific independent store URLs or when inside an active chat on mobile
   const isIndependentStore = location.pathname.startsWith('/s/') || location.pathname.startsWith('/store-site/');
-  if (isIndependentStore) return null;
+  const searchParams = new URLSearchParams(location.search);
+  const isChatSession = location.pathname === '/contact' && (searchParams.has('to') || searchParams.has('userId'));
+  if (isIndependentStore || isChatSession) return null;
 
   const cartCount = cart.reduce((sum, item) => sum + (item.quantity || 1), 0);
 
@@ -75,10 +77,10 @@ export default function BottomNav() {
       dir="rtl"
     >
       {/* Blur Background and Border */}
-      <div className={`border-t backdrop-blur-2xl shadow-[0_-10px_30px_rgba(0,0,0,0.08)] transition-colors duration-300 ${
+      <div className={`border-t backdrop-blur-2xl transition-colors duration-300 ${
         isDarkMode 
           ? 'bg-slate-950/95 border-slate-800/90 text-slate-300' 
-          : 'bg-white/95 border-slate-200/90 text-slate-700'
+          : 'bg-white/95 border-neutral-200 text-neutral-600 shadow-[0_-4px_20px_rgba(0,0,0,0.04)]'
       }`}>
         <div className="max-w-md md:max-w-2xl mx-auto px-2 sm:px-4">
           <div className="flex items-center justify-around h-16 sm:h-18">
@@ -92,34 +94,34 @@ export default function BottomNav() {
                 <Link
                   key={item.id}
                   to={item.path}
-                  className={`flex flex-col items-center justify-center relative py-1.5 px-2.5 sm:px-3 rounded-2xl transition-all duration-200 group active:scale-90 ${
+                  className={`flex flex-col items-center justify-center relative py-1 px-2.5 sm:px-3 rounded-xl transition-all duration-150 group active:scale-95 ${
                     isActive
-                      ? `${getThemeClasses('text')} font-black`
+                      ? (isDarkMode ? 'text-white font-black' : 'text-neutral-950 font-black')
                       : isDarkMode
                         ? 'text-slate-400 hover:text-slate-200'
-                        : 'text-slate-500 hover:text-slate-900'
+                        : 'text-neutral-500 hover:text-neutral-900'
                   }`}
                 >
-                  {/* Active Indicator Glow / Pill */}
+                  {/* Active Indicator Top Line */}
                   {isActive && (
-                    <span className={`absolute -top-1 w-8 h-1 rounded-full ${getThemeClasses('bg')} shadow-sm animate-in fade-in zoom-in duration-200`} />
+                    <span className={`absolute -top-1 w-7 h-0.5 rounded-full ${isDarkMode ? 'bg-white' : 'bg-neutral-950'} transition-all`} />
                   )}
 
                   <div className="relative">
-                    <Icon className={`w-5 h-5 transition-transform duration-200 ${
-                      isActive ? 'scale-115 stroke-[2.4]' : 'group-hover:scale-110 stroke-[1.8]'
+                    <Icon className={`w-5 h-5 transition-transform duration-150 ${
+                      isActive ? 'scale-110 stroke-[2.2]' : 'group-hover:scale-105 stroke-[1.75]'
                     }`} />
                     
                     {/* Badge for Cart count or Unread count */}
                     {item.badge !== undefined && item.badge > 0 && (
-                      <span className="absolute -top-1.5 -right-2 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 shadow-md border-2 border-white dark:border-slate-900 animate-pulse">
+                      <span className="absolute -top-1.5 -right-2.5 min-w-[17px] h-[17px] bg-red-600 text-white text-[9px] font-black rounded-full flex items-center justify-center px-1 shadow-xs border border-white dark:border-slate-900">
                         {item.badge > 99 ? '99+' : item.badge}
                       </span>
                     )}
                   </div>
 
-                  <span className={`text-[10px] mt-1 tracking-tight leading-tight transition-all duration-200 ${
-                    isActive ? 'font-black scale-102' : 'font-medium'
+                  <span className={`text-[11px] mt-1 tracking-tight leading-tight transition-all duration-150 ${
+                    isActive ? 'font-bold' : 'font-medium'
                   }`}>
                     {item.label}
                   </span>

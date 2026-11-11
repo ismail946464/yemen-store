@@ -659,28 +659,26 @@ export default function Contact() {
   if (!user && recipientId !== 'ai_assistant') {
     return (
       <div className="w-full max-w-xl mx-auto my-auto p-6 flex flex-col items-center justify-center text-center space-y-6">
-        <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-400 via-pink-500 to-indigo-600 p-1 shadow-xl shadow-indigo-500/20">
-          <div className="w-full h-full rounded-[22px] bg-slate-950 flex items-center justify-center text-white">
-            <Sparkles className="w-10 h-10 text-yellow-300 animate-pulse" />
-          </div>
+        <div className="w-16 h-16 rounded-2xl bg-neutral-900 flex items-center justify-center text-white shadow-xs">
+          <Bot className="w-8 h-8 text-white" />
         </div>
         <div className="space-y-2">
-          <h2 className="text-2xl font-black text-gray-900 dark:text-white">مركز المحادثات والمساعد الذكي</h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm font-medium max-w-sm mx-auto leading-relaxed">
-            يمكنك الآن التحدث فوراً مع مساعد {currentStoreName} الذكي (Gemini AI) للبحث عن أي منتج ومعرفة الأسعار دون الحاجة لتسجيل الدخول.
+          <h2 className="text-2xl font-black text-neutral-900 dark:text-white">مركز المحادثات ومستشار المتجر</h2>
+          <p className="text-neutral-600 dark:text-neutral-400 text-sm font-medium max-w-sm mx-auto leading-relaxed">
+            تحدث مباشرة مع مستشار {currentStoreName} الذكي للبحث عن أي منتج، معرفة الأسعار، أو الاستفسار عن الشحن والتوصيل.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full max-w-md pt-2">
           <Link
             to="/contact?to=ai_assistant"
-            className="flex-1 px-6 py-3.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-indigo-500/25 flex items-center justify-center gap-2 hover:brightness-110 active:scale-95 transition"
+            className="flex-1 px-6 py-3.5 bg-neutral-900 hover:bg-black text-white rounded-xl font-bold text-sm shadow-xs flex items-center justify-center gap-2 active:scale-95 transition"
           >
-            <Sparkles className="w-4 h-4 text-yellow-300" />
-            بدء محادثة المساعد الذكي
+            <Bot className="w-4 h-4" />
+            بدء محادثة مستشار المتجر
           </Link>
           <button
             onClick={() => openLoginModal()}
-            className="flex-1 px-6 py-3.5 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-800 dark:text-gray-200 rounded-2xl font-black text-sm active:scale-95 transition"
+            className="flex-1 px-6 py-3.5 bg-neutral-100 hover:bg-neutral-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-neutral-900 dark:text-neutral-200 rounded-xl font-bold text-sm active:scale-95 transition border border-neutral-200 dark:border-slate-700"
           >
             تسجيل الدخول للمراسلة
           </button>
@@ -697,16 +695,16 @@ export default function Contact() {
   const activeMessages = (!user && recipientId === 'ai_assistant') ? guestMessages : messages;
 
   return (
-    <div className={`w-full max-w-6xl mx-auto h-full flex flex-col md:flex-row md:rounded-3xl shadow-xl md:border overflow-hidden md:my-1 min-h-0 font-tajawal relative ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+    <div className={`w-full max-w-6xl mx-auto h-full flex flex-col md:flex-row md:rounded-2xl md:border overflow-hidden min-h-0 font-tajawal relative ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-neutral-200 shadow-xs'}`}>
       
       {/* Sidebar */}
-      <div className={`md:w-96 border-l flex flex-col min-h-0 ${isDarkMode ? 'border-slate-800' : 'border-gray-100'} ${recipientId ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`md:w-96 border-l flex flex-col min-h-0 ${isDarkMode ? 'border-slate-800' : 'border-neutral-200'} ${recipientId ? 'hidden md:flex' : 'flex'}`}>
         
         {/* Top Header Section */}
-        <div className="p-4 flex items-center justify-between">
-           <div className="flex items-center gap-1.5 cursor-pointer hover:opacity-70 transition">
-             <h2 className="text-xl font-black text-gray-900 dark:text-white">{userData?.username || userData?.storeName || 'الدردشة'}</h2>
-             <ChevronDown className="w-4 h-4 mt-1" />
+        <div className="p-4 flex items-center justify-between border-b border-neutral-100 dark:border-slate-800">
+           <div className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition">
+             <h2 className="text-lg font-bold text-neutral-900 dark:text-white">{userData?.username || userData?.storeName || 'المحادثات'}</h2>
+             <ChevronDown className="w-4 h-4 text-neutral-500" />
            </div>
            <div className="flex items-center gap-1">
              {selectionMode ? (
@@ -715,16 +713,17 @@ export default function Contact() {
                    setSelectionMode(false);
                    setSelectedIds([]);
                  }}
-                 className="p-2 hover:bg-gray-100 rounded-full transition text-gray-500"
+                 className="p-2 hover:bg-neutral-100 dark:hover:bg-slate-800 rounded-lg transition text-neutral-600"
                >
-                  <X className="w-6 h-6" />
+                  <X className="w-5 h-5" />
                </button>
              ) : (
                <button 
                  onClick={() => setSelectionMode(true)}
-                 className="p-2 hover:bg-gray-100 rounded-full transition text-gray-500"
+                 className="p-2 hover:bg-neutral-100 dark:hover:bg-slate-800 rounded-lg transition text-neutral-600"
+                 title="تحديد لحذف المحادثات"
                >
-                  <PenSquare className="w-6 h-6" />
+                  <PenSquare className="w-5 h-5" />
                </button>
              )}
            </div>
@@ -845,41 +844,41 @@ export default function Contact() {
 
         {/* Conversation List */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-          {/* Pinned Gemini AI Store Assistant */}
+          {/* Pinned Store Consultant */}
           <Link
             to="/contact?to=ai_assistant"
-            className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all duration-300 relative group ${
+            className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-150 relative group ${
               recipientId === 'ai_assistant'
-                ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white shadow-xl shadow-indigo-500/25 border-transparent ring-2 ring-indigo-400 scale-[1.01]'
+                ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs'
                 : isDarkMode
-                  ? 'bg-gradient-to-r from-slate-800/90 to-indigo-950/40 border-indigo-500/30 hover:border-indigo-500/60 text-white'
-                  : 'bg-gradient-to-r from-indigo-50/90 via-blue-50/50 to-purple-50/80 border-indigo-200/80 hover:border-indigo-400 text-slate-900 shadow-sm'
+                  ? 'bg-slate-800/80 border-slate-700 text-slate-200 hover:bg-slate-800'
+                  : 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-900'
             }`}
           >
             <div className="relative shrink-0">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-400 via-pink-500 to-indigo-600 p-[2px] shadow-md group-hover:scale-105 transition-transform">
-                <div className="w-full h-full rounded-[14px] bg-slate-950 flex items-center justify-center text-white">
-                  <Sparkles className="w-6 h-6 text-yellow-300 animate-pulse" />
-                </div>
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${
+                recipientId === 'ai_assistant' ? 'bg-white/10 text-white' : 'bg-neutral-900 text-white'
+              }`}>
+                <Bot className="w-5 h-5" />
               </div>
-              <div className="absolute -bottom-0.5 -left-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full"></div>
+              <div className="absolute -bottom-0.5 -left-0.5 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full"></div>
             </div>
 
             <div className="flex-1 min-w-0 text-right">
               <div className="flex items-center justify-between gap-1 mb-0.5">
-                <span className={`text-[15px] font-black ${recipientId === 'ai_assistant' ? 'text-white' : (isDarkMode ? 'text-white' : 'text-slate-900')}`}>
+                <span className={`text-sm font-bold truncate ${recipientId === 'ai_assistant' ? 'text-white' : (isDarkMode ? 'text-white' : 'text-neutral-900')}`}>
                   {aiAssistantName}
                 </span>
-                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
                   recipientId === 'ai_assistant'
                     ? 'bg-white/20 text-white'
-                    : 'bg-indigo-600 text-white'
+                    : 'bg-neutral-200 dark:bg-slate-700 text-neutral-800 dark:text-neutral-200'
                 }`}>
-                  Gemini AI
+                  مستشار المتجر
                 </span>
               </div>
-              <p className={`text-xs truncate ${recipientId === 'ai_assistant' ? 'text-white/90 font-bold' : (isDarkMode ? 'text-indigo-300 font-medium' : 'text-indigo-800 font-medium')}`}>
-                ابحث عن المنتجات واستفسر عن كل شيء في المتجر 24/7
+              <p className={`text-xs truncate ${recipientId === 'ai_assistant' ? 'text-neutral-300' : 'text-neutral-500 dark:text-neutral-400'}`}>
+                البحث عن المنتجات والأسعار والتوصيل
               </p>
             </div>
           </Link>
@@ -1076,66 +1075,55 @@ export default function Contact() {
          {recipientId ? (
            <>
              {/* Unified Chat Interface Header */}
-              <div className={`p-4 md:p-5 border-b flex items-center justify-between backdrop-blur-md sticky top-0 z-10 ${isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white/80 border-gray-100'}`}>
-                <div className="flex items-center gap-4">
-                   <Link to="/contact" className="md:hidden p-2 hover:bg-gray-100 rounded-full transition">
+              <div className={`p-3.5 sm:p-4 border-b flex items-center justify-between backdrop-blur-md sticky top-0 z-10 ${isDarkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-neutral-200 shadow-2xs'}`}>
+                <div className="flex items-center gap-3">
+                   <Link to="/contact" className="md:hidden p-1.5 hover:bg-neutral-100 dark:hover:bg-slate-800 rounded-lg transition text-neutral-700 dark:text-neutral-300">
                      <ArrowRight className="w-5 h-5" />
                    </Link>
                    <div className="relative">
                      {recipientId === 'ai_assistant' ? (
-                       <div className="w-11 h-11 md:w-13 md:h-13 rounded-2xl bg-gradient-to-tr from-amber-400 via-pink-500 to-indigo-600 p-[2px] shadow-md">
-                         <div className="w-full h-full rounded-[14px] bg-slate-950 flex items-center justify-center text-white">
-                           <Sparkles className="w-6 h-6 text-yellow-300 animate-pulse" />
-                         </div>
+                       <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-neutral-900 text-white flex items-center justify-center shadow-xs">
+                         <Bot className="w-5 h-5 text-white" />
                        </div>
                      ) : (
-                       <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-gray-200 p-[2px]">
-                          <div className="w-full h-full rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-white">
-                             {recipientProfile?.logoUrl || recipientProfile?.photoURL ? (
-                               <img src={recipientProfile.logoUrl || recipientProfile.photoURL} className="w-full h-full object-cover" alt="" />
-                             ) : <User className="text-gray-300 w-6 h-6" />}
-                          </div>
+                       <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-neutral-100 border border-neutral-200 overflow-hidden flex items-center justify-center">
+                          {recipientProfile?.logoUrl || recipientProfile?.photoURL ? (
+                            <img src={recipientProfile.logoUrl || recipientProfile.photoURL} className="w-full h-full object-cover" alt="" />
+                          ) : <User className="text-neutral-400 w-5 h-5" />}
                        </div>
                      )}
-                     <div className="absolute -bottom-0.5 -left-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></div>
+                     <div className="absolute -bottom-0.5 -left-0.5 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full"></div>
                    </div>
                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-black text-gray-900 dark:text-white text-sm md:text-lg">
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="font-bold text-neutral-900 dark:text-white text-sm sm:text-base leading-tight">
                           {recipientId === 'ai_assistant' ? aiAssistantName : (recipientProfile?.name || recipientProfile?.displayName || recipientProfile?.username || recipientProfile?.storeName || (recipientId ? `مستخدم (${recipientId.slice(0, 5)})` : 'جاري التحميل...'))}
                         </h3>
                         {recipientId === 'ai_assistant' ? (
-                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-indigo-600 text-white flex items-center gap-1 shadow-sm">
-                            <Sparkles className="w-3 h-3 text-yellow-300" />
-                            Gemini AI
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-slate-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-slate-700">
+                            مستشار المتجر
                           </span>
                         ) : recipientId === 'admin' ? (
-                          <BadgeCheck className="w-4 h-4 text-blue-500 fill-current" />
+                          <BadgeCheck className="w-4 h-4 text-emerald-600 fill-current" />
                         ) : null}
                       </div>
-                      <p className={`text-[10px] md:text-xs font-bold flex items-center gap-1 ${recipientId === 'ai_assistant' ? 'text-indigo-600 dark:text-indigo-400' : 'text-blue-600'}`}>
-                        {recipientId === 'ai_assistant' ? 'متصل دائماً • خبير المنتجات والتسوق بالمتجر 24/7' : 'نشط الآن'}
+                      <p className={`text-[11px] font-medium ${recipientId === 'ai_assistant' ? 'text-neutral-500 dark:text-neutral-400' : 'text-neutral-500'}`}>
+                        {recipientId === 'ai_assistant' ? 'متصل دائماً • الإجابة عن منتجات وأسعار المتجر' : 'نشط الآن'}
                       </p>
                    </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-1.5">
                    {recipientId === 'ai_assistant' ? (
-                     <span className="text-[11px] font-black px-3 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hidden sm:inline-flex items-center gap-1.5">
-                       <Bot className="w-3.5 h-3.5" />
+                     <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-slate-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-slate-700 hidden sm:inline-flex items-center gap-1.5">
                        خاص بالمتجر فقط
                      </span>
                    ) : (
-                     <>
-                       <button className="p-2.5 hover:bg-gray-50 rounded-full transition text-gray-500">
-                          <Clock className="w-5 h-5" />
-                       </button>
-                       <button className="p-2.5 hover:bg-gray-50 rounded-full transition text-gray-500">
-                          <Hash className="w-5 h-5" />
-                       </button>
-                     </>
+                     <button className="p-2 hover:bg-neutral-100 dark:hover:bg-slate-800 rounded-lg transition text-neutral-500">
+                        <Clock className="w-4 h-4" />
+                     </button>
                    )}
                 </div>
-             </div>
+              </div>
 
               {/* Chat Bubbles */}
               <div className={`flex-1 overflow-y-auto min-h-0 p-4 md:p-6 space-y-6 ${isDarkMode ? 'bg-slate-950/40' : 'bg-gray-50/20'} overscroll-contain touch-pan-y custom-scrollbar`}>
@@ -1211,17 +1199,17 @@ export default function Contact() {
                           animate={{ opacity: 1, x: 0 }}
                           className={`flex ${isMine ? 'justify-start' : 'justify-end'}`}
                         >
-                          <div className={`max-w-[92%] sm:max-w-[85%] md:max-w-[75%] px-5 py-4 rounded-3xl shadow-sm relative group ${
+                          <div className={`max-w-[92%] sm:max-w-[85%] md:max-w-[75%] px-4 py-3 sm:px-5 sm:py-4 rounded-2xl shadow-xs relative group ${
                             isMine 
-                            ? (isDarkMode ? 'bg-slate-800 text-slate-100 rounded-br-none border border-slate-700' : 'bg-white text-gray-800 rounded-br-none border border-gray-100') 
+                            ? (isDarkMode ? 'bg-white text-neutral-900 rounded-br-xs' : 'bg-neutral-900 text-white rounded-br-xs') 
                             : isAi
-                              ? 'bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-bl-none border border-indigo-500/30 shadow-xl shadow-indigo-950/20'
-                              : `${getThemeClasses('bg')} text-white rounded-bl-none shadow-blue-500/10`
+                              ? (isDarkMode ? 'bg-slate-900 text-slate-100 rounded-bl-xs border border-slate-800' : 'bg-neutral-50 text-neutral-900 rounded-bl-xs border border-neutral-200')
+                              : (isDarkMode ? 'bg-slate-800 text-slate-100 rounded-bl-xs border border-slate-700' : 'bg-neutral-100 text-neutral-900 rounded-bl-xs border border-neutral-200')
                           }`}>
-                            {/* AI Header inside bubble */}
+                            {/* Consultant Header inside bubble */}
                             {isAi && (
-                              <div className="flex items-center gap-1.5 pb-2 mb-2 border-b border-white/10 text-xs font-black text-indigo-300">
-                                <Sparkles className="w-3.5 h-3.5 text-yellow-300 animate-pulse" />
+                              <div className="flex items-center gap-1.5 pb-2 mb-2 border-b border-neutral-200 dark:border-slate-800 text-xs font-bold text-neutral-600 dark:text-neutral-400">
+                                <Bot className="w-3.5 h-3.5 text-neutral-700 dark:text-neutral-300" />
                                 <span>{aiAssistantName}</span>
                               </div>
                             )}
@@ -1233,7 +1221,7 @@ export default function Contact() {
                                     key={idx} 
                                     src={img} 
                                     alt={`Image ${idx}`} 
-                                    className="rounded-xl w-full h-auto max-h-60 object-cover cursor-pointer hover:brightness-90 transition"
+                                    className="rounded-xl w-full h-auto max-h-60 object-cover cursor-pointer hover:brightness-95 transition border border-black/5"
                                     onClick={() => setViewingImage(img)}
                                   />
                                 ))}
@@ -1243,13 +1231,13 @@ export default function Contact() {
 
                             {/* Product Cards Attachment from AI Store Assistant */}
                             {m.productCards && Array.isArray(m.productCards) && m.productCards.length > 0 && (
-                              <div className="mt-3.5 pt-3 border-t border-white/15 space-y-2.5">
-                                <div className="flex items-center justify-between text-[11px] font-black text-amber-300">
+                              <div className="mt-3.5 pt-3 border-t border-neutral-200 dark:border-slate-800 space-y-2.5">
+                                <div className="flex items-center justify-between text-xs font-bold text-neutral-900 dark:text-white">
                                   <span className="flex items-center gap-1.5">
-                                    <ShoppingBag className="w-3.5 h-3.5" />
-                                    منتجات متوفرة بالمتجر ({m.productCards.length}):
+                                    <ShoppingBag className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
+                                    منتجات مقترحة من المتجر ({m.productCards.length}):
                                   </span>
-                                  <span className="text-[10px] text-white/70">اضغط للمعاينة والشراء</span>
+                                  <span className="text-[11px] text-neutral-500 font-normal">اضغط للمعاينة</span>
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1257,40 +1245,37 @@ export default function Contact() {
                                     <div
                                       key={p.id}
                                       onClick={() => navigate(`/product/${p.id}`)}
-                                      className="flex items-center gap-2.5 p-2 rounded-2xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-white/20 dark:border-slate-800 shadow-md hover:shadow-xl hover:scale-[1.02] active:scale-95 transition-all cursor-pointer group/card text-right"
+                                      className="flex items-center gap-2.5 p-2 rounded-xl bg-white dark:bg-slate-900 text-neutral-900 dark:text-white border border-neutral-200 dark:border-slate-800 hover:border-neutral-400 transition cursor-pointer group/card text-right shadow-2xs"
                                     >
                                       {/* Thumbnail image */}
-                                      <div className="w-16 h-16 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0 border border-slate-200/50 dark:border-slate-700 relative">
+                                      <div className="w-14 h-14 rounded-lg overflow-hidden bg-neutral-100 dark:bg-slate-800 shrink-0 border border-neutral-200 dark:border-slate-700 relative">
                                         {p.image || (p.images && p.images[0]) ? (
                                           <img
                                             src={p.image || p.images[0]}
                                             alt={p.title}
-                                            className="w-full h-full object-cover group-hover/card:scale-110 transition duration-300"
+                                            className="w-full h-full object-cover group-hover/card:scale-105 transition duration-200"
                                           />
                                         ) : (
-                                          <div className="w-full h-full flex items-center justify-center text-slate-400">
-                                            <ShoppingBag className="w-6 h-6" />
+                                          <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                                            <ShoppingBag className="w-5 h-5" />
                                           </div>
                                         )}
                                       </div>
 
                                       <div className="flex-1 min-w-0">
-                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 inline-block mb-0.5">
+                                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium block truncate">
                                           {p.category || 'منتج'}
                                         </span>
-                                        <h5 className="font-black text-xs truncate leading-tight group-hover/card:text-indigo-600 dark:group-hover/card:text-indigo-400 transition">
+                                        <h5 className="font-bold text-xs truncate leading-tight group-hover/card:text-neutral-950 dark:group-hover/card:text-white">
                                           {p.title}
                                         </h5>
                                         <div className="flex items-center justify-between mt-1">
-                                          <span className="font-black text-xs text-emerald-600 dark:text-emerald-400">
-                                            {Number(p.price || 0).toLocaleString()} <span className="text-[9px]">ر.ي</span>
+                                          <span className="font-black text-xs text-neutral-950 dark:text-white tabular-nums">
+                                            {Number(p.price || 0).toLocaleString()} <span className="text-[9px] font-normal text-neutral-500">ر.ي</span>
                                           </span>
-                                          {p.ownerVerified && (
-                                            <span className="text-[9px] font-bold text-blue-500 flex items-center gap-0.5">
-                                              <CheckCircle className="w-3 h-3 fill-current" />
-                                              موثق
-                                            </span>
-                                          )}
+                                          <span className="text-[10px] font-bold text-neutral-600 dark:text-neutral-300">
+                                            عرض ←
+                                          </span>
                                         </div>
                                       </div>
                                     </div>
@@ -1301,22 +1286,26 @@ export default function Contact() {
 
                             {/* Suggested Questions Chips */}
                             {m.suggestedQuestions && Array.isArray(m.suggestedQuestions) && m.suggestedQuestions.length > 0 && (
-                              <div className="mt-3 flex flex-wrap gap-1.5 pt-2 border-t border-white/10">
+                              <div className="mt-3 flex flex-wrap gap-1.5 pt-2 border-t border-neutral-200 dark:border-slate-800">
                                 {m.suggestedQuestions.map((sq: string, sqIdx: number) => (
                                   <button
                                     key={sqIdx}
                                     type="button"
                                     onClick={() => sendQuickMessage(sq)}
-                                    className="text-[10px] font-bold px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur-sm text-white transition active:scale-95 border border-white/15 text-right"
+                                    className="text-xs font-medium px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-slate-700 hover:bg-neutral-100 transition active:scale-95 text-right"
                                   >
-                                    💬 {sq}
+                                    {sq}
                                   </button>
                                 ))}
                               </div>
                             )}
 
-                            <div className={`flex items-center gap-1.5 mt-2 justify-end ${isMine ? 'text-gray-400' : 'text-white/60'}`}>
-                              <span className="text-[10px] font-black">
+                            <div className={`flex items-center gap-1.5 mt-2 justify-end ${
+                              isMine 
+                                ? (isDarkMode ? 'text-neutral-500' : 'text-neutral-300') 
+                                : 'text-neutral-400'
+                            }`}>
+                              <span className="text-[10px] font-medium tabular-nums">
                                 {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </span>
                               {isMine && (
@@ -1337,13 +1326,11 @@ export default function Contact() {
                     animate={{ opacity: 1, y: 0 }}
                     className="flex justify-end"
                   >
-                    <div className="p-4 rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-bl-none shadow-xl border border-indigo-500/30 flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                        <Sparkles className="w-4 h-4 text-yellow-300 animate-spin" />
-                      </div>
+                    <div className="p-3.5 rounded-2xl bg-neutral-50 dark:bg-slate-900 border border-neutral-200 dark:border-slate-800 text-neutral-800 dark:text-neutral-200 flex items-center gap-3 shadow-2xs">
+                      <Loader2 className="w-4 h-4 text-neutral-700 dark:text-neutral-300 animate-spin" />
                       <div>
-                        <p className="text-xs font-black text-white">{aiAssistantName} يبحث في المتجر...</p>
-                        <span className="text-[10px] text-indigo-300 font-medium">جاري صياغة الرد وتحضير المنتجات عبر Gemini</span>
+                        <p className="text-xs font-bold">{aiAssistantName} يبحث في المتجر...</p>
+                        <span className="text-[10px] text-neutral-500">جاري صياغة الرد وتحضير المنتجات</span>
                       </div>
                     </div>
                   </motion.div>
@@ -1353,23 +1340,23 @@ export default function Contact() {
               </div>
 
               {/* Bottom Action Bar */}
-              <div className={`p-2.5 sm:p-3 md:p-4 border-t shrink-0 z-10 space-y-2 ${isDarkMode ? "border-slate-800 bg-slate-900" : "border-gray-100 bg-white"}`}>
+              <div className={`p-3 sm:p-4 border-t shrink-0 z-10 space-y-2 pb-[max(12px,env(safe-area-inset-bottom))] ${isDarkMode ? "border-slate-800 bg-slate-900" : "border-neutral-200 bg-white"}`}>
                 
                 {/* AI Quick Prompts Ribbon (Above Input) */}
                 {recipientId === 'ai_assistant' && (
-                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2 px-1 text-xs">
-                    <span className="text-[10px] font-black text-gray-400 shrink-0">اقتراحات سريعة:</span>
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 text-xs">
+                    <span className="text-[11px] font-bold text-neutral-400 shrink-0">اقتراحات:</span>
                     {[
-                      '🔍 ابحث لي عن هاتف',
-                      '🍯 عسل يمني أصلي',
-                      '📦 شروط الحجز والعربون',
-                      '🚚 ضمان وشحن المنصة'
+                      'ابحث لي عن هاتف',
+                      'عسل يمني أصلي',
+                      'شروط الحجز والعربون',
+                      'ضمان وشحن المنصة'
                     ].map((chip, cIdx) => (
                       <button
                         key={cIdx}
                         type="button"
                         onClick={() => sendQuickMessage(chip)}
-                        className="text-[11px] font-bold px-3 py-1 rounded-full bg-indigo-50 dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-slate-700 hover:border-indigo-400 shrink-0 transition active:scale-95"
+                        className="text-xs font-medium px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-slate-800 text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-slate-700 hover:bg-neutral-200 shrink-0 transition active:scale-95"
                       >
                         {chip}
                       </button>
@@ -1379,14 +1366,14 @@ export default function Contact() {
 
                 {/* Image Previews */}
                 {selectedImages.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-2 animate-in slide-in-from-bottom-2 px-2">
+                  <div className="flex flex-wrap gap-2 mb-2 animate-in slide-in-from-bottom-2 px-1">
                     {selectedImages.map((img, idx) => (
                       <div key={idx} className="relative group w-14 h-14 md:w-20 md:h-20">
-                        <img src={img} className="w-full h-full object-cover rounded-xl border border-gray-100" alt="" />
+                        <img src={img} className="w-full h-full object-cover rounded-xl border border-neutral-200" alt="" />
                         <button 
                           type="button"
                           onClick={() => removeImage(idx)}
-                          className="absolute -top-1 -right-1 bg-red-500 text-white p-0.5 md:p-1 rounded-full shadow-lg opacity-100 transition-opacity"
+                          className="absolute -top-1 -right-1 bg-neutral-900 text-white p-0.5 md:p-1 rounded-full shadow-xs transition-opacity"
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -1398,10 +1385,10 @@ export default function Contact() {
                    <button 
                       type="button" 
                       onClick={() => imageInputRef.current?.click()}
-                      className={`w-11 h-11 md:w-12 md:h-12 rounded-2xl flex items-center justify-center transition shrink-0 border ${
+                      className={`w-11 h-11 rounded-xl flex items-center justify-center transition shrink-0 border ${
                         isDarkMode 
                           ? 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700' 
-                          : 'bg-gray-50 border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                          : 'bg-neutral-100 border-neutral-200 text-neutral-700 hover:text-neutral-900 hover:bg-neutral-200'
                       }`}
                       title="إرفاق صور"
                    >
@@ -1432,24 +1419,24 @@ export default function Contact() {
                         }}
                         placeholder={
                           recipientId === 'ai_assistant'
-                            ? "اسأل المساعد الذكي عن أي منتج أو خدمة..."
+                            ? "اسأل مستشار المتجر عن أي منتج أو خدمة..."
                             : "اكتب رسالتك هنا..."
                         }
-                        className={`w-full min-h-[44px] max-h-32 leading-relaxed ${
+                        className={`w-full min-h-[44px] max-h-32 leading-normal ${
                           isDarkMode 
-                            ? "bg-slate-800/90 border-slate-700 text-white placeholder-slate-400 focus:border-indigo-500" 
-                            : "bg-gray-50 border-gray-200 text-slate-900 placeholder-gray-400 focus:border-blue-500"
-                        } border rounded-2xl px-4 py-2.5 text-sm md:text-[15px] resize-none outline-none transition-all`}
+                            ? "bg-slate-800/90 border-slate-700 text-white placeholder-slate-400 focus:border-slate-500" 
+                            : "bg-neutral-50 border-neutral-300 text-neutral-950 placeholder-neutral-400 focus:bg-white focus:border-neutral-900"
+                        } border rounded-xl px-4 py-2.5 text-sm md:text-[15px] resize-none outline-none transition-all`}
                         disabled={isAiThinking}
                       />
                    </div>
                    <button 
                       type="submit"
                       disabled={isSending || isAiThinking || (!text.trim() && selectedImages.length === 0)}
-                      className={`w-11 h-11 md:w-12 md:h-12 rounded-2xl shadow-md transition-all duration-300 active:scale-95 flex items-center justify-center shrink-0 ${
+                      className={`w-11 h-11 rounded-xl shadow-xs transition-all duration-200 active:scale-95 flex items-center justify-center shrink-0 ${
                         isSending || isAiThinking || (!text.trim() && selectedImages.length === 0)
-                          ? (isDarkMode ? 'bg-slate-800 text-slate-500 border border-slate-700' : 'bg-gray-100 text-gray-400 border border-gray-200')
-                          : `${getThemeClasses('bg')} text-white hover:brightness-110 shadow-blue-500/20`
+                          ? (isDarkMode ? 'bg-slate-800 text-slate-500 border border-slate-700' : 'bg-neutral-100 text-neutral-400 border border-neutral-200')
+                          : 'bg-neutral-900 hover:bg-black text-white'
                       }`}
                    >
                       {isAiThinking ? (

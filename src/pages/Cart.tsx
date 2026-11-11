@@ -342,14 +342,14 @@ export default function Cart() {
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               key={item.product.id} 
-              className={`p-5 rounded-3xl border transition-all duration-200 flex flex-col sm:flex-row items-center justify-between gap-5 ${
+              className={`p-4 sm:p-5 rounded-2xl border transition-all duration-200 flex flex-col sm:flex-row items-center justify-between gap-4 ${
                 isDarkMode 
-                  ? 'bg-slate-900 border-slate-800 shadow-md shadow-black/20' 
-                  : 'bg-white border-slate-200/80 shadow-sm hover:shadow-md'
+                  ? 'bg-slate-900 border-slate-800' 
+                  : 'bg-white border-neutral-200 shadow-xs'
               }`}
             >
-              <div className="flex flex-col sm:flex-row items-center gap-5 w-full">
-                <div className="w-24 h-24 rounded-2xl overflow-hidden shrink-0 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+              <div className="flex flex-col sm:flex-row items-center gap-4 w-full">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden shrink-0 bg-neutral-100 dark:bg-slate-800 border border-neutral-200 dark:border-slate-700">
                   <img 
                     src={item.product.image || (item.product.images && item.product.images[0]) || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300'} 
                     alt={item.product.title} 
@@ -357,28 +357,27 @@ export default function Cart() {
                   />
                 </div>
                 <div className="text-center sm:text-right flex-1 min-w-0">
-                  <h3 className="font-black text-slate-900 dark:text-white text-base sm:text-lg mb-1 truncate">{item.product.title}</h3>
-                  <div className="flex items-center justify-center sm:justify-start gap-3 mb-2">
-                    <span className={`${getThemeClasses('price')} font-black text-lg`}>
-                      {item.product.price?.toLocaleString()} <span className="text-xs">ر.ي</span>
+                  <h3 className="font-bold text-neutral-900 dark:text-white text-base mb-1 truncate">{item.product.title}</h3>
+                  <div className="flex items-center justify-center sm:justify-start gap-3 mb-1.5">
+                    <span className="font-black text-base text-neutral-950 dark:text-white tabular-nums">
+                      {item.product.price?.toLocaleString()} <span className="text-xs font-normal text-neutral-500">ر.ي</span>
                     </span>
-                    <span className="text-[11px] bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full font-bold text-slate-700 dark:text-slate-300">
+                    <span className="text-xs bg-neutral-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-lg font-medium text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-slate-700">
                       الكمية: {item.quantity}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 justify-center sm:justify-start">
-                    <span className={`w-2 h-2 rounded-full ${getThemeClasses('bg')} animate-pulse`}></span>
-                    <span className="text-[11px] text-slate-400 font-medium">متوفر وجاهز للشحن والتسليم</span>
+                  <div className="flex items-center gap-1.5 justify-center sm:justify-start text-[11px] text-neutral-500 font-medium">
+                    <span>متوفر للتسليم المباشر</span>
                   </div>
                 </div>
               </div>
 
               <button 
                 onClick={() => removeFromCart(item.product.id)}
-                className="w-11 h-11 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-500 flex items-center justify-center hover:bg-rose-500 hover:text-white transition active:scale-90 shrink-0"
+                className="w-10 h-10 rounded-xl bg-neutral-100 dark:bg-slate-800 text-neutral-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition active:scale-95 shrink-0 border border-neutral-200 dark:border-slate-700"
                 title="إزالة من السلة"
               >
-                <Trash2 className="h-5 w-5" />
+                <Trash2 className="h-4 w-4" />
               </button>
             </motion.div>
           ))}
@@ -431,14 +430,14 @@ export default function Cart() {
 
         {/* Checkout & Payment Summary */}
         <div className="space-y-6">
-          <div className={`p-6 sm:p-7 rounded-[2.5rem] border space-y-6 ${
-            isDarkMode ? 'bg-slate-900 border-slate-800 shadow-xl' : 'bg-white border-slate-200/80 shadow-md'
+          <div className={`p-5 sm:p-6 rounded-2xl border space-y-6 ${
+            isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-neutral-200 shadow-xs'
           }`}>
             <div className="flex items-center gap-3">
-              <div className={`w-11 h-11 ${getThemeClasses('bgLight')} rounded-2xl flex items-center justify-center ${getThemeClasses('text')}`}>
+              <div className="w-10 h-10 bg-neutral-100 dark:bg-slate-800 rounded-xl flex items-center justify-center text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-slate-700">
                 <CreditCard className="w-5 h-5" />
               </div>
-              <h3 className="text-xl font-black text-slate-900 dark:text-white">ملخص الطلب والدفع</h3>
+              <h3 className="text-lg font-bold text-neutral-900 dark:text-white">ملخص الطلب والدفع</h3>
             </div>
 
             {/* Price breakdown */}
@@ -735,14 +734,14 @@ export default function Cart() {
             <button 
               onClick={handleCheckout}
               disabled={isSubmitting}
-              className={`w-full ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white py-4 rounded-2xl font-black text-base shadow-xl active:scale-98 transition flex items-center justify-center gap-2 disabled:opacity-50`}
+              className="w-full bg-neutral-900 hover:bg-black text-white py-3.5 rounded-xl font-bold text-sm shadow-xs active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {isSubmitting ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
                   <span>تأكيد وشراء الآن</span>
-                  <ArrowRight className="w-5 h-5 rotate-180" />
+                  <ArrowRight className="w-4 h-4 rtl:-scale-x-100" />
                 </>
               )}
             </button>
