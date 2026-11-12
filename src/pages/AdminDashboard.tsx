@@ -18,7 +18,8 @@ import {
   DollarSign, Package, Eye, ChevronLeft, ChevronRight, 
   Twitter, Instagram, Facebook, Mail, Phone,
   BarChart3, LayoutDashboard, Layout, Sun, Moon, Server, Activity,
-  Upload, Palette, Wallet, KeyRound, Lock, BookmarkCheck
+  Upload, Palette, Wallet, KeyRound, Lock, BookmarkCheck,
+  Navigation, Loader2
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -42,6 +43,10 @@ interface StoreProfile {
   tiktok?: string;
   facebook?: string;
   address?: string;
+  city?: string;
+  location?: { lat: number; lng: number } | null;
+  coordinates?: { lat: number; lng: number } | null;
+  googleMapsUrl?: string;
   themeColor?: string;
   lastSeen?: string;
 }
@@ -219,6 +224,35 @@ export default function AdminDashboard() {
   const [deployments, setDeployments] = useState<any[]>([]);
   const [serverLogs, setServerLogs] = useState<any[]>([]);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
+  const [detectingGps, setDetectingGps] = useState(false);
+
+  const handleDetectStoreGps = () => {
+    if (!navigator.geolocation) {
+      toast.error('متصفحك لا يدعم خاصية تحديد الموقع الجغرافي');
+      return;
+    }
+    setDetectingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setDetectingGps(false);
+        const lat = Number(pos.coords.latitude.toFixed(6));
+        const lng = Number(pos.coords.longitude.toFixed(6));
+        setStoreProfile(prev => prev ? ({
+          ...prev,
+          location: { lat, lng },
+          coordinates: { lat, lng },
+          googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+        }) : null);
+        toast.success(`تم بنجاح التقاط موقع المتجر عبر GPS (${lat}, ${lng})`);
+      },
+      (err) => {
+        setDetectingGps(false);
+        console.warn('Geolocation error:', err);
+        toast.error('تعذر الوصول إلى GPS. يرجى تفعيل إذن الموقع في المتصفح أو إدخال رابط خرائط Google يدوياً.');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
 
   // OTP Email Sender State (Official Store Sender)
   const [otpSenderConfig, setOtpSenderConfig] = useState({
@@ -1391,9 +1425,100 @@ export default function AdminDashboard() {
                     />
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                        <AdminInput label="اسم المتجر" value={storeProfile.name} onChange={v => setStoreProfile({...storeProfile, name: v})} placeholder={`مثال: ${localSettings.storeName || "متجر صنعاء العالمي"}`} />
-                       <AdminInput label="عنوان المتجر" value={storeProfile.address || ''} onChange={v => setStoreProfile({...storeProfile, address: v})} placeholder="صنعاء - شارع حدة" />
+                       <AdminInput label="عنوان المتجر التفصيلي" value={storeProfile.address || ''} onChange={v => setStoreProfile({...storeProfile, address: v})} placeholder="صنعاء - شارع حدة - أمام مركز الكميم" />
                     </div>
                     <AdminTextarea label="وصف المتجر" value={storeProfile.description} onChange={v => setStoreProfile({...storeProfile, description: v})} placeholder="اكتب نبذة عن متجرك ومنتجاتك..." />
+
+                    {/* Store Physical Location & GPS Coordinates for Delivery Couriers */}
+                    <div className={`p-5 rounded-2xl border ${isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-neutral-50/80 border-neutral-200'} space-y-4`}>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-neutral-900 text-white flex items-center justify-center shrink-0">
+                            <MapPin className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-neutral-950 dark:text-white">
+                              موقع المتجر الجغرافي للاستلام (GPS لمناديب التوصيل)
+                            </h4>
+                            <p className="text-[11px] text-neutral-500 font-medium">
+                              يستخدمه مندوب التوصيل في بوابة التوصيل للتوجه المباشر إلى باب متجرك واستلام الطلب
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleDetectStoreGps}
+                          disabled={detectingGps}
+                          className="px-3.5 py-2 bg-neutral-900 hover:bg-black text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 active:scale-95 shrink-0"
+                        >
+                          {detectingGps ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>جاري التقاط الإحداثيات...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Navigation className="w-3.5 h-3.5" />
+                              <span>تحديد موقع متجري الآن عبر GPS 📍</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold mb-1.5 text-neutral-700 dark:text-neutral-300">
+                            المحافظة / المدينة
+                          </label>
+                          <select
+                            value={storeProfile.city || 'صنعاء'}
+                            onChange={(e) => setStoreProfile({ ...storeProfile, city: e.target.value })}
+                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium ${
+                              isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-neutral-300 text-neutral-900'
+                            }`}
+                          >
+                            {['صنعاء', 'عدن', 'تعز', 'حضرموت', 'إب', 'الحديدة', 'ذمار', 'مأرب', 'صعدة', 'لحج', 'أبين', 'شبوة', 'المهرة', 'عمران', 'حجة', 'البيضاء', 'الجوف', 'ريمة', 'المحويت', 'سقطرى'].map((c) => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold mb-1.5 text-neutral-700 dark:text-neutral-300">
+                            رابط موقع المتجر من خرائط Google (اختياري)
+                          </label>
+                          <input
+                            type="url"
+                            value={storeProfile.googleMapsUrl || ''}
+                            onChange={(e) => setStoreProfile({ ...storeProfile, googleMapsUrl: e.target.value })}
+                            placeholder="https://maps.google.com/?q=..."
+                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium dir-ltr ${
+                              isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-neutral-300 text-neutral-900'
+                            }`}
+                          />
+                        </div>
+                      </div>
+
+                      {(storeProfile.location?.lat && storeProfile.location?.lng) && (
+                        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-xl flex items-center justify-between flex-wrap gap-2 text-xs">
+                          <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span>إحداثيات GPS الدقيقة محفوظة بنجاح:</span>
+                            <span className="font-mono dir-ltr">{storeProfile.location.lat}, {storeProfile.location.lng}</span>
+                          </div>
+                          <a
+                            href={`https://www.google.com/maps/dir/?api=1&destination=${storeProfile.location.lat},${storeProfile.location.lng}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-bold text-emerald-700 dark:text-emerald-300 hover:underline flex items-center gap-1"
+                          >
+                            <span>تجربة ملاحة المندوب في Google Maps</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                      )}
+                    </div>
                     
                     <div className="pt-6 border-t border-gray-100">
                        <h3 className="text-lg font-black mb-6">روابط التواصل الاجتماعي</h3>

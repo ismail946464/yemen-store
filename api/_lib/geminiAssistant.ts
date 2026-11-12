@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { runStandaloneStoreAi } from "./storeAiEngine.js";
 
 export interface AssistantProduct {
   id: string;
@@ -28,7 +29,7 @@ export interface AssistantChatResponse {
   reply: string;
   products: AssistantProduct[];
   suggestedQuestions?: string[];
-  provider: 'gemini' | 'local_catalog';
+  provider: 'gemini' | 'standalone_store_ai' | 'local_catalog';
 }
 
 export function getGeminiClient(customApiKey?: string): GoogleGenAI | null {
@@ -76,71 +77,6 @@ export async function testGeminiConnection(customApiKey?: string): Promise<{ suc
   }
 }
 
-/**
- * Intelligent local catalog fallback when Gemini API key is missing or quota is limited
- */
-function searchLocalCatalog(
-  userQuery: string,
-  catalog: AssistantProduct[],
-  settings?: any
-): AssistantChatResponse {
-  const q = userQuery.toLowerCase().trim();
-  const queryTokens = q.split(/\s+/).filter(t => t.length > 1);
-
-  // Score products based on keyword match
-  const scored = catalog.map(p => {
-    let score = 0;
-    const title = (p.title || '').toLowerCase();
-    const desc = (p.description || '').toLowerCase();
-    const cat = (p.category || '').toLowerCase();
-
-    if (title.includes(q)) score += 10;
-    if (desc.includes(q)) score += 4;
-    if (cat.includes(q)) score += 5;
-
-    for (const t of queryTokens) {
-      if (title.includes(t)) score += 3;
-      if (desc.includes(t)) score += 1;
-      if (cat.includes(t)) score += 2;
-    }
-
-    if (p.ownerVerified) score += 1;
-    return { product: p, score };
-  });
-
-  const matching = scored
-    .filter(item => item.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 6)
-    .map(item => item.product);
-
-  const storeName = settings?.storeName || 'يمن ستور';
-
-  let reply = '';
-  if (matching.length > 0) {
-    reply = `أهلاً بك في ${storeName}! ✨\nوجدت لك ${matching.length} منتج يطابق بحثك عن "${userQuery}". يمكنك الضغط على أي منتج أدناه لفتح صفحته مباشرة والتسوق أو الحجز المسبق:`;
-  } else if (q.includes('شحن') || q.includes('توصيل')) {
-    reply = `خدمات الشحن والتوصيل في ${storeName}: 🚚\nنوفر توصيلاً آمناً وسريعاً لكافة المحافظات مع ضمان سلامة المنتجات 100%. يمكنك مراجعة رسوم التوصيل لكل منتج في صفحته الخاصة.`;
-  } else if (q.includes('عربون') || q.includes('حجز')) {
-    reply = `نظام الحجز المسبق ودفع العربون في ${storeName}: 📦\nيضمن لك حجز السلعة باسمك لعدة أيام (غالباً 3 إلى 5 أيام) من المتاجر الموثقة عبر دفع عربون رمزي لضمان عدم بيعها لغيرك حتى إتمام الاستلام.`;
-  } else if (q.includes('ضمان') || q.includes('وثق') || q.includes('توثيق')) {
-    reply = `الضمان والمتاجر الموثقة في ${storeName}: 🛡️\nجميع المتاجر المعتمدة تحمل شارة التوثيق الزرقاء مع مراجعة هوياتها وسجلاتها التجارية. حقك محفوظ بنسبة 100% عند الشراء من خلال المنصة.`;
-  } else {
-    reply = `مرحباً بك! أنا مساعد ${storeName} الذكي. 🛍️\nأنا هنا لمساعدتك في البحث عن المنتجات، معرفة الأسعار، أو الاستفسار عن الشحن والحجز المسبق في المتجر. بماذا يمكنني مساعدتك اليوم؟`;
-  }
-
-  return {
-    reply,
-    products: matching,
-    suggestedQuestions: [
-      'ما هي المنتجات الأكثر طلباً؟',
-      'كيف يعمل نظام دفع العربون والحجز؟',
-      'عرض الأجهزة والإلكترونيات'
-    ],
-    provider: 'local_catalog'
-  };
-}
-
 export async function processAssistantMessage(
   payload: AssistantChatRequest
 ): Promise<AssistantChatResponse> {
@@ -151,15 +87,15 @@ export async function processAssistantMessage(
     return {
       reply: 'مرحباً بك! كيف يمكنني مساعدتك في التسوق أو البحث عن منتجات اليوم؟',
       products: [],
-      provider: 'local_catalog'
+      provider: 'standalone_store_ai'
     };
   }
 
   const ai = getGeminiClient(storeSettings?.geminiApiKey);
 
-  // If no Gemini client / API key, use rich local catalog search
+  // If no Gemini client / API key, use comprehensive standalone store AI engine
   if (!ai) {
-    return searchLocalCatalog(userMessage, catalogProducts, storeSettings);
+    return runStandaloneStoreAi(userMessage, catalogProducts, storeSettings);
   }
 
   try {
@@ -277,10 +213,10 @@ ${catalogSnippet || 'لا توجد منتجات حالياً'}
       // Resolve product objects from catalog
       const matchedProducts = catalogProducts.filter(p => matchedIds.includes(p.id));
 
-      // If Gemini suggested IDs that aren't exact, fallback to search matching
+      // If Gemini suggested IDs that aren't exact, fallback to standalone AI engine matching
       const finalProducts = matchedProducts.length > 0 
         ? matchedProducts 
-        : searchLocalCatalog(userMessage, catalogProducts, storeSettings).products;
+        : runStandaloneStoreAi(userMessage, catalogProducts, storeSettings).products;
 
       return {
         reply: parsed.reply,
@@ -291,12 +227,11 @@ ${catalogSnippet || 'لا توجد منتجات حالياً'}
     }
 
     // Fallback if parsing failed
-    return searchLocalCatalog(userMessage, catalogProducts, storeSettings);
+    return runStandaloneStoreAi(userMessage, catalogProducts, storeSettings);
 
   } catch (error: any) {
-    console.warn('Gemini Assistant Notice (served via local catalog):', error?.message || error);
-    // Graceful fallback to local catalog search
-    const fallback = searchLocalCatalog(userMessage, catalogProducts, storeSettings);
-    return fallback;
+    console.warn('Gemini Assistant Notice (served via standalone store AI engine):', error?.message || error);
+    // Graceful fallback to standalone store AI engine
+    return runStandaloneStoreAi(userMessage, catalogProducts, storeSettings);
   }
 }

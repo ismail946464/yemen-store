@@ -11,7 +11,8 @@ import {
   processAdminListAccounts,
   processAdminUpdateAccount,
   processAdminDeleteAccount,
-  processAdminCreateAccount
+  processAdminCreateAccount,
+  processChangePassword
 } from "./api/_lib/accountService.js";
 import { processAssistantMessage, testGeminiConnection } from "./api/_lib/geminiAssistant.js";
 
@@ -150,6 +151,20 @@ async function startServer() {
     } catch (err: any) {
       console.error("login route error:", err);
       return res.status(500).json({ success: false, message: "حدث خطأ غير متوقع أثناء تسجيل الدخول" });
+    }
+  });
+
+  app.post("/api/auth/change-password", async (req, res) => {
+    try {
+      const { email, newPassword, currentPassword } = req.body || {};
+      if (!email || !newPassword) {
+        return res.status(400).json({ success: false, message: "البريد الإلكتروني وكلمة المرور الجديدة مطلوبان" });
+      }
+      const result = await processChangePassword({ email, newPassword, currentPassword });
+      return res.status(result.success ? 200 : 400).json(result);
+    } catch (err: any) {
+      console.error("change-password route error:", err);
+      return res.status(500).json({ success: false, message: "حدث خطأ غير متوقع أثناء تغيير كلمة المرور" });
     }
   });
 

@@ -29,6 +29,7 @@ import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { askStoreAssistant } from '../services/geminiService';
+import { runStandaloneStoreAi } from '../services/storeAiEngine';
 
 export default function Contact() {
   const { userData, user, getThemeClasses, isAdmin, isStore, settings, markMessagesAsRead, isDarkMode, openLoginModal } = useAppContext();
@@ -369,9 +370,12 @@ export default function Contact() {
         };
         setGuestMessages(prev => [...prev, aiReplyMsg]);
       } catch (err) {
+        const fallback = runStandaloneStoreAi(msgText, catalogProducts, settings);
         setGuestMessages(prev => [...prev, {
-          id: `guest_err_${Date.now()}`,
-          text: 'أعتذر، حدث تأخير بسيط. يمكنك إعادة السؤال أو البحث باسم المنتج.',
+          id: `guest_ai_${Date.now()}`,
+          text: fallback.reply,
+          productCards: fallback.products || [],
+          suggestedQuestions: fallback.suggestedQuestions || [],
           senderId: 'ai_assistant',
           createdAt: new Date().toISOString()
         }]);
@@ -440,8 +444,11 @@ export default function Contact() {
           }, { merge: true });
         } catch (aiErr) {
           console.error("AI Assistant error:", aiErr);
+          const fallback = runStandaloneStoreAi(msgText, catalogProducts, settings);
           await addDoc(collection(db, 'messages'), {
-            text: 'أعتذر، حدث تأخير بسيط في معالجة طلبك عبر الذكاء الاصطناعي. يمكنك البحث عن منتج محدد وسأقوم بعرضه فوراً (مثال: "ابحث عن عسل" أو "ما هي الهواتف المتاحة؟").',
+            text: fallback.reply,
+            productCards: fallback.products || [],
+            suggestedQuestions: fallback.suggestedQuestions || [],
             senderId: 'ai_assistant',
             recipientId: user.uid,
             conversationId: conversationId,

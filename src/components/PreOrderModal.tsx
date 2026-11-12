@@ -220,7 +220,10 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
         reservationStatus: 'active', // active, completed, forfeited, cancelled
         reservationTerms: `تم حجز السلعة لمدة ${reservationDurationDays} أيام بعربون مقداره ${depositAmount} ريال. مالم يتم إتمام الشراء وسداد الباقي (${remainingAmount} ريال) قبل انتهاء المدة يذهب العربون للمتجر.`,
         status: 'reserved',
+        deliveryStatus: 'pending_pickup',
+        deliveryFee: product.deliveryFee || 1500,
         storeId: product.ownerId || '',
+        storeName: product.ownerName || (settings?.storeName || 'يمن ستور'),
         items: [{
           productId: product.id,
           id: product.id,
@@ -239,6 +242,22 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
         paymentProof: paymentProof || null,
         createdAt: new Date().toISOString()
       };
+
+      // Attach store physical location if available
+      if (product.ownerId) {
+        try {
+          const sSnap = await getDoc(doc(db, 'storeProfiles', product.ownerId));
+          if (sSnap.exists()) {
+            const sData = sSnap.data();
+            (reservationData as any).storeAddress = sData.address || (sData.city ? `${sData.city} - المركز` : 'صنعاء');
+            (reservationData as any).storeLocation = sData.location || sData.coordinates || null;
+            (reservationData as any).storeMapsUrl = sData.googleMapsUrl || sData.mapsUrl || '';
+            (reservationData as any).storePhone = sData.phone || sData.whatsapp || '';
+          }
+        } catch (e) {
+          console.warn("Store profile lookup for preorder notice:", e);
+        }
+      }
 
       const docRef = await addDoc(collection(db, 'orders'), reservationData);
 

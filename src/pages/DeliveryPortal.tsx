@@ -39,6 +39,8 @@ interface DeliveryOrder {
   storeName?: string;
   storePhone?: string;
   storeAddress?: string;
+  storeLocation?: { lat: number; lng: number } | null;
+  storeMapsUrl?: string;
   items: OrderItem[];
   total: number;
   deliveryFee?: number;
@@ -55,7 +57,7 @@ interface DeliveryOrder {
 }
 
 export default function DeliveryPortal() {
-  const { user, userData, isDelivery, isAdmin, isDarkMode, settings } = useAppContext();
+  const { user, userData, isDelivery, isDarkMode, settings } = useAppContext();
   const currentStoreName = settings?.storeName || 'يمن ستور';
 
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
@@ -87,7 +89,7 @@ export default function DeliveryPortal() {
       setOrders(fetched);
       setLoading(false);
 
-      // Pre-fetch store profiles for stores in orders
+      // Pre-fetch store profiles for stores in orders (checking both storeProfiles and users collections)
       const uniqueStoreIds = Array.from(new Set(fetched.map(o => o.storeId).filter(Boolean))) as string[];
       uniqueStoreIds.forEach(async (sid) => {
         if (sid && sid !== 'global' && !storeProfilesCache[sid]) {
@@ -95,6 +97,11 @@ export default function DeliveryPortal() {
             const sSnap = await getDoc(doc(db, 'storeProfiles', sid));
             if (sSnap.exists()) {
               setStoreProfilesCache(prev => ({ ...prev, [sid]: sSnap.data() }));
+            } else {
+              const uSnap = await getDoc(doc(db, 'users', sid));
+              if (uSnap.exists()) {
+                setStoreProfilesCache(prev => ({ ...prev, [sid]: uSnap.data() }));
+              }
             }
           } catch {
             // Handled
@@ -109,8 +116,8 @@ export default function DeliveryPortal() {
     return () => unsubscribe();
   }, [user]);
 
-  // Access check: only delivery or admin can access
-  if (!user || (!isDelivery && !isAdmin)) {
+  // Access check: STRICTLY restricted to delivery role only (not even admin / site owner)
+  if (!user || !isDelivery) {
     return (
       <div className="max-w-xl mx-auto my-12 p-6 sm:p-8 bg-white dark:bg-slate-900 rounded-2xl border border-neutral-200 dark:border-slate-800 shadow-xs text-center space-y-6 font-tajawal" dir="rtl">
         <div className="w-16 h-16 bg-neutral-100 dark:bg-slate-800 text-neutral-800 dark:text-neutral-200 rounded-2xl flex items-center justify-center mx-auto border border-neutral-200 dark:border-slate-700">
@@ -119,11 +126,11 @@ export default function DeliveryPortal() {
         <div className="space-y-2">
           <h2 className="text-xl sm:text-2xl font-bold text-neutral-950 dark:text-white">بوابة مندوب التوصيل المعتمد</h2>
           <p className="text-neutral-600 dark:text-neutral-400 text-xs sm:text-sm font-medium leading-relaxed max-w-md mx-auto">
-            هذه الصفحة مخصصة لمناديب التوصيل المعتمدين في منصة {currentStoreName} لتلقي طلبات الشراء، تتبع مواقع المتاجر والزبائن على الخرائط، وتأكيد التسليم الميداني.
+            هذه الصفحة مخصصة ومحصورة حصرياً لمن يحملون <strong>رتبة مندوب توصيل</strong> في المنصة، ولا تتاح لأي مستخدم آخر حتى مالك الموقع.
           </p>
         </div>
         <div className="p-3.5 bg-neutral-50 dark:bg-slate-800/40 rounded-xl border border-neutral-200 dark:border-slate-700 text-xs font-medium text-neutral-600 dark:text-neutral-400 leading-relaxed">
-          إذا كنت ترغب بالانضمام كمندوب توصيل معتمد في المنصة، يرجى التواصل مع إدارة المتجر لترقية حسابك لرتبة توصيل.
+          إذا كنت مندوب توصيل وترغب في استلام وتوصيل الطلبات، يرجى التواصل مع إدارة المتجر لمنح حسابك رتبة "توصيل".
         </div>
         <div className="flex flex-col sm:flex-row gap-3 pt-2">
           <Link
@@ -263,19 +270,35 @@ export default function DeliveryPortal() {
     }
   };
 
-  // Helper for Google Maps navigation links
+  // Helper for Google Maps navigation links (Turn-by-turn directions)
   const getStoreMapUrl = (order: DeliveryOrder) => {
     const storeProfile = order.storeId ? storeProfilesCache[order.storeId] : null;
-    const storeQuery = order.storeAddress || storeProfile?.address || order.storeName || storeProfile?.name || 'صنعاء';
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(storeQuery)}`;
+    const storeLoc = order.storeLocation || storeProfile?.location || storeProfile?.coordinates;
+    
+    // 1. Direct GPS latitude & longitude navigation
+    if (storeLoc && typeof storeLoc.lat === 'number' && typeof storeLoc.lng === 'number') {
+      return `https://www.google.com/maps/dir/?api=1&destination=${storeLoc.lat},${storeLoc.lng}`;
+    }
+    
+    // 2. Direct Google Maps pin or link saved by store owner
+    if (order.storeMapsUrl || storeProfile?.googleMapsUrl || storeProfile?.mapsUrl) {
+      return order.storeMapsUrl || storeProfile?.googleMapsUrl || storeProfile?.mapsUrl;
+    }
+    
+    // 3. Address query directions
+    const storeAddress = order.storeAddress || storeProfile?.address;
+    const storeCity = storeProfile?.city || 'صنعاء';
+    const storeName = order.storeName || storeProfile?.name || 'المتجر';
+    const storeQuery = storeAddress ? `${storeAddress}, ${storeCity}` : `${storeName}, ${storeCity}`;
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(storeQuery)}`;
   };
 
   const getCustomerMapUrl = (order: DeliveryOrder) => {
     if (order.location?.lat && order.location?.lng) {
-      return `https://www.google.com/maps/search/?api=1&query=${order.location.lat},${order.location.lng}`;
+      return `https://www.google.com/maps/dir/?api=1&destination=${order.location.lat},${order.location.lng}`;
     }
     const customerQuery = order.customerAddress || order.customerNotes || 'اليمن';
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(customerQuery)}`;
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(customerQuery)}`;
   };
 
   return (
@@ -443,7 +466,10 @@ export default function DeliveryPortal() {
             const storeProfile = order.storeId ? storeProfilesCache[order.storeId] : null;
             const storeName = order.storeName || storeProfile?.name || 'متجر معتمد';
             const storePhone = order.storePhone || storeProfile?.phone || storeProfile?.whatsapp || '';
-            const storeAddress = order.storeAddress || storeProfile?.address || 'صنعاء';
+            const storeAddress = order.storeAddress || storeProfile?.address || (storeProfile?.city ? `${storeProfile.city} - المركز` : 'صنعاء');
+            const storeLoc = order.storeLocation || storeProfile?.location || storeProfile?.coordinates;
+            const hasStoreGps = Boolean(storeLoc && typeof storeLoc.lat === 'number' && typeof storeLoc.lng === 'number');
+            const storeOwnerName = storeProfile?.ownerName || storeProfile?.displayName || storeProfile?.name;
             const customerPhone = order.customerPhone || '';
             const customerAddress = order.customerAddress || order.customerNotes || 'العنوان محدد بالخريطة';
             const isAssignedToMe = order.courierId === user.uid;
@@ -531,22 +557,46 @@ export default function DeliveryPortal() {
                       </span>
                     </div>
 
-                    <div className="space-y-1.5 text-xs">
+                    <div className="space-y-2 text-xs">
                       <div className="flex items-start gap-2 text-neutral-600 dark:text-neutral-300">
                         <MapPin className="w-3.5 h-3.5 text-neutral-500 shrink-0 mt-0.5" />
-                        <div>
-                          <span className="font-semibold text-neutral-900 dark:text-white">العنوان: </span>
+                        <div className="flex-1">
+                          <span className="font-semibold text-neutral-900 dark:text-white">عنوان المتجر: </span>
                           <span>{storeAddress}</span>
+                          {storeProfile?.city && !storeAddress.includes(storeProfile.city) && (
+                            <span className="text-neutral-500"> ({storeProfile.city})</span>
+                          )}
                         </div>
                       </div>
+
+                      {storeOwnerName && storeOwnerName !== storeName && (
+                        <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+                          <User className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+                          <span className="font-semibold text-neutral-900 dark:text-white">صاحب المتجر: </span>
+                          <span>{storeOwnerName}</span>
+                        </div>
+                      )}
 
                       {storePhone && (
                         <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
                           <Phone className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
-                          <span className="font-semibold text-neutral-900 dark:text-white">الهاتف: </span>
+                          <span className="font-semibold text-neutral-900 dark:text-white">هاتف المتجر: </span>
                           <span className="font-mono dir-ltr">{storePhone}</span>
                         </div>
                       )}
+
+                      <div>
+                        {hasStoreGps ? (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-bold text-[11px]">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span>📍 موقع GPS دقيق للمتجر محدد على الخريطة</span>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-slate-800 text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-slate-700 text-[10px]">
+                            <span>موقع المتجر عبر العنوان المسجل</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Action buttons for Store */}
@@ -558,7 +608,7 @@ export default function DeliveryPortal() {
                         className="flex-1 min-w-[140px] px-3 py-2 bg-neutral-900 hover:bg-black text-white rounded-lg text-xs font-bold shadow-xs active:scale-95 transition flex items-center justify-center gap-1.5"
                       >
                         <Navigation className="w-3.5 h-3.5" />
-                        <span>ملاحة الخرائط للمتجر</span>
+                        <span>ملاحة مباشرة للمتجر (GPS)</span>
                         <ExternalLink className="w-3 h-3 opacity-70" />
                       </a>
 

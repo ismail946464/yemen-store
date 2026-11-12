@@ -393,3 +393,39 @@ export async function processAdminCreateAccount(input: {
   await saveAccount(account);
   return { success: true, message: "تم إنشاء الحساب بنجاح", account };
 }
+
+export async function processChangePassword(input: {
+  email: string;
+  newPassword: string;
+  currentPassword?: string;
+}): Promise<{ success: boolean; message: string }> {
+  const normalizedEmail = String(input.email || "").trim().toLowerCase();
+  const newPass = String(input.newPassword || "").trim();
+
+  if (!normalizedEmail || !normalizedEmail.includes("@")) {
+    return { success: false, message: "البريد الإلكتروني غير صالح" };
+  }
+  if (!newPass || newPass.length < 4) {
+    return { success: false, message: "يجب ألا تقل كلمة المرور الجديدة عن 4 أحرف" };
+  }
+
+  const account = await getAccountByEmail(normalizedEmail);
+  if (!account) {
+    return { success: false, message: "لم يتم العثور على الحساب" };
+  }
+
+  // If currentPassword is provided, verify it
+  if (input.currentPassword) {
+    const cur = String(input.currentPassword).trim();
+    const matches = account.password === cur || account.passwordHash === hashPassword(cur);
+    if (!matches) {
+      return { success: false, message: "كلمة المرور الحالية غير صحيحة" };
+    }
+  }
+
+  account.password = newPass;
+  account.passwordHash = hashPassword(newPass);
+  await saveAccount(account);
+
+  return { success: true, message: "تم تغيير وتحديث كلمة المرور بنجاح" };
+}

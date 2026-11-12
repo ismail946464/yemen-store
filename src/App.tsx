@@ -129,15 +129,15 @@ function Header() {
                   <span className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 border-r pr-1.5 border-neutral-200 dark:border-neutral-700">ذكاء المتجر</span>
                 </Link>
 
-                {/* Delivery Courier Shortcut */}
-                {(isDelivery || isAdmin) && (
+                {/* Delivery Courier Shortcut - Strictly for role === 'delivery' only */}
+                {isDelivery && (
                   <Link 
                     to="/delivery"
                     title="بوابة مندوب التوصيل"
-                    className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition border bg-neutral-100 dark:bg-slate-800 border-neutral-200 dark:border-slate-700 text-neutral-800 dark:text-slate-200 hover:bg-neutral-200"
+                    className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition border bg-neutral-900 text-white hover:bg-black dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 shadow-2xs"
                   >
-                    <Bike className="w-4 h-4 text-neutral-700 dark:text-slate-300" />
-                    <span className="hidden sm:inline font-bold">التوصيل</span>
+                    <Bike className="w-4 h-4" />
+                    <span className="inline font-bold">التوصيل</span>
                   </Link>
                 )}
 

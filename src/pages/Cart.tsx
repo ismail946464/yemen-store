@@ -276,14 +276,36 @@ export default function Cart() {
   const finalizeOrder = async (loc: {lat: number, lng: number} | null) => {
     setIsSubmitting(true);
     try {
+      const targetStoreId = cart[0]?.product?.ownerId;
+      let storeProfileData: any = null;
+      if (targetStoreId && targetStoreId !== 'global') {
+        try {
+          const sSnap = await getDoc(doc(db, 'storeProfiles', targetStoreId));
+          if (sSnap.exists()) {
+            storeProfileData = sSnap.data();
+          } else {
+            const uSnap = await getDoc(doc(db, 'users', targetStoreId));
+            if (uSnap.exists()) {
+              storeProfileData = uSnap.data();
+            }
+          }
+        } catch (e) {
+          console.warn("Store profile lookup notice:", e);
+        }
+      }
+
       const orderData = {
         userId: user?.uid,
         customerName: userData?.displayName || userData?.name || user?.displayName || `عميل ${currentStoreName}`,
         customerEmail: user?.email || '',
         customerPhone: customerPhone.trim() || userData?.phone || '',
         customerNotes: customerNotes.trim(),
-        storeId: cart[0]?.product?.ownerId || 'global',
-        storeName: cart[0]?.product?.ownerName || (settings?.storeName || 'يمن ستور'),
+        storeId: targetStoreId || 'global',
+        storeName: storeProfileData?.name || cart[0]?.product?.ownerName || (settings?.storeName || 'يمن ستور'),
+        storeAddress: storeProfileData?.address || (storeProfileData?.city ? `${storeProfileData.city} - المركز` : 'صنعاء'),
+        storeLocation: storeProfileData?.location || storeProfileData?.coordinates || null,
+        storeMapsUrl: storeProfileData?.googleMapsUrl || storeProfileData?.mapsUrl || '',
+        storePhone: storeProfileData?.phone || storeProfileData?.whatsapp || '',
         deliveryFee: cart[0]?.product?.deliveryFee || 1500,
         deliveryStatus: 'pending_pickup',
         customerAddress: customerNotes.trim() || 'العنوان محدد عبر الخريطة',
