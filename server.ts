@@ -3,7 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { getFirebaseAdmin } from "./api/_lib/firebaseAdmin.js";
 import { processSendOtp, processVerifyOtp, getSenderConfig } from "./api/_lib/otpService.js";
-import { requireAdminAuth } from "./api/_lib/authMiddleware.js";
+import { requireAdminAuth, verifyAuthToken } from "./api/_lib/authMiddleware.js";
 import {
   processRegisterStoreAccount,
   processUpdateProfile,
@@ -156,11 +156,27 @@ async function startServer() {
 
   app.post("/api/auth/change-password", async (req, res) => {
     try {
+      const rawHeader = req.headers?.authorization || req.headers?.Authorization;
+      const authHeader = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+      const caller = await verifyAuthToken(authHeader);
+      if (!caller) {
+        return res.status(401).json({
+          success: false,
+          message: "غير مصرح: يرجى تسجيل الدخول أولاً لتغيير كلمة المرور"
+        });
+      }
+
       const { email, newPassword, currentPassword } = req.body || {};
-      if (!email || !newPassword) {
+      const targetEmail = String(email || caller.email || "").trim();
+      if (!targetEmail || !newPassword) {
         return res.status(400).json({ success: false, message: "البريد الإلكتروني وكلمة المرور الجديدة مطلوبان" });
       }
-      const result = await processChangePassword({ email, newPassword, currentPassword });
+      const result = await processChangePassword({
+        email: targetEmail,
+        newPassword,
+        currentPassword,
+        caller
+      });
       return res.status(result.success ? 200 : 400).json(result);
     } catch (err: any) {
       console.error("change-password route error:", err);

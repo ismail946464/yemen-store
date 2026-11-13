@@ -1,19 +1,18 @@
 import { useState, useEffect } from 'react';
-import { Download, BellRing } from 'lucide-react';
+import { Download, Smartphone, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppContext } from '../AppContext';
 
 export default function InstallPrompt() {
-  const { settings } = useAppContext();
+  const { settings, getThemeClasses } = useAppContext();
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
-    // Check if already installed
     const checkStandalone = () => {
-      const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches 
-        || (window.navigator as any).standalone 
+      const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches
+        || (window.navigator as any).standalone
         || document.referrer.includes('android-app://');
       setIsStandalone(isStandaloneMode);
       return isStandaloneMode;
@@ -22,18 +21,17 @@ export default function InstallPrompt() {
     const standalone = checkStandalone();
 
     const sendSystemNotification = () => {
-      if ('Notification' in window && Notification.permission === 'granted' && !standalone) {
+      if ('Notification' in window && Notification.permission === 'granted' && !standalone && 'serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(registration => {
           registration.showNotification(settings?.storeName || 'يمن ستور', {
-            body: 'قم بتثبيت التطبيق الآن للوصول السريع والمنتجات الحصرية!',
-            icon: settings?.storeLogo || 'https://cdn-icons-png.flaticon.com/512/3750/3750019.png',
-            badge: settings?.storeLogo || 'https://cdn-icons-png.flaticon.com/512/3750/3750019.png',
+            body: 'قم بتثبيت التطبيق للوصول السريع وإدارة الطلبات.',
+            icon: settings?.storeLogo || '/favicon.ico',
+            badge: settings?.storeLogo || '/favicon.ico',
             tag: 'install-yemen-store',
-            requireInteraction: true, // This makes it stay in the notification shade
-            vibrate: [200, 100, 200],
+            requireInteraction: true,
             dir: 'rtl'
           } as any);
-        });
+        }).catch(() => {});
       }
     };
 
@@ -42,33 +40,33 @@ export default function InstallPrompt() {
       setDeferredPrompt(e);
       if (!standalone) {
         setShowPrompt(true);
-        // Request notification permission to send the "sticky" notification
         if ('Notification' in window && Notification.permission === 'default') {
           Notification.requestPermission().then(permission => {
             if (permission === 'granted') sendSystemNotification();
-          });
-        } else if (Notification.permission === 'granted') {
+          }).catch(() => {});
+        } else if ('Notification' in window && Notification.permission === 'granted') {
           sendSystemNotification();
         }
       }
     };
 
     window.addEventListener('beforeinstallprompt', handler);
-    window.addEventListener('appinstalled', () => {
+    const installedHandler = () => {
       setShowPrompt(false);
       setDeferredPrompt(null);
-      // Close notification if it exists
-      if ('Notification' in window && Notification.permission === 'granted') {
-          navigator.serviceWorker.ready.then(reg => {
-              reg.getNotifications({ tag: 'install-yemen-store' }).then(notifications => {
-                  notifications.forEach(n => n.close());
-              });
+      if ('Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(reg => {
+          reg.getNotifications({ tag: 'install-yemen-store' }).then(notifications => {
+            notifications.forEach(n => n.close());
           });
+        }).catch(() => {});
       }
-    });
+    };
+    window.addEventListener('appinstalled', installedHandler);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handler);
+      window.removeEventListener('appinstalled', installedHandler);
     };
   }, []);
 
@@ -86,29 +84,45 @@ export default function InstallPrompt() {
 
   return (
     <AnimatePresence>
-      <motion.div 
-        initial={{ y: -100 }}
-        animate={{ y: 0 }}
-        className="bg-black text-white px-4 py-3 border-b border-yellow-500/50 relative z-[100]"
+      <motion.div
+        initial={{ opacity: 0, y: -12 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -12 }}
+        className="bg-[#111214] dark:bg-[#131519] text-[#F4F4F2] px-4 py-2.5 border-b border-[#232730] relative z-[100]"
       >
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="bg-yellow-400 p-2 rounded-full animate-pulse shadow-[0_0_15px_rgba(250,204,21,0.5)]">
-              <BellRing className="w-4 h-4 text-black" />
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-[#1C1F26] border border-[#2C313C] flex items-center justify-center shrink-0">
+              <Smartphone className="w-4 h-4 text-[#F4F4F2]" />
             </div>
-            <div>
-              <h3 className="text-xs sm:text-sm font-black text-white">تطبيق {settings?.storeName || 'يمن ستور'} بحاجة للتثبيت</h3>
-              <p className="text-[9px] text-gray-400 font-bold hidden xs:block">سيبقى هذا الإشعار حتى تكتمل عملية التثبيت</p>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm font-bold truncate">
+                تثبيت تطبيق {settings?.storeName || 'يمن ستور'}
+              </p>
+              <p className="text-[11px] text-zinc-400 hidden sm:block truncate">
+                وصول مباشر وسريع من الشاشة الرئيسية لجهازك
+              </p>
             </div>
           </div>
 
-          <button 
-            onClick={handleInstallClick}
-            className="bg-yellow-400 text-black text-[10px] sm:text-xs font-black px-6 py-2 rounded-full hover:bg-yellow-300 transition-all flex items-center gap-2 shrink-0 active:scale-95 whitespace-nowrap"
-          >
-            <Download className="w-3 h-3" />
-            تثبيت الآن
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleInstallClick}
+              className={`min-h-[36px] px-4 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 whitespace-nowrap ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>تثبيت</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPrompt(false)}
+              aria-label="إغلاق"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white hover:bg-[#1C1F26] transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </motion.div>
     </AnimatePresence>

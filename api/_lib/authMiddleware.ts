@@ -1,5 +1,8 @@
+import fs from "fs";
+import path from "path";
 import crypto from "crypto";
 import { getFirebaseAdmin } from "./firebaseAdmin.js";
+import { getAccountByEmail } from "./accountStorage.js";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -93,24 +96,74 @@ export async function verifyAuthToken(authHeader?: string): Promise<AuthUser | n
   }
 
   // 2. Try Firebase ID Token verification (from Google Popup Sign-in)
+  let verifiedEmail = "";
+  let verifiedUid = "";
+  let tokenRole: string | undefined;
+
   try {
     const { app } = getFirebaseAdmin();
     if (app) {
       const adminAuth = (await import("firebase-admin/auth")).getAuth(app);
       const decoded = await adminAuth.verifyIdToken(token);
       if (decoded && decoded.email) {
-        const email = decoded.email.toLowerCase();
-        const isMaster = email === "1ismaai0lll@gmail.com";
-        return {
-          uid: decoded.uid,
-          email,
-          role: isMaster ? "admin" : (decoded.role || "user"),
-          isMasterAdmin: isMaster
-        };
+        verifiedEmail = decoded.email.toLowerCase();
+        verifiedUid = decoded.uid;
+        tokenRole = decoded.role;
       }
     }
   } catch {
-    // ID Token verification failed or not a Firebase ID Token
+    // Fall through to Identity Toolkit REST verification
+  }
+
+  // Fallback REST verification using Firebase Web API key if Admin SDK failed
+  if (!verifiedEmail) {
+    try {
+      const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+      if (fs.existsSync(configPath)) {
+        const cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+        if (cfg?.apiKey) {
+          const restRes = await fetch(
+            `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(cfg.apiKey)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ idToken: token })
+            }
+          );
+          if (restRes.ok) {
+            const restJson: any = await restRes.json();
+            const userRec = restJson?.users?.[0];
+            if (userRec?.email) {
+              verifiedEmail = String(userRec.email).toLowerCase();
+              verifiedUid = String(userRec.localId || "");
+            }
+          }
+        }
+      }
+    } catch {
+      // REST lookup failed
+    }
+  }
+
+  if (verifiedEmail) {
+    const isMaster = verifiedEmail === "1ismaai0lll@gmail.com";
+    let resolvedRole = isMaster ? "admin" : (tokenRole || "user");
+    if (!isMaster) {
+      try {
+        const stored = await getAccountByEmail(verifiedEmail);
+        if (stored?.role) {
+          resolvedRole = stored.role;
+        }
+      } catch {
+        // ignore lookup failure
+      }
+    }
+    return {
+      uid: verifiedUid,
+      email: verifiedEmail,
+      role: resolvedRole,
+      isMasterAdmin: isMaster
+    };
   }
 
   return null;

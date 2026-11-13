@@ -1,5 +1,21 @@
-import React, { useState, useEffect, ChangeEvent } from 'react';
-import { Trash2, ShoppingBag, CreditCard, Wallet, MapPin, Navigation, CheckCircle, ArrowRight, Copy, Check, UploadCloud, X, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  Trash2,
+  ShoppingBag,
+  CreditCard,
+  Wallet,
+  MapPin,
+  Navigation,
+  CheckCircle,
+  ArrowRight,
+  Copy,
+  Check,
+  UploadCloud,
+  X,
+  Plus,
+  Minus,
+  Phone,
+} from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
 import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
@@ -8,7 +24,6 @@ import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import { MerchantWallet } from '../components/WalletManagement';
 
-// Client-side image compression
 const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800, quality = 0.65): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
@@ -70,16 +85,39 @@ const getDefaultFallbackWallets = (storeName: string = 'يمن ستور'): Merch
   }
 ];
 
+function CartItemThumbnail({ src, alt }: { src?: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+
+  if (!src || failed) {
+    return (
+      <div className="w-full h-full flex items-center justify-center text-[#5C5B57] dark:text-zinc-500">
+        <ShoppingBag className="w-6 h-6 stroke-[1.5]" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="w-full h-full object-cover"
+    />
+  );
+}
+
 export default function Cart() {
-  const { cart, removeFromCart, cartTotal, user, userData, clearCart, isDarkMode, getThemeClasses, settings } = useAppContext();
+  const { cart, removeFromCart, updateCartQuantity, cartTotal, user, userData, clearCart, getThemeClasses, settings } = useAppContext();
   const currentStoreName = settings?.storeName || 'يمن ستور';
   const defaultWallets = getDefaultFallbackWallets(currentStoreName);
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'wallet'>('cod');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [location, setLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
 
-  // Wallets state
   const [merchantWallets, setMerchantWallets] = useState<MerchantWallet[]>([]);
   const [selectedWallet, setSelectedWallet] = useState<MerchantWallet | null>(null);
   const [transferReference, setTransferReference] = useState('');
@@ -87,13 +125,17 @@ export default function Cart() {
   const [copiedWalletId, setCopiedWalletId] = useState<string | null>(null);
   const [isUploadingProof, setIsUploadingProof] = useState(false);
 
-  // Customer contact info state
   const [customerPhone, setCustomerPhone] = useState(userData?.phone || '');
   const [customerNotes, setCustomerNotes] = useState('');
 
   const navigate = useNavigate();
 
-  // Load merchant wallets from Firestore storeWallets/{storeId}
+  useEffect(() => {
+    if (userData?.phone && !customerPhone) {
+      setCustomerPhone(userData.phone);
+    }
+  }, [userData?.phone]);
+
   useEffect(() => {
     if (cart.length === 0) return;
     const storeId = cart[0]?.product?.ownerId || 'global';
@@ -108,7 +150,6 @@ export default function Cart() {
           loaded = (storeSnap.data().wallets as MerchantWallet[]).filter(w => w.isActive);
         }
 
-        // Fallback to global store wallets if merchant hasn't configured any
         if (loaded.length === 0 && storeId !== 'global') {
           const globalRef = doc(db, 'storeWallets', 'global');
           const globalSnap = await getDoc(globalRef);
@@ -117,7 +158,6 @@ export default function Cart() {
           }
         }
 
-        // If still none, use defaults
         if (loaded.length === 0) {
           loaded = defaultWallets;
         }
@@ -138,21 +178,14 @@ export default function Cart() {
 
   const requestLocation = (silent = false) => {
     if (!silent) setIsGettingLocation(true);
-    
-    if ("geolocation" in navigator) {
-      const options = {
-        enableHighAccuracy: true,
-        timeout: 8000,
-        maximumAge: 0
-      };
 
+    if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          const newLoc = {
+          setLocation({
             lat: position.coords.latitude,
             lng: position.coords.longitude
-          };
-          setLocation(newLoc);
+          });
           setIsGettingLocation(false);
           if (!silent) toast.success("تم تحديد موقعك بدقة لمندوب التوصيل");
         },
@@ -165,7 +198,7 @@ export default function Cart() {
             toast.error(msg);
           }
         },
-        options
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
       );
     } else {
       setIsGettingLocation(false);
@@ -173,7 +206,6 @@ export default function Cart() {
     }
   };
 
-  // Try to get location when cart loads
   useEffect(() => {
     if (cart.length > 0 && !location) {
       requestLocation(true);
@@ -203,7 +235,7 @@ export default function Cart() {
         const compressed = await compressImage(reader.result as string, 900, 900, 0.7);
         setPaymentProof(compressed);
         toast.success('تم رفع صورة السند بنجاح');
-      } catch (err) {
+      } catch {
         toast.error('حدث خطأ أثناء معالجة الصورة');
       } finally {
         setIsUploadingProof(false);
@@ -219,16 +251,19 @@ export default function Cart() {
   if (cart.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4" dir="rtl">
-        <div className="bg-slate-100 dark:bg-slate-800 p-6 rounded-full mb-4">
-          <ShoppingBag className="h-12 w-12 text-slate-700 dark:text-slate-200" />
+        <div className="w-16 h-16 bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] rounded-lg flex items-center justify-center mb-5">
+          <ShoppingBag className="h-8 w-8 text-[#5C5B57] dark:text-zinc-300 stroke-[1.5]" />
         </div>
-        <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">السلة فارغة</h2>
-        <p className="text-slate-500 dark:text-slate-400 font-medium mb-6">أضف بعض المنتجات لتتمكن من شرائها والطلب المباشر</p>
-        <button 
+        <h2 className="font-display text-2xl font-extrabold text-[#111214] dark:text-[#F4F4F2] mb-2">السلة فارغة</h2>
+        <p className="text-sm text-[#5C5B57] dark:text-zinc-400 font-medium mb-6 max-w-sm">
+          أضف بعض المنتجات من المتجر لتتمكن من مراجعتها وإتمام الشراء بسهولة.
+        </p>
+        <button
+          type="button"
           onClick={() => navigate('/')}
-          className={`${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white px-8 py-3.5 rounded-2xl font-black shadow-lg active:scale-95 transition`}
+          className={`${getThemeClasses('bg')} ${getThemeClasses('hover')} min-h-[44px] px-7 py-2.5 rounded-lg font-bold text-sm transition-colors`}
         >
-          تصفح المتجر الآن
+          تصفح المنتجات الآن
         </button>
       </div>
     );
@@ -273,7 +308,7 @@ export default function Cart() {
     await finalizeOrder(location);
   };
 
-  const finalizeOrder = async (loc: {lat: number, lng: number} | null) => {
+  const finalizeOrder = async (loc: { lat: number; lng: number } | null) => {
     setIsSubmitting(true);
     try {
       const targetStoreId = cart[0]?.product?.ownerId;
@@ -333,9 +368,9 @@ export default function Cart() {
         location: loc,
         createdAt: new Date().toISOString(),
       };
-      
+
       await addDoc(collection(db, 'orders'), orderData);
-      
+
       toast.success("تم استلام طلبك بنجاح! سيتم التواصل معك والبدء بالتجهيز فوراً.");
       clearCart();
       navigate('/orders');
@@ -347,181 +382,199 @@ export default function Cart() {
     }
   };
 
+  const totalItemsCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-24 font-sans" dir="rtl">
-      {/* Title */}
-      <div className="text-right px-4">
-        <h2 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white mb-2">سلة المشتريات</h2>
-        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-bold">راجع طلباتك واختر وسيلة الدفع المناسبة لإتمام الطلب</p>
+    <div className="space-y-8 pb-16" dir="rtl">
+      {/* Editorial Invoice Header */}
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[#E5E2DA] dark:border-[#232730] pb-5">
+        <div>
+          <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-[#111214] dark:text-[#F4F4F2] tracking-tight">سلة المشتريات</h1>
+          <p className="text-xs sm:text-sm text-[#5C5B57] dark:text-zinc-400 font-medium mt-1">
+            راجع منتجاتك واختر وسيلة الدفع المناسبة لإتمام الطلب
+          </p>
+        </div>
+        <span className="text-xs font-bold text-[#5C5B57] dark:text-zinc-400 tabular-nums">
+          إجمالي القطع: {totalItemsCount}
+        </span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 px-4">
-        {/* Cart items list */}
-        <div className="lg:col-span-2 space-y-4">
-          {cart.map((item) => (
-            <motion.div 
-              layout
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              key={item.product.id} 
-              className={`p-4 sm:p-5 rounded-2xl border transition-all duration-200 flex flex-col sm:flex-row items-center justify-between gap-4 ${
-                isDarkMode 
-                  ? 'bg-slate-900 border-slate-800' 
-                  : 'bg-white border-neutral-200 shadow-xs'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center gap-4 w-full">
-                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden shrink-0 bg-neutral-100 dark:bg-slate-800 border border-neutral-200 dark:border-slate-700">
-                  <img 
-                    src={item.product.image || (item.product.images && item.product.images[0]) || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300'} 
-                    alt={item.product.title} 
-                    className="w-full h-full object-cover" 
-                  />
-                </div>
-                <div className="text-center sm:text-right flex-1 min-w-0">
-                  <h3 className="font-bold text-neutral-900 dark:text-white text-base mb-1 truncate">{item.product.title}</h3>
-                  <div className="flex items-center justify-center sm:justify-start gap-3 mb-1.5">
-                    <span className="font-black text-base text-neutral-950 dark:text-white tabular-nums">
-                      {item.product.price?.toLocaleString()} <span className="text-xs font-normal text-neutral-500">ر.ي</span>
-                    </span>
-                    <span className="text-xs bg-neutral-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-lg font-medium text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-slate-700">
-                      الكمية: {item.quantity}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 justify-center sm:justify-start text-[11px] text-neutral-500 font-medium">
-                    <span>متوفر للتسليم المباشر</span>
-                  </div>
-                </div>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* Left/Start 7 Columns: Hairline Line-Item Ledger + Contact Form */}
+        <div className="lg:col-span-7 space-y-6">
+          <div className="rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] divide-y divide-[#E5E2DA] dark:divide-[#232730]">
+            {cart.map((item) => {
+              const unitPrice = Number(item.product.price || 0);
+              const lineSubtotal = unitPrice * item.quantity;
 
-              <button 
-                onClick={() => removeFromCart(item.product.id)}
-                className="w-10 h-10 rounded-xl bg-neutral-100 dark:bg-slate-800 text-neutral-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition active:scale-95 shrink-0 border border-neutral-200 dark:border-slate-700"
-                title="إزالة من السلة"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </motion.div>
-          ))}
+              return (
+                <div
+                  key={item.product.id}
+                  className="p-4 sm:p-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4"
+                >
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className="w-20 h-20 rounded-lg overflow-hidden shrink-0 bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730]">
+                      <CartItemThumbnail
+                        src={item.product.image || (item.product.images && item.product.images[0])}
+                        alt={item.product.title}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <h3 className="font-bold text-[#111214] dark:text-[#F4F4F2] text-sm sm:text-base line-clamp-1">
+                        {item.product.title}
+                      </h3>
+                      <div className="flex items-center gap-2 text-xs text-[#5C5B57] dark:text-zinc-400">
+                        <span className="tabular-nums font-semibold">
+                          {unitPrice.toLocaleString()} ر.ي
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <span>سعر الوحدة</span>
+                      </div>
+                      <div className={`text-sm font-extrabold ${getThemeClasses('price')} tabular-nums`}>
+                        {lineSubtotal.toLocaleString()} <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
+                      </div>
+                    </div>
+                  </div>
 
-          {/* Customer contact details optional confirmation */}
-          <div className={`p-6 rounded-3xl border space-y-4 ${
-            isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/80 shadow-sm'
-          }`}>
-            <h4 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2">
-              <span className={`w-2.5 h-2.5 rounded-full ${getThemeClasses('bg')}`}></span>
-              بيانات التواصل الخاصة بك لتأكيد الطلب
+                  <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#E5E2DA] dark:border-[#232730]">
+                    <div className="flex items-center rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26]">
+                      <button
+                        type="button"
+                        onClick={() => updateCartQuantity(item.product.id, item.quantity - 1)}
+                        className="w-10 h-10 flex items-center justify-center text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] transition-colors rounded-r-lg"
+                        aria-label="إنقاص الكمية"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="w-10 text-center text-sm font-extrabold text-[#111214] dark:text-[#F4F4F2] tabular-nums">
+                        {item.quantity}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => updateCartQuantity(item.product.id, item.quantity + 1)}
+                        className="w-10 h-10 flex items-center justify-center text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] transition-colors rounded-l-lg"
+                        aria-label="زيادة الكمية"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => removeFromCart(item.product.id)}
+                      className="w-10 h-10 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#1C1F26] text-[#5C5B57] hover:text-rose-600 hover:border-rose-300 dark:hover:border-rose-800 flex items-center justify-center transition-colors shrink-0"
+                      title="إزالة من السلة"
+                      aria-label="إزالة من السلة"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Customer Contact & Address Details */}
+          <div className="p-5 sm:p-6 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] space-y-4">
+            <h4 className="font-bold text-sm text-[#111214] dark:text-[#F4F4F2] flex items-center gap-2">
+              <Phone className={`w-4 h-4 ${getThemeClasses('text')}`} />
+              <span>بيانات التواصل والتسليم</span>
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5">
+                <label className="block text-xs font-bold text-[#5C5B57] dark:text-zinc-400 mb-1.5">
                   رقم الهاتف أو الواتساب للتواصل *
                 </label>
-                <input 
+                <input
                   type="tel"
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value)}
                   placeholder="مثال: 777123456"
-                  className={`w-full px-4 py-3 rounded-2xl border text-sm font-bold transition focus:ring-2 ${getThemeClasses('ring')} outline-none ${
-                    isDarkMode 
-                      ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-500' 
-                      : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
-                  }`}
+                  dir="ltr"
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] placeholder:text-[#5C5B57] dark:placeholder:text-zinc-500 text-sm font-bold text-left outline-none focus:border-[#111214] dark:focus:border-zinc-400 transition-colors"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5">
-                  ملاحظات أو تفاصيل العنوان الإضافية
+                <label className="block text-xs font-bold text-[#5C5B57] dark:text-zinc-400 mb-1.5">
+                  ملاحظات أو تفاصيل العنوان
                 </label>
-                <input 
+                <input
                   type="text"
                   value={customerNotes}
                   onChange={(e) => setCustomerNotes(e.target.value)}
                   placeholder="مثال: الحي، الشارع، قرب معلم معين..."
-                  className={`w-full px-4 py-3 rounded-2xl border text-sm font-bold transition focus:ring-2 ${getThemeClasses('ring')} outline-none ${
-                    isDarkMode 
-                      ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-500' 
-                      : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
-                  }`}
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] placeholder:text-[#5C5B57] dark:placeholder:text-zinc-500 text-sm font-medium outline-none focus:border-[#111214] dark:focus:border-zinc-400 transition-colors"
                 />
               </div>
             </div>
           </div>
         </div>
 
-        {/* Checkout & Payment Summary */}
-        <div className="space-y-6">
-          <div className={`p-5 sm:p-6 rounded-2xl border space-y-6 ${
-            isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-neutral-200 shadow-xs'
-          }`}>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-neutral-100 dark:bg-slate-800 rounded-xl flex items-center justify-center text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-slate-700">
-                <CreditCard className="w-5 h-5" />
-              </div>
-              <h3 className="text-lg font-bold text-neutral-900 dark:text-white">ملخص الطلب والدفع</h3>
+        {/* Right/End 5 Columns: Sticky Invoice Summary & Payment */}
+        <div className="lg:col-span-5">
+          <div className="p-5 sm:p-6 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] space-y-5 lg:sticky lg:top-22">
+            <div className="flex items-center gap-2.5 pb-3 border-b border-[#E5E2DA] dark:border-[#232730]">
+              <CreditCard className="w-5 h-5 text-[#111214] dark:text-[#F4F4F2]" />
+              <h3 className="font-display text-lg font-extrabold text-[#111214] dark:text-[#F4F4F2]">ملخص الفاتورة والدفع</h3>
             </div>
 
-            {/* Price breakdown */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
-                <span className="text-slate-500 dark:text-slate-400 font-bold text-xs">المجموع الفرعي</span>
-                <span className="font-black text-slate-900 dark:text-white">{cartTotal.toLocaleString()} ر.ي</span>
+            {/* Clean Hairline Invoice Breakdown (No nested boxes) */}
+            <div className="space-y-2.5 text-sm">
+              <div className="flex justify-between items-center py-1">
+                <span className="text-[#5C5B57] dark:text-zinc-400 font-medium text-xs">المجموع الفرعي</span>
+                <span className="font-bold text-[#111214] dark:text-[#F4F4F2] tabular-nums">{cartTotal.toLocaleString()} ر.ي</span>
               </div>
-              <div className="flex justify-between items-center p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
-                <span className="text-slate-500 dark:text-slate-400 font-bold text-xs">رسوم التوصيل</span>
-                <span className={`${getThemeClasses('price')} font-black text-xs`}>مجاناً</span>
+              <div className="flex justify-between items-center py-1">
+                <span className="text-[#5C5B57] dark:text-zinc-400 font-medium text-xs">رسوم التوصيل</span>
+                <span className={`${getThemeClasses('price')} font-bold text-xs`}>مجاناً</span>
               </div>
-              <div className="pt-4 border-t border-dashed border-slate-200 dark:border-slate-800">
-                <div className="flex justify-between items-end">
-                  <span className="text-slate-500 dark:text-slate-400 font-black text-xs">الإجمالي النهائي</span>
-                  <span className={`text-3xl font-black ${getThemeClasses('price')}`}>
-                    {cartTotal.toLocaleString()} <span className="text-xs text-slate-500 font-bold">ر.ي</span>
-                  </span>
-                </div>
+              <div className="pt-3 border-t border-dashed border-[#E5E2DA] dark:border-[#232730] flex justify-between items-end">
+                <span className="text-[#5C5B57] dark:text-zinc-300 font-bold text-xs">الإجمالي النهائي</span>
+                <span className={`text-2xl sm:text-3xl font-extrabold ${getThemeClasses('price')} tabular-nums`}>
+                  {cartTotal.toLocaleString()} <span className="text-xs text-[#5C5B57] dark:text-zinc-400 font-bold">ر.ي</span>
+                </span>
               </div>
             </div>
 
-            {/* Location selector */}
-            <div className={`p-4 rounded-2xl border transition ${
-              location 
-                ? `${getThemeClasses('bgLight')} ${getThemeClasses('border')}` 
-                : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800'
-            }`}>
-              <div className="flex items-center justify-between mb-2">
+            {/* GPS Location Row */}
+            <div className="pt-4 border-t border-[#E5E2DA] dark:border-[#232730] space-y-2.5">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Navigation className={`w-4 h-4 ${getThemeClasses('text')}`} />
-                  <span className="font-black text-xs text-slate-900 dark:text-white">موقع التوصيل عبر الـ GPS</span>
+                  <span className="font-bold text-xs text-[#111214] dark:text-[#F4F4F2]">موقع التوصيل عبر GPS</span>
                 </div>
                 {location && (
-                  <span className={`text-[10px] font-black ${getThemeClasses('text')} flex items-center gap-1`}>
+                  <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
                     <CheckCircle className="w-3.5 h-3.5" />
-                    تم التحديد
+                    <span>تم التحديد</span>
                   </span>
                 )}
               </div>
 
               {!location ? (
-                <button 
+                <button
+                  type="button"
                   onClick={() => requestLocation()}
                   disabled={isGettingLocation}
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-900 py-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                  className="w-full min-h-[42px] bg-[#111214] hover:bg-[#24262B] text-white dark:bg-[#F4F4F2] dark:hover:bg-[#E4E4E0] dark:text-[#111214] py-2.5 rounded-lg font-bold text-xs transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {isGettingLocation ? (
                     <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <>
                       <Navigation className="w-4 h-4" />
-                      تحديد موقعي التلقائي للمندوب
+                      <span>تحديد موقعي التلقائي للمندوب</span>
                     </>
                   )}
                 </button>
               ) : (
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <span className="text-slate-500 dark:text-slate-400 text-[11px]">الإحداثيات محددة بدقة على الخريطة</span>
-                  <button 
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[#5C5B57] dark:text-zinc-400 text-[11px]">الإحداثيات محددة بدقة على الخريطة</span>
+                  <button
+                    type="button"
                     onClick={() => setLocation(null)}
-                    className="text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
+                    className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline"
                   >
                     إعادة التحديد
                   </button>
@@ -530,41 +583,36 @@ export default function Cart() {
             </div>
 
             {/* Payment Method Selector */}
-            <div className="space-y-3">
-              <label className="block text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            <div className="space-y-2.5 pt-4 border-t border-[#E5E2DA] dark:border-[#232730]">
+              <label className="block text-xs font-bold text-[#5C5B57] dark:text-zinc-400">
                 طريقة الدفع
               </label>
-              
-              <div className="grid grid-cols-2 gap-3">
-                {/* Cash on delivery */}
+
+              <div className="grid grid-cols-2 gap-2.5">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('cod')}
-                  className={`p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-2 transition-all ${
+                  className={`min-h-[48px] p-3 rounded-lg border flex flex-col items-center justify-center gap-1 transition-colors ${
                     paymentMethod === 'cod'
-                      ? `${getThemeClasses('border')} ${getThemeClasses('bgLight')} ${getThemeClasses('text')} shadow-sm`
-                      : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-600 dark:text-slate-400'
+                      ? `${getThemeClasses('border')} ${getThemeClasses('bgLight')} ${getThemeClasses('textDark')}`
+                      : 'border-[#E5E2DA] dark:border-[#232730] hover:bg-[#FAF9F6] dark:hover:bg-[#1C1F26] text-[#5C5B57] dark:text-zinc-400'
                   }`}
                 >
-                  <MapPin className="w-5 h-5" />
-                  <span className="text-xs font-black">الدفع عند الاستلام</span>
+                  <MapPin className="w-4 h-4" />
+                  <span className="text-xs font-bold">الدفع عند الاستلام</span>
                 </button>
 
-                {/* Electronic Wallets */}
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('wallet')}
-                  className={`p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-2 transition-all relative ${
+                  className={`min-h-[48px] p-3 rounded-lg border flex flex-col items-center justify-center gap-1 transition-colors ${
                     paymentMethod === 'wallet'
-                      ? `${getThemeClasses('border')} ${getThemeClasses('bgLight')} ${getThemeClasses('text')} shadow-sm`
-                      : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-600 dark:text-slate-400'
+                      ? `${getThemeClasses('border')} ${getThemeClasses('bgLight')} ${getThemeClasses('textDark')}`
+                      : 'border-[#E5E2DA] dark:border-[#232730] hover:bg-[#FAF9F6] dark:hover:bg-[#1C1F26] text-[#5C5B57] dark:text-zinc-400'
                   }`}
                 >
-                  <span className={`absolute -top-2 right-2 ${getThemeClasses('bg')} text-white text-[9px] font-black px-1.5 py-0.5 rounded-full`}>
-                    مباشر
-                  </span>
-                  <Wallet className="w-5 h-5" />
-                  <span className="text-xs font-black">المحافظ الإلكترونية</span>
+                  <Wallet className="w-4 h-4" />
+                  <span className="text-xs font-bold">المحافظ الإلكترونية</span>
                 </button>
               </div>
             </div>
@@ -576,47 +624,43 @@ export default function Cart() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800"
+                  className="space-y-4 pt-3 border-t border-[#E5E2DA] dark:border-[#232730]"
                 >
                   <div>
-                    <label className="block text-xs font-black text-slate-700 dark:text-slate-300 mb-2">
+                    <label className="block text-xs font-bold text-[#111214] dark:text-[#F4F4F2] mb-2">
                       اختر المحفظة الإلكترونية للتاجر:
                     </label>
 
-                    <div className="grid grid-cols-1 gap-2.5 max-h-56 overflow-y-auto p-1">
+                    <div className="divide-y divide-[#E5E2DA] dark:divide-[#232730] rounded-lg border border-[#E5E2DA] dark:border-[#232730] max-h-52 overflow-y-auto">
                       {merchantWallets.map((wallet) => {
                         const isSelected = selectedWallet?.id === wallet.id;
                         return (
                           <div
                             key={wallet.id}
                             onClick={() => setSelectedWallet(wallet)}
-                            className={`p-3 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
+                            className={`p-3 cursor-pointer transition-colors flex items-center justify-between ${
                               isSelected
-                                ? `${getThemeClasses('border')} ${getThemeClasses('bgLight')} text-slate-900 dark:text-white`
-                                : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-800/40'
+                                ? `${getThemeClasses('bgLight')}`
+                                : 'bg-white dark:bg-[#131519] hover:bg-[#FAF9F6] dark:hover:bg-[#1C1F26]'
                             }`}
                           >
-                            <div className="flex items-center gap-3">
-                              <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs ${
-                                isSelected ? `${getThemeClasses('bg')} text-white` : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className={`w-8 h-8 rounded-md flex items-center justify-center text-xs shrink-0 ${
+                                isSelected ? `${getThemeClasses('bg')}` : 'bg-[#EFEDE6] dark:bg-[#1C1F26] text-[#5C5B57] dark:text-zinc-300'
                               }`}>
                                 <Wallet className="w-4 h-4" />
                               </div>
-                              <div>
-                                <h5 className="font-black text-xs text-slate-900 dark:text-white">{wallet.name}</h5>
-                                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                              <div className="min-w-0">
+                                <h5 className="font-bold text-xs text-[#111214] dark:text-[#F4F4F2] truncate">{wallet.name}</h5>
+                                <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400 font-mono tabular-nums">
                                   {wallet.accountNumber}
                                 </span>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
-                                wallet.transferType === 'point'
-                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                                  : getThemeClasses('badge')
-                              }`}>
-                                {wallet.transferType === 'point' ? 'تحويل لنقطة' : 'تحويل لمشترك'}
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[11px] font-semibold text-[#5C5B57] dark:text-zinc-400">
+                                {wallet.transferType === 'point' ? 'نقطة' : 'مشترك'}
                               </span>
                               {isSelected && <Check className={`w-4 h-4 ${getThemeClasses('text')}`} />}
                             </div>
@@ -626,123 +670,110 @@ export default function Cart() {
                     </div>
                   </div>
 
-                  {/* Selected Wallet Details & Account Copy */}
                   {selectedWallet && (
-                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-3">
+                    <div className="p-4 rounded-lg bg-[#FAF9F6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 dark:text-slate-400">رقم الحساب / الهاتف:</span>
+                        <span className="text-xs font-medium text-[#5C5B57] dark:text-zinc-400">رقم الحساب / الهاتف:</span>
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-sm font-black text-slate-900 dark:text-white select-all">
+                          <span className="font-mono text-sm font-extrabold text-[#111214] dark:text-[#F4F4F2] select-all tabular-nums">
                             {selectedWallet.accountNumber}
                           </span>
                           <button
                             type="button"
                             onClick={() => handleCopyAccount(selectedWallet)}
-                            className={`p-1.5 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white text-xs transition active:scale-95 flex items-center gap-1 shadow-sm`}
+                            className={`px-2 py-1 rounded-md ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-[11px] font-bold transition-colors flex items-center gap-1`}
                             title="نسخ رقم الحساب"
                           >
                             {copiedWalletId === selectedWallet.id ? (
                               <>
-                                <Check className="w-3.5 h-3.5" />
-                                <span className="text-[10px] font-bold">تم النسخ</span>
+                                <Check className="w-3 h-3" />
+                                <span>تم</span>
                               </>
                             ) : (
                               <>
-                                <Copy className="w-3.5 h-3.5" />
-                                <span className="text-[10px] font-bold">نسخ</span>
+                                <Copy className="w-3 h-3" />
+                                <span>نسخ</span>
                               </>
                             )}
                           </button>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-500 dark:text-slate-400">اسم صاحب الحساب / المستلم:</span>
-                        <span className="font-black text-slate-800 dark:text-slate-200">{selectedWallet.accountName}</span>
+                      <div className="flex items-center justify-between text-xs border-b border-[#E5E2DA] dark:border-[#232730] pb-2">
+                        <span className="text-[#5C5B57] dark:text-zinc-400">اسم المستلم:</span>
+                        <span className="font-bold text-[#111214] dark:text-[#F4F4F2]">{selectedWallet.accountName}</span>
                       </div>
 
-                      {/* Transfer Type description */}
-                      <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs">
-                        <span className="font-bold text-slate-700 dark:text-slate-300 block mb-0.5">
-                          طريقة التحويل المطلوبة من التاجر:
+                      <div className="text-xs">
+                        <span className="font-semibold text-[#5C5B57] dark:text-zinc-400 block mb-0.5">
+                          طريقة التحويل:
                         </span>
                         {selectedWallet.transferType === 'point' ? (
-                          <div className="text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1">
-                            <span>📍 تحويل لنقطة صرافة / وكيل:</span>
-                            <span className="underline">{selectedWallet.pointDetails || 'يرجى مراجعة التاجر'}</span>
+                          <div className="text-amber-700 dark:text-amber-400 font-bold">
+                            تحويل لنقطة صرافة: <span className="underline">{selectedWallet.pointDetails || 'يرجى مراجعة التاجر'}</span>
                           </div>
                         ) : (
-                          <div className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
-                            <span>✅ تحويل مباشر لمشترك:</span>
-                            <span>إلى رقم الحساب الموضح أعلاه مباشرة</span>
+                          <div className="text-emerald-700 dark:text-emerald-400 font-bold">
+                            تحويل مباشر لحساب مشترك
                           </div>
                         )}
                         {selectedWallet.notes && (
-                          <p className="text-[11px] text-slate-400 mt-1 italic">
-                            ملاحظة: {selectedWallet.notes}
+                          <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400 mt-1">
+                            {selectedWallet.notes}
                           </p>
                         )}
                       </div>
 
-                      {/* Transaction reference input */}
                       <div>
-                        <label className="block text-xs font-black text-slate-700 dark:text-slate-300 mb-1">
-                          رقم الحوالة أو العملية (اختياري إذا أرفقت السند):
+                        <label className="block text-xs font-bold text-[#111214] dark:text-[#F4F4F2] mb-1">
+                          رقم الحوالة أو العملية (أو أرفق السند)
                         </label>
                         <input
                           type="text"
                           value={transferReference}
                           onChange={(e) => setTransferReference(e.target.value)}
-                          placeholder="مثال: رقم العملية من إشعار التحويل"
-                          className={`w-full px-3 py-2 rounded-xl border text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500 ${
-                            isDarkMode 
-                              ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500' 
-                              : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400'
-                          }`}
+                          placeholder="رقم العملية من إشعار التحويل"
+                          className="w-full min-h-[40px] px-3 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] placeholder:text-[#5C5B57] dark:placeholder:text-zinc-500 text-xs font-bold outline-none focus:border-[#111214] dark:focus:border-zinc-400"
                         />
                       </div>
 
-                      {/* Payment proof receipt upload */}
                       <div>
-                        <label className="block text-xs font-black text-slate-700 dark:text-slate-300 mb-1">
-                          إرفاق صورة إشعار أو سند التحويل (موصى به):
+                        <label className="block text-xs font-bold text-[#111214] dark:text-[#F4F4F2] mb-1">
+                          صورة إشعار التحويل (اختياري)
                         </label>
-                        
+
                         {!paymentProof ? (
-                          <label className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer transition bg-white/50 dark:bg-slate-900/50">
-                            <input 
-                              type="file" 
-                              accept="image/*" 
-                              onChange={handleProofUpload} 
-                              className="hidden" 
+                          <label className="min-h-[44px] border border-dashed border-[#D5D1C7] dark:border-[#343A46] hover:border-[#111214] dark:hover:border-zinc-400 rounded-lg p-3 flex items-center justify-center cursor-pointer transition-colors bg-white dark:bg-[#131519]">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleProofUpload}
+                              className="hidden"
                               disabled={isUploadingProof}
                             />
                             {isUploadingProof ? (
-                              <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                                <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                                جاري معالجة الصورة...
+                              <div className="flex items-center gap-2 text-xs font-bold text-[#5C5B57]">
+                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                <span>جاري معالجة الصورة...</span>
                               </div>
                             ) : (
-                              <div className="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-400">
-                                <UploadCloud className="w-4 h-4 text-emerald-600" />
-                                <span>اضغط لاختيار صورة السند أو لقطة الشاشة</span>
+                              <div className="flex items-center gap-2 text-xs font-bold text-[#5C5B57] dark:text-zinc-300">
+                                <UploadCloud className="w-4 h-4" />
+                                <span>رفع لقطة شاشة للسند</span>
                               </div>
                             )}
                           </label>
                         ) : (
-                          <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 max-h-36 bg-black flex items-center justify-center group">
+                          <div className="relative rounded-lg overflow-hidden border border-[#E5E2DA] dark:border-[#232730] max-h-36 bg-black flex items-center justify-center">
                             <img src={paymentProof} alt="Payment Receipt" className="max-h-36 object-contain" />
                             <button
                               type="button"
                               onClick={() => setPaymentProof(null)}
-                              className="absolute top-2 left-2 p-1 bg-red-600 text-white rounded-lg shadow-md hover:scale-105 active:scale-95 transition"
+                              className="absolute top-2 left-2 p-1 bg-rose-600 text-white rounded-md hover:bg-rose-700 transition-colors"
                               title="حذف الصورة"
                             >
                               <X className="w-4 h-4" />
                             </button>
-                            <span className={`absolute bottom-2 right-2 ${getThemeClasses('bg')} text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-md`}>
-                              تم إرفاق السند ✅
-                            </span>
                           </div>
                         )}
                       </div>
@@ -752,17 +783,18 @@ export default function Cart() {
               )}
             </AnimatePresence>
 
-            {/* Confirm & Order Button */}
-            <button 
+            {/* Primary Confirm Button */}
+            <button
+              type="button"
               onClick={handleCheckout}
               disabled={isSubmitting}
-              className="w-full bg-neutral-900 hover:bg-black text-white py-3.5 rounded-xl font-bold text-sm shadow-xs active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-50"
+              className={`w-full ${getThemeClasses('bg')} ${getThemeClasses('hover')} min-h-[48px] py-3 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50`}
             >
               {isSubmitting ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
-                  <span>تأكيد وشراء الآن</span>
+                  <span>تأكيد وإتمام الطلب</span>
                   <ArrowRight className="w-4 h-4 rtl:-scale-x-100" />
                 </>
               )}

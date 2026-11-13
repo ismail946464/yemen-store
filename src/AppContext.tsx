@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useRef, useMemo } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useRef, useMemo, useCallback } from 'react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, increment, updateDoc, addDoc } from 'firebase/firestore';
@@ -36,10 +36,12 @@ interface AppContextType {
   loginWithPassword: (email: string, password: string) => Promise<boolean>;
   registerWithStore: (email: string, name: string, password?: string, phone?: string, photoURL?: string) => Promise<{ success: boolean; message: string; user?: any; password?: string }>;
   updateUserProfile: (data: { name?: string; phone?: string; photoURL?: string }) => Promise<boolean>;
+  changePassword: (newPassword: string, currentPassword?: string, targetEmail?: string) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
   cart: CartItem[];
   addToCart: (product: any) => void;
   removeFromCart: (productId: string) => void;
+  updateCartQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
   cartTotal: number;
   unreadCount: number;
@@ -83,7 +85,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loginModalInitialEmail, setLoginModalInitialEmail] = useState('');
   const [userData, setUserData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    try {
+      const savedCart = localStorage.getItem('yemen_store_cart_v1');
+      if (savedCart) {
+        const parsed = JSON.parse(savedCart);
+        return Array.isArray(parsed) ? parsed : [];
+      }
+    } catch {}
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('yemen_store_cart_v1', JSON.stringify(cart));
+    } catch {}
+  }, [cart]);
 
   const [settings, setSettings] = useState<any | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -317,9 +334,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     
     if (!isMasterAdminUser || !auth.currentUser) return () => statsUnsubscribe();
 
-    // Calculate Online Count (Admin only sync) - real-time active users
+    // Calculate Online Count (Admin only sync) - throttled & skips hidden tabs
     const updateOnlineCount = async () => {
-      if (!auth.currentUser) return;
+      if (!auth.currentUser || document.hidden) return;
       try {
         const tenMinutesAgo = new Date(Date.now() - 10 * 60000).toISOString();
         const qOnline = query(collection(db, 'users'), where('lastSeen', '>=', tenMinutesAgo));
@@ -334,10 +351,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     updateOnlineCount();
-    const onlineInterval = setInterval(updateOnlineCount, 30000); // 30 seconds
+    const onlineInterval = setInterval(updateOnlineCount, 180000); // 3 minutes
 
-    // Accurate total registered count update (Admin only sync)
-    if (auth.currentUser) {
+    // Sync total registered count at most once per session to avoid redundant full-collection scans
+    if (auth.currentUser && !sessionStorage.getItem('synced_user_count_v1')) {
+      sessionStorage.setItem('synced_user_count_v1', '1');
       getDocs(collection(db, 'users')).then(snap => {
         const count = snap.size;
         updateDoc(doc(db, 'stats', 'global'), { totalRegistered: count }).catch(() => {});
@@ -863,6 +881,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return {};
   };
 
+  const changePassword = async (
+    newPassword: string,
+    currentPassword?: string,
+    targetEmail?: string
+  ): Promise<{ success: boolean; message: string }> => {
+    if (!user) {
+      return { success: false, message: 'يرجى تسجيل الدخول أولاً' };
+    }
+    try {
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders
+        },
+        body: JSON.stringify({
+          email: targetEmail || user.email,
+          newPassword: newPassword.trim(),
+          currentPassword: currentPassword?.trim() || undefined
+        })
+      });
+      const data = await res.json();
+      return {
+        success: Boolean(data?.success),
+        message: data?.message || (data?.success ? 'تم تغيير كلمة المرور بنجاح' : 'فشل تغيير كلمة المرور')
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: 'تعذر الاتصال بالخادم: ' + (err?.message || 'خطأ غير معروف')
+      };
+    }
+  };
+
   const logout = async () => {
     localStorage.removeItem('yemen_store_session');
     localStorage.removeItem('yemen_store_session_token');
@@ -874,39 +927,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast.success('تم تسجيل الخروج بنجاح', { id: 'auth-toast' });
   };
 
-  const addToCart = (product: any) => {
-    // Check if trying to mix stores
-    if (cart.length > 0) {
-      const firstStoreId = cart[0].product.ownerId || 'global';
-      const newStoreId = product.ownerId || 'global';
-      if (firstStoreId !== newStoreId) {
-        toast.error("يرجى إتمام طلب المتجر الحالي أولاً أو تفريغ السلة، لا يمكن الجمع بين منتجات من متاجر مختلفة في طلب واحد.", { id: 'cart-error' });
-        return;
+  const addToCart = useCallback((product: any) => {
+    setCart((prev) => {
+      if (prev.length > 0) {
+        const firstStoreId = prev[0].product.ownerId || 'global';
+        const newStoreId = product.ownerId || 'global';
+        if (firstStoreId !== newStoreId) {
+          toast.error("يرجى إتمام طلب المتجر الحالي أولاً أو تفريغ السلة، لا يمكن الجمع بين منتجات من متاجر مختلفة في طلب واحد.", { id: 'cart-error' });
+          return prev;
+        }
       }
-    }
 
-    const existing = cart.find((item) => item.product.id === product.id);
-    if (existing) {
-      setCart((prev) =>
-        prev.map((item) =>
+      const existing = prev.find((item) => item.product.id === product.id);
+      toast.success("تمت الإضافة للسلة", { id: 'cart-toast' });
+      if (existing) {
+        return prev.map((item) =>
           item.product.id === product.id
             ? { ...item, quantity: item.quantity + 1 }
             : item
-        )
-      );
-    } else {
-      setCart((prev) => [...prev, { product, quantity: 1 }]);
-    }
-    toast.success("تمت الإضافة للسلة", { id: 'cart-toast' });
-  };
+        );
+      }
+      return [...prev, { product, quantity: 1 }];
+    });
+  }, []);
 
-  const removeFromCart = (productId: string) => {
+  const removeFromCart = useCallback((productId: string) => {
     setCart((prev) => prev.filter((item) => item.product.id !== productId));
-  };
+  }, []);
 
-  const clearCart = () => setCart([]);
+  const updateCartQuantity = useCallback((productId: string, quantity: number) => {
+    setCart((prev) => {
+      if (quantity <= 0) {
+        return prev.filter((item) => item.product.id !== productId);
+      }
+      return prev.map((item) =>
+        item.product.id === productId ? { ...item, quantity } : item
+      );
+    });
+  }, []);
 
-  const cartTotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+  const clearCart = useCallback(() => setCart([]), []);
+
+  const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + ((Number(item.product.price) || 0) * item.quantity), 0), [cart]);
   
   const isMasterAdmin = user?.email === '1ismaai0lll@gmail.com';
   const isAdmin = userData?.role === 'admin' || isMasterAdmin;
@@ -914,105 +976,105 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const isDelivery = userData?.role === 'delivery';
   const userRole = userData?.role || null;
 
-  const getThemeClasses = (type: 'bg' | 'text' | 'hover' | 'border' | 'bgLight' | 'textDark' | 'badge' | 'ring' | 'gradient' | 'activeTab' | 'price' | 'pageBg' | 'cardBg' | 'headerBg' | 'verified'): string => {
+  const getThemeClasses = useCallback((type: 'bg' | 'text' | 'hover' | 'border' | 'bgLight' | 'textDark' | 'badge' | 'ring' | 'gradient' | 'activeTab' | 'price' | 'pageBg' | 'cardBg' | 'headerBg' | 'verified'): string => {
     switch (effectiveTheme) {
       case 'blue':
         return {
-          bg: 'bg-blue-600 text-white',
-          text: 'text-blue-600 dark:text-blue-400',
-          hover: 'hover:bg-blue-700',
-          border: 'border-blue-600 dark:border-blue-500',
-          bgLight: 'bg-blue-50 dark:bg-blue-950/40',
-          textDark: 'text-blue-800 dark:text-blue-300',
-          badge: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800',
-          ring: 'focus:ring-blue-500 ring-blue-500',
-          gradient: 'from-blue-600 to-indigo-700',
-          activeTab: 'bg-blue-600 text-white shadow-blue-600/30 ring-blue-400/30',
-          price: 'text-blue-600 dark:text-blue-400',
-          pageBg: 'bg-[#f4f7fb] dark:bg-[#030712]',
-          cardBg: 'bg-white dark:bg-[#0b1329] border-blue-100/70 dark:border-blue-900/40',
-          headerBg: 'bg-white/95 dark:bg-[#070e1e]/95 border-blue-100 dark:border-blue-950',
-          verified: 'text-blue-500 fill-white'
-        }[type] || 'bg-blue-600 text-white';
+          bg: 'bg-[#1D4ED8] text-white dark:bg-[#3B82F6] dark:text-white',
+          text: 'text-[#1D4ED8] dark:text-[#60A5FA]',
+          hover: 'hover:bg-[#1E40AF] dark:hover:bg-[#2563EB]',
+          border: 'border-[#1D4ED8] dark:border-[#3B82F6]',
+          bgLight: 'bg-[#EEF2FA] dark:bg-[#101D38]',
+          textDark: 'text-[#1E3A8A] dark:text-[#93C5FD]',
+          badge: 'bg-[#EEF2FA] text-[#1E40AF] border-[#D7E0F4] dark:bg-[#101D38] dark:text-[#93C5FD] dark:border-[#1E325C]',
+          ring: 'focus:ring-[#1D4ED8] ring-[#1D4ED8]',
+          gradient: 'from-[#10131A] to-[#1D4ED8]',
+          activeTab: 'bg-[#1D4ED8] text-white dark:bg-[#3B82F6]',
+          price: 'text-[#1D4ED8] dark:text-[#60A5FA]',
+          pageBg: 'bg-[#F5F6F9] dark:bg-[#070A12]',
+          cardBg: 'bg-white dark:bg-[#0F1422] border-[#E1E5EF] dark:border-[#1E273D]',
+          headerBg: 'bg-[#FFFFFF]/95 dark:bg-[#070A12]/95 border-[#E1E5EF] dark:border-[#1E273D]',
+          verified: 'text-[#1D4ED8] dark:text-[#60A5FA]'
+        }[type] || 'bg-[#1D4ED8] text-white';
 
       case 'red':
         return {
-          bg: 'bg-rose-600 text-white',
-          text: 'text-rose-600 dark:text-rose-400',
-          hover: 'hover:bg-rose-700',
-          border: 'border-rose-600 dark:border-rose-500',
-          bgLight: 'bg-rose-50 dark:bg-rose-950/40',
-          textDark: 'text-rose-800 dark:text-rose-300',
-          badge: 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800',
-          ring: 'focus:ring-rose-500 ring-rose-500',
-          gradient: 'from-rose-600 to-red-700',
-          activeTab: 'bg-rose-600 text-white shadow-rose-600/30 ring-rose-400/30',
-          price: 'text-rose-600 dark:text-rose-400',
-          pageBg: 'bg-[#fff5f6] dark:bg-[#0f0507]',
-          cardBg: 'bg-white dark:bg-[#180a0e] border-rose-100/70 dark:border-rose-900/40',
-          headerBg: 'bg-white/95 dark:bg-[#13060a]/95 border-rose-100 dark:border-rose-950',
-          verified: 'text-rose-500 fill-white'
-        }[type] || 'bg-rose-600 text-white';
+          bg: 'bg-[#BE123C] text-white dark:bg-[#F43F5E] dark:text-white',
+          text: 'text-[#BE123C] dark:text-[#FB7185]',
+          hover: 'hover:bg-[#9F1239] dark:hover:bg-[#E11D48]',
+          border: 'border-[#BE123C] dark:border-[#F43F5E]',
+          bgLight: 'bg-[#FAF0F2] dark:bg-[#2B0F17]',
+          textDark: 'text-[#881337] dark:text-[#FDA4AF]',
+          badge: 'bg-[#FAF0F2] text-[#9F1239] border-[#EBD5DB] dark:bg-[#2B0F17] dark:text-[#FDA4AF] dark:border-[#4C1D2A]',
+          ring: 'focus:ring-[#BE123C] ring-[#BE123C]',
+          gradient: 'from-[#171113] to-[#BE123C]',
+          activeTab: 'bg-[#BE123C] text-white dark:bg-[#F43F5E]',
+          price: 'text-[#BE123C] dark:text-[#FB7185]',
+          pageBg: 'bg-[#F8F5F6] dark:bg-[#11080B]',
+          cardBg: 'bg-white dark:bg-[#1A0F13] border-[#ECE1E4] dark:border-[#331C23]',
+          headerBg: 'bg-[#FFFFFF]/95 dark:bg-[#11080B]/95 border-[#ECE1E4] dark:border-[#331C23]',
+          verified: 'text-[#BE123C] dark:text-[#FB7185]'
+        }[type] || 'bg-[#BE123C] text-white';
 
       case 'black':
         return {
-          bg: 'bg-zinc-950 text-white dark:bg-white dark:text-zinc-950',
+          bg: 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950',
           text: 'text-zinc-950 dark:text-zinc-100',
           hover: 'hover:bg-zinc-800 dark:hover:bg-zinc-200',
-          border: 'border-zinc-900 dark:border-zinc-700',
+          border: 'border-zinc-900 dark:border-zinc-200',
           bgLight: 'bg-zinc-100 dark:bg-zinc-900',
           textDark: 'text-zinc-950 dark:text-zinc-100',
-          badge: 'bg-zinc-100 text-zinc-900 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-100 dark:border-zinc-700',
+          badge: 'bg-zinc-100 text-zinc-900 border-zinc-200 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-800',
           ring: 'focus:ring-zinc-900 ring-zinc-900',
-          gradient: 'from-zinc-950 via-zinc-900 to-black',
-          activeTab: 'bg-zinc-950 text-white dark:bg-white dark:text-black shadow-zinc-950/30 ring-zinc-700/30',
-          price: 'text-zinc-950 dark:text-zinc-100',
-          pageBg: 'bg-[#f4f4f5] dark:bg-[#050505]',
-          cardBg: 'bg-white dark:bg-[#121214] border-zinc-200 dark:border-zinc-800',
-          headerBg: 'bg-white/95 dark:bg-[#09090b]/95 border-zinc-200 dark:border-zinc-800',
-          verified: 'text-zinc-900 dark:text-zinc-100 fill-white'
+          gradient: 'from-zinc-950 to-zinc-800',
+          activeTab: 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950',
+          price: 'text-zinc-950 dark:text-zinc-50',
+          pageBg: 'bg-[#F5F5F5] dark:bg-[#09090B]',
+          cardBg: 'bg-white dark:bg-[#121215] border-zinc-200 dark:border-zinc-800',
+          headerBg: 'bg-white/95 dark:bg-[#09090B]/95 border-zinc-200 dark:border-zinc-800',
+          verified: 'text-zinc-900 dark:text-zinc-100'
         }[type] || 'bg-zinc-950 text-white';
 
       case 'white':
         return {
-          bg: 'bg-black text-white hover:bg-neutral-800 shadow-sm active:scale-98',
-          text: 'text-black',
-          hover: 'hover:bg-neutral-800',
-          border: 'border-neutral-300',
-          bgLight: 'bg-neutral-100 border border-neutral-200/80',
-          textDark: 'text-black font-black',
-          badge: 'bg-neutral-100 text-black border-neutral-300 shadow-xs font-black',
-          ring: 'focus:ring-black ring-black',
-          gradient: 'from-neutral-900 to-black',
-          activeTab: 'bg-black text-white shadow-neutral-900/30 ring-neutral-400/30',
-          price: 'text-black font-black',
-          pageBg: 'bg-white',
-          cardBg: 'bg-white border-neutral-200/90 shadow-sm',
-          headerBg: 'bg-white/95 border-neutral-200/90 shadow-xs',
-          verified: 'text-emerald-600 fill-white'
-        }[type] || 'bg-black text-white';
+          bg: 'bg-[#111214] text-white dark:bg-[#F4F4F2] dark:text-[#111214]',
+          text: 'text-[#111214] dark:text-[#F4F4F2]',
+          hover: 'hover:bg-[#24262B] dark:hover:bg-[#E4E4E0]',
+          border: 'border-[#D5D1C7] dark:border-[#343A46]',
+          bgLight: 'bg-[#EFEDE6] dark:bg-[#1C1F26]',
+          textDark: 'text-[#111214] dark:text-[#F4F4F2]',
+          badge: 'bg-[#EFEDE6] text-[#111214] border-[#E5E2DA] dark:bg-[#1C1F26] dark:text-[#F4F4F2] dark:border-[#2C313C]',
+          ring: 'focus:ring-[#111214] ring-[#111214]',
+          gradient: 'from-[#111214] to-[#272A30]',
+          activeTab: 'bg-[#111214] text-white dark:bg-[#F4F4F2] dark:text-[#111214]',
+          price: 'text-[#111214] dark:text-[#F4F4F2]',
+          pageBg: 'bg-[#F6F5F0] dark:bg-[#0A0B0D]',
+          cardBg: 'bg-white dark:bg-[#131519] border-[#E5E2DA] dark:border-[#232730]',
+          headerBg: 'bg-[#F6F5F0]/95 dark:bg-[#0A0B0D]/95 border-[#E5E2DA] dark:border-[#232730]',
+          verified: 'text-[#0D6E4E] dark:text-[#10B981]'
+        }[type] || 'bg-[#111214] text-white';
 
       case 'green':
       default:
         return {
-          bg: 'bg-emerald-600 text-white',
-          text: 'text-emerald-600 dark:text-emerald-400',
-          hover: 'hover:bg-emerald-700',
-          border: 'border-emerald-600 dark:border-emerald-500',
-          bgLight: 'bg-emerald-50 dark:bg-emerald-950/40',
-          textDark: 'text-emerald-800 dark:text-emerald-300',
-          badge: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800',
-          ring: 'focus:ring-emerald-500 ring-emerald-500',
-          gradient: 'from-emerald-600 to-teal-700',
-          activeTab: 'bg-emerald-600 text-white shadow-emerald-600/30 ring-emerald-400/30',
-          price: 'text-emerald-600 dark:text-emerald-400',
-          pageBg: 'bg-[#f2f9f5] dark:bg-[#02130b]',
-          cardBg: 'bg-white dark:bg-[#072216] border-emerald-100/70 dark:border-emerald-900/40',
-          headerBg: 'bg-white/95 dark:bg-[#041a0f]/95 border-emerald-100 dark:border-emerald-950',
-          verified: 'text-emerald-600 fill-white'
-        }[type] || 'bg-emerald-600 text-white';
+          bg: 'bg-[#0D6E4E] text-white dark:bg-[#10B981] dark:text-[#04120C]',
+          text: 'text-[#0D6E4E] dark:text-[#34D399]',
+          hover: 'hover:bg-[#09583E] dark:hover:bg-[#059669]',
+          border: 'border-[#0D6E4E] dark:border-[#10B981]',
+          bgLight: 'bg-[#EBF5F0] dark:bg-[#0D2B20]',
+          textDark: 'text-[#084C36] dark:text-[#6EE7B7]',
+          badge: 'bg-[#EBF5F0] text-[#084C36] border-[#CFE5D9] dark:bg-[#0D2B20] dark:text-[#6EE7B7] dark:border-[#194A37]',
+          ring: 'focus:ring-[#0D6E4E] ring-[#0D6E4E]',
+          gradient: 'from-[#09241B] to-[#0D6E4E]',
+          activeTab: 'bg-[#0D6E4E] text-white dark:bg-[#10B981] dark:text-[#04120C]',
+          price: 'text-[#0D6E4E] dark:text-[#34D399]',
+          pageBg: 'bg-[#F5F7F5] dark:bg-[#07100C]',
+          cardBg: 'bg-white dark:bg-[#0F1A15] border-[#DFE7E1] dark:border-[#1D3329]',
+          headerBg: 'bg-[#FFFFFF]/95 dark:bg-[#07100C]/95 border-[#DFE7E1] dark:border-[#1D3329]',
+          verified: 'text-[#0D6E4E] dark:text-[#34D399]'
+        }[type] || 'bg-[#0D6E4E] text-white';
     }
-  };
+  }, [effectiveTheme]);
 
   const value = useMemo(() => ({ 
     user, 
@@ -1035,10 +1097,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loginWithPassword,
     registerWithStore,
     updateUserProfile,
+    changePassword,
     logout, 
     cart, 
     addToCart, 
     removeFromCart, 
+    updateCartQuantity,
     clearCart, 
     cartTotal, 
     unreadCount, 
@@ -1066,6 +1130,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isLoginModalOpen,
     loginModalInitialEmail,
     cart, 
+    cartTotal,
+    addToCart,
+    removeFromCart,
+    updateCartQuantity,
+    clearCart,
     unreadCount, 
     globalStats,
     effectiveTheme,

@@ -106,6 +106,8 @@ function getRestDocUrl(docId: string): string | null {
   return `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/${dbId}/documents/storeAccounts/${docId}?key=${cfg.apiKey}`;
 }
 
+let masterSyncedFromDb = false;
+
 // Ensure master admin is pre-populated
 export function seedMasterAdmin(): StoreAccount {
   const existing = memoryAccountsStore.get(MASTER_ADMIN_EMAIL);
@@ -140,8 +142,8 @@ export async function getAccountByEmail(email: string): Promise<StoreAccount | n
   const normalizedEmail = email.trim().toLowerCase();
   const docId = getAccountDocId(normalizedEmail);
 
-  // 1. In-memory check
-  if (memoryAccountsStore.has(normalizedEmail)) {
+  // 1. In-memory check (skip cache for master admin until synced from Firestore at least once)
+  if (memoryAccountsStore.has(normalizedEmail) && (normalizedEmail !== MASTER_ADMIN_EMAIL || masterSyncedFromDb)) {
     const cached = memoryAccountsStore.get(normalizedEmail)!;
     if (normalizedEmail === MASTER_ADMIN_EMAIL) {
       cached.uid = MASTER_ADMIN_UID;
@@ -160,6 +162,7 @@ export async function getAccountByEmail(email: string): Promise<StoreAccount | n
         if (normalizedEmail === MASTER_ADMIN_EMAIL) {
           acc.uid = MASTER_ADMIN_UID;
           acc.role = "admin";
+          masterSyncedFromDb = true;
         }
         memoryAccountsStore.set(normalizedEmail, acc);
         return acc;
@@ -167,18 +170,30 @@ export async function getAccountByEmail(email: string): Promise<StoreAccount | n
 
       // Also check users collection to preserve profile modifications
       const targetUid = normalizedEmail === MASTER_ADMIN_EMAIL ? MASTER_ADMIN_UID : `u_${docId.slice(4)}`;
-      const userSnap = await getDoc(doc(db, "users", targetUid));
+      let userSnap = await getDoc(doc(db, "users", targetUid));
+      let foundUid = targetUid;
+
+      if (!userSnap.exists()) {
+        const q = query(collection(db, "users"), where("email", "==", normalizedEmail));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          userSnap = qSnap.docs[0];
+          foundUid = userSnap.id;
+        }
+      }
+
       if (userSnap.exists()) {
         const u = userSnap.data();
+        const isMaster = normalizedEmail === MASTER_ADMIN_EMAIL;
         const acc: StoreAccount = {
-          uid: targetUid,
+          uid: foundUid,
           email: normalizedEmail,
           name: u.name || "مستخدم",
           phone: u.phone || "",
           photoURL: u.photoURL || "",
-          password: MASTER_ADMIN_DEFAULT_PASS,
-          passwordHash: hashPassword(MASTER_ADMIN_DEFAULT_PASS),
-          role: normalizedEmail === MASTER_ADMIN_EMAIL ? "admin" : (u.role || "user"),
+          password: isMaster ? MASTER_ADMIN_DEFAULT_PASS : "",
+          passwordHash: isMaster ? hashPassword(MASTER_ADMIN_DEFAULT_PASS) : "",
+          role: isMaster ? "admin" : (u.role || "user"),
           status: "active",
           pointsBalance: u.pointsBalance || 0,
           agreedToDisclaimer: true,
@@ -240,6 +255,7 @@ export async function saveAccount(account: StoreAccount): Promise<boolean> {
   if (normalizedEmail === MASTER_ADMIN_EMAIL) {
     account.uid = MASTER_ADMIN_UID;
     account.role = "admin";
+    masterSyncedFromDb = true;
     if (!account.name) {
       account.name = "Ismail Ali";
     }
@@ -322,8 +338,12 @@ export async function getAllAccounts(): Promise<StoreAccount[]> {
       snap.forEach((d) => {
         const acc = d.data() as StoreAccount;
         if (acc?.email) {
-          accountsMap.set(acc.email.toLowerCase(), acc);
-          memoryAccountsStore.set(acc.email.toLowerCase(), acc);
+          const em = acc.email.toLowerCase();
+          if (em === MASTER_ADMIN_EMAIL) {
+            masterSyncedFromDb = true;
+          }
+          accountsMap.set(em, acc);
+          memoryAccountsStore.set(em, acc);
         }
       });
     } catch (err: any) {

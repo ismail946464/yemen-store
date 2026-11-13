@@ -268,10 +268,33 @@ export async function processAdminUpdateAccount(payload: {
     if (account) targetEmail = account.email;
   }
 
+  if (!account && targetEmail) {
+    const docId = getAccountDocId(targetEmail);
+    const uid = targetId || (targetEmail === "1ismaai0lll@gmail.com" ? MASTER_ADMIN_UID : `u_${docId.slice(4)}`);
+    account = {
+      uid,
+      email: targetEmail,
+      name: String(payload.name || "").trim() || targetEmail.split("@")[0] || "مستخدم",
+      phone: String(payload.phone || "").trim(),
+      password: "",
+      passwordHash: "",
+      role: targetEmail === "1ismaai0lll@gmail.com" ? "admin" : (payload.role || "user"),
+      status: payload.status || "active",
+      pointsBalance: 0,
+      agreedToDisclaimer: true,
+      createdAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString()
+    };
+  }
+
   if (account) {
     if (payload.password) {
-      account.password = String(payload.password).trim();
-      account.passwordHash = hashPassword(account.password);
+      const trimmedPass = String(payload.password).trim();
+      if (trimmedPass.length < 4) {
+        return { success: false, message: "يجب ألا تقل كلمة المرور الجديدة عن 4 أحرف" };
+      }
+      account.password = trimmedPass;
+      account.passwordHash = hashPassword(trimmedPass);
     }
     if (payload.role && ["admin", "store", "user", "delivery"].includes(payload.role)) {
       if (targetEmail === "1ismaai0lll@gmail.com" || account.uid === MASTER_ADMIN_UID) {
@@ -398,6 +421,7 @@ export async function processChangePassword(input: {
   email: string;
   newPassword: string;
   currentPassword?: string;
+  caller?: AuthUser;
 }): Promise<{ success: boolean; message: string }> {
   const normalizedEmail = String(input.email || "").trim().toLowerCase();
   const newPass = String(input.newPassword || "").trim();
@@ -409,17 +433,56 @@ export async function processChangePassword(input: {
     return { success: false, message: "يجب ألا تقل كلمة المرور الجديدة عن 4 أحرف" };
   }
 
-  const account = await getAccountByEmail(normalizedEmail);
-  if (!account) {
-    return { success: false, message: "لم يتم العثور على الحساب" };
+  // Enforce caller identity check if caller is passed
+  if (input.caller) {
+    const callerEmail = (input.caller.email || "").trim().toLowerCase();
+    const isCallerAdmin = input.caller.role === "admin" || Boolean(input.caller.isMasterAdmin);
+    if (callerEmail !== normalizedEmail && !isCallerAdmin) {
+      return { success: false, message: "غير مصرح: لا يمكنك تغيير كلمة مرور حساب آخر" };
+    }
   }
 
-  // If currentPassword is provided, verify it
-  if (input.currentPassword) {
-    const cur = String(input.currentPassword).trim();
-    const matches = account.password === cur || account.passwordHash === hashPassword(cur);
-    if (!matches) {
-      return { success: false, message: "كلمة المرور الحالية غير صحيحة" };
+  let account = await getAccountByEmail(normalizedEmail);
+  if (!account) {
+    if (input.caller) {
+      const docId = getAccountDocId(normalizedEmail);
+      const isMaster = normalizedEmail === "1ismaai0lll@gmail.com";
+      account = {
+        uid: isMaster ? MASTER_ADMIN_UID : (input.caller.uid || `u_${docId.slice(4)}`),
+        email: normalizedEmail,
+        name: normalizedEmail.split("@")[0] || "مستخدم",
+        phone: "",
+        password: "",
+        passwordHash: "",
+        role: isMaster ? "admin" : ((input.caller.role as any) || "user"),
+        status: "active",
+        pointsBalance: 0,
+        agreedToDisclaimer: true,
+        createdAt: new Date().toISOString(),
+        lastLoginAt: new Date().toISOString()
+      };
+    } else {
+      return { success: false, message: "لم يتم العثور على الحساب" };
+    }
+  }
+
+  // If currentPassword is provided, verify it strictly against existing password
+  const cur = String(input.currentPassword || "").trim();
+  if (cur) {
+    const hasExistingPass = Boolean(account.password || account.passwordHash);
+    if (hasExistingPass) {
+      const matches = account.password === cur || account.passwordHash === hashPassword(cur);
+      if (!matches) {
+        return { success: false, message: "كلمة المرور الحالية غير صحيحة" };
+      }
+    }
+  } else {
+    // If currentPassword was omitted: require authenticated session/token OR empty existing password
+    const isCallerAdmin = Boolean(input.caller && (input.caller.role === "admin" || input.caller.isMasterAdmin));
+    const hasExistingPass = Boolean(account.password || account.passwordHash);
+    const isVerifiedOwner = Boolean(input.caller && input.caller.email.toLowerCase() === normalizedEmail);
+    if (hasExistingPass && !isCallerAdmin && !isVerifiedOwner) {
+      return { success: false, message: "يرجى إدخال كلمة المرور الحالية للتحقق" };
     }
   }
 
