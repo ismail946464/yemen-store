@@ -6,6 +6,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { PageLoadingSkeleton } from '../components/Skeletons';
+import { isProductOfferActive, getProductOfferBadgeText } from '../lib/offerUtils';
 
 export default function StoreSite() {
   const { slug } = useParams();
@@ -59,15 +60,19 @@ export default function StoreSite() {
     }
   }, [settings]);
 
+  const offerProducts = products.filter(isProductOfferActive);
+
   const filteredProducts = activeTab === 'all'
     ? products
-    : products.filter(p => {
-        if (!p.category) return false;
-        const target = activeTab.toLowerCase().trim();
-        const pCat = String(p.category).toLowerCase().trim();
-        const pSlug = String(p.categorySlug || '').toLowerCase().trim();
-        return pCat === target || pSlug === target || (target === 'الكترونيات' && pCat.includes('الكترون')) || (pCat.includes(target) || target.includes(pCat));
-      });
+    : activeTab === 'offers'
+      ? offerProducts
+      : products.filter(p => {
+          if (!p.category) return false;
+          const target = activeTab.toLowerCase().trim();
+          const pCat = String(p.category).toLowerCase().trim();
+          const pSlug = String(p.categorySlug || '').toLowerCase().trim();
+          return pCat === target || pSlug === target || (target === 'الكترونيات' && pCat.includes('الكترون')) || (pCat.includes(target) || target.includes(pCat));
+        });
 
   if (isLoading) {
     return (
@@ -192,6 +197,17 @@ export default function StoreSite() {
           >
             الكل
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('offers')}
+            className={`min-h-[44px] whitespace-nowrap px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 transition-colors ${
+              activeTab === 'offers'
+                ? `${getThemeClasses('border')} text-[#111214] dark:text-white font-bold`
+                : 'border-transparent text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white'
+            }`}
+          >
+            العروض ({offerProducts.length})
+          </button>
           {categories.map(cat => (
             <button
               type="button"
@@ -220,6 +236,10 @@ export default function StoreSite() {
             {filteredProducts.map((product) => {
               const titleText = product.title || product.name || 'منتج';
               const imageSrc = product.image || product.images?.[0];
+              const hasOfferActive = isProductOfferActive(product);
+              const offerBadge = hasOfferActive ? getProductOfferBadgeText(product) : '';
+              const hasCrossedPrice = Number(product.originalPrice || 0) > Number(product.price || 0);
+
               return (
                 <article
                   key={product.id}
@@ -240,6 +260,11 @@ export default function StoreSite() {
                         <ImageIcon className="w-8 h-8 opacity-40" />
                       </div>
                     )}
+                    {offerBadge && (
+                      <span className="absolute top-2.5 right-2.5 bg-[#111214] dark:bg-[#F4F4F2] text-white dark:text-[#111214] text-[10px] font-bold px-2 py-0.5 rounded-md">
+                        {offerBadge}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex flex-col flex-1 justify-between gap-2">
@@ -250,12 +275,24 @@ export default function StoreSite() {
                       <h3 className="font-bold text-xs sm:text-sm line-clamp-2 mt-0.5 leading-snug">
                         {titleText}
                       </h3>
+                      {hasOfferActive && (product.offerExtras || product.offerTitle) && (
+                        <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 line-clamp-1 mt-0.5">
+                          {product.offerExtras || product.offerTitle}
+                        </p>
+                      )}
                     </div>
 
                     <div className="flex items-center justify-between gap-2 pt-1">
-                      <span className={`text-sm sm:text-base font-extrabold tabular-nums ${getThemeClasses('price')}`}>
-                        {Number(product.price || 0).toLocaleString()} <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
-                      </span>
+                      <div className="flex items-baseline gap-1.5 flex-wrap">
+                        <span className={`text-sm sm:text-base font-extrabold tabular-nums ${getThemeClasses('price')}`}>
+                          {Number(product.price || 0).toLocaleString()} <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
+                        </span>
+                        {hasCrossedPrice && (
+                          <span className="text-[11px] text-[#5C5B57] dark:text-zinc-500 line-through tabular-nums">
+                            {Number(product.originalPrice).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={(e) => {

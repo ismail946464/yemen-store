@@ -20,6 +20,13 @@ export interface AssistantProduct {
   deliveryFee?: number;
   depositAmount?: number;
   reservationDurationDays?: number;
+  hasOffer?: boolean;
+  offerType?: string;
+  originalPrice?: number;
+  discountPercent?: number;
+  offerTitle?: string;
+  offerExtras?: string;
+  offerExpiresAt?: string;
 }
 
 export interface AssistantChatResponse {
@@ -40,6 +47,7 @@ interface ContextAnalysis {
     | 'store_verification'
     | 'order_tracking'
     | 'contact_support'
+    | 'offers'
     | 'out_of_bounds'
     | 'greeting'
     | 'general_help';
@@ -173,6 +181,21 @@ function analyzeContext(userQuery: string, catalog: AssistantProduct[]): Context
     normQuery.includes('مساعده مباشره')
   ) {
     return { intent: 'contact_support', keywords: tokens, matchedProducts: [] };
+  }
+
+  // Offers & Discounts
+  if (
+    normQuery.includes('عروض') ||
+    normQuery.includes('عرض') ||
+    normQuery.includes('خصم') ||
+    normQuery.includes('تخفيض') ||
+    normQuery.includes('هديه') ||
+    normQuery.includes('اضافات')
+  ) {
+    const offerItems = catalog.filter(
+      (p) => Boolean(p.hasOffer) || (Number(p.originalPrice || 0) > Number(p.price || 0))
+    );
+    return { intent: 'offers', keywords: tokens, matchedProducts: offerItems.slice(0, 6) };
   }
 
   // Greetings
@@ -385,6 +408,31 @@ export function runStandaloneStoreAi(
           'مراسلة الإدارة الآن',
           'الاستفسار عن الشحن والتوصيل',
           'تقديم شكوى أو اقتراح'
+        ],
+        provider: 'standalone_store_ai'
+      };
+    }
+
+    case 'offers': {
+      const offerProds = analysis.matchedProducts;
+      if (offerProds.length > 0) {
+        return {
+          reply: `إليك أحدث العروض والخصومات المتاحة حالياً في ${storeName}:\n\nيمكنك الضغط على أي منتج أدناه لمشاهدة تفاصيل الخصم أو الإضافات المجانية المشمولة وإتمام الطلب مباشرة:`,
+          products: offerProds,
+          suggestedQuestions: [
+            'هل يشمل العرض توصيلاً مجانياً؟',
+            'كيف أطلب أحد منتجات العروض؟',
+            'عرض جميع المنتجات المتوفرة'
+          ],
+          provider: 'standalone_store_ai'
+        };
+      }
+      return {
+        reply: `لا توجد منتجات بعروض خاصة مفعلة في هذه اللحظة داخل ${storeName}، ولكن يمكنك تصفح أحدث المنتجات المتوفرة حالياً أدناه أو التوجه إلى خانة العروض في الصفحة الرئيسية.`,
+        products: catalog.slice(0, 4),
+        suggestedQuestions: [
+          'عرض أحدث المنتجات المتوفرة',
+          'كيف يعمل نظام الحجز ودفع العربون؟'
         ],
         provider: 'standalone_store_ai'
       };

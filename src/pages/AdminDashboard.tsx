@@ -17,13 +17,14 @@ import {
   DollarSign, Package, Eye,
   Instagram, Phone, BarChart3, Sun, Moon, Server, Activity,
   Upload, Palette, Wallet, KeyRound, Lock, BookmarkCheck,
-  Navigation, Loader2, EyeOff, RefreshCw
+  Navigation, Loader2, EyeOff, RefreshCw, Percent, Gift, Truck
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import WalletManagement from '../components/WalletManagement';
 import StoreAccountsManagement from '../components/StoreAccountsManagement';
+import { isProductOfferActive, getProductOfferBadgeText } from '../lib/offerUtils';
 
 interface StoreProfile {
   userId: string;
@@ -545,16 +546,39 @@ export default function AdminDashboard() {
         ? Boolean(targetStoreObj.verified) && (!targetStoreObj.verifiedUntil || targetStoreObj.verifiedUntil === '' || new Date(targetStoreObj.verifiedUntil).getTime() >= Date.now())
         : (Boolean(storeProfile?.verified) && (!storeProfile?.verifiedUntil || storeProfile?.verifiedUntil === '' || new Date(storeProfile.verifiedUntil).getTime() >= Date.now()));
 
+      const hasOffer = Boolean(productForm.hasOffer);
+      const offerType = hasOffer ? (productForm.offerType || 'discount') : null;
+      const numericPrice = Number(productForm.price) || 0;
+      const rawOriginal = productForm.originalPrice !== '' && productForm.originalPrice !== null && productForm.originalPrice !== undefined
+        ? Number(productForm.originalPrice)
+        : null;
+      const computedDiscount = (hasOffer && rawOriginal && rawOriginal > numericPrice)
+        ? Math.round(((rawOriginal - numericPrice) / rawOriginal) * 100)
+        : (hasOffer && productForm.discountPercent ? Number(productForm.discountPercent) : null);
+
       const data: any = {
         ...productForm,
         image: productForm.images?.[0] || '',
-        price: Number(productForm.price),
+        price: numericPrice,
         stock: productForm.stock === '' || productForm.stock === undefined || productForm.stock === null ? null : Number(productForm.stock),
         isPreOrderEnabled: isTargetStoreVerified ? (productForm.isPreOrderEnabled ?? true) : false,
         reservationDurationDays: Number(productForm.reservationDurationDays) || 3,
         ownerId: productForm.ownerId || user?.uid,
+        hasOffer,
+        offerType,
+        originalPrice: hasOffer && rawOriginal && rawOriginal > numericPrice ? rawOriginal : null,
+        discountPercent: hasOffer ? computedDiscount : null,
+        offerTitle: hasOffer && productForm.offerTitle ? String(productForm.offerTitle).trim() : null,
+        offerExtras: hasOffer && productForm.offerExtras ? String(productForm.offerExtras).trim() : null,
+        offerExpiresAt: hasOffer && productForm.offerExpiresAt ? String(productForm.offerExpiresAt).trim() : null,
         updatedAt: new Date().toISOString()
       };
+
+      if (hasOffer && offerType === 'free_delivery') {
+        data.deliveryFee = 0;
+      } else if (data.deliveryFee === 0 && productForm.offerType !== 'free_delivery') {
+        delete data.deliveryFee;
+      }
 
       if (productForm.depositAmount !== '' && productForm.depositAmount !== null && productForm.depositAmount !== undefined) {
         data.depositAmount = Number(productForm.depositAmount);
@@ -1627,7 +1651,7 @@ export default function AdminDashboard() {
                       </p>
                     </div>
                     <button
-                      onClick={() => setProductForm({ title: '', price: '', description: '', stock: 0, category: 'عام', images: [], status: 'active' })}
+                      onClick={() => setProductForm({ title: '', price: '', description: '', stock: 0, category: 'عام', images: [], status: 'active', hasOffer: false, offerType: 'discount', originalPrice: '', discountPercent: '', offerTitle: '', offerExtras: '', offerExpiresAt: '' })}
                       className={`min-h-[44px] ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white px-5 py-2.5 rounded-lg font-bold text-xs transition flex items-center gap-2 self-start sm:self-auto`}
                     >
                       <Plus className="w-4 h-4" />
@@ -1670,7 +1694,14 @@ export default function AdminDashboard() {
                                       {product.images?.[0] && <img src={product.images[0]} className="w-full h-full object-cover" alt="" />}
                                     </div>
                                     <div>
-                                      <p className="font-bold text-xs sm:text-sm text-[#111214] dark:text-[#F4F4F2]">{product.title}</p>
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <p className="font-bold text-xs sm:text-sm text-[#111214] dark:text-[#F4F4F2]">{product.title}</p>
+                                        {isProductOfferActive(product) && (
+                                          <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+                                            {getProductOfferBadgeText(product)}
+                                          </span>
+                                        )}
+                                      </div>
                                       <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400 tabular-nums">
                                         {product.createdAt ? new Date(product.createdAt).toLocaleDateString('ar-YE') : '—'}
                                       </p>
@@ -1681,9 +1712,16 @@ export default function AdminDashboard() {
                                   {product.category}
                                 </td>
                                 <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                                  <span className="font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
-                                    {Number(product.price || 0).toLocaleString()} ر.ي
-                                  </span>
+                                  <div className="flex flex-col items-center">
+                                    <span className="font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                                      {Number(product.price || 0).toLocaleString()} ر.ي
+                                    </span>
+                                    {Number(product.originalPrice || 0) > Number(product.price || 0) && (
+                                      <span className="text-[10px] text-[#5C5B57] dark:text-zinc-500 line-through tabular-nums">
+                                        {Number(product.originalPrice).toLocaleString()} ر.ي
+                                      </span>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="py-3.5 px-4 text-center whitespace-nowrap tabular-nums">
                                   <span className={`font-bold ${product.stock === 0 ? 'text-rose-600 dark:text-rose-400' : 'text-[#111214] dark:text-[#F4F4F2]'}`}>
@@ -3635,6 +3673,154 @@ export default function AdminDashboard() {
                 onChange={(v: string) => setProductForm({ ...productForm, description: v })}
                 placeholder="اكتب مواصفات وتفاصيل المنتج هنا..."
               />
+
+              {/* Offers, Discounts & Free Add-ons Configuration */}
+              <div className="p-4 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-8 h-8 rounded-md bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] flex items-center justify-center text-[#111214] dark:text-[#F4F4F2]">
+                      <Percent className="w-4 h-4" />
+                    </span>
+                    <div>
+                      <h4 className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">العروض والخصومات والإضافات</h4>
+                      <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400">
+                        أضف خصماً على السعر، هدية مجانية، عرض باقة، أو توصيل مجاني ليظهر المنتج في خانة العروض
+                      </p>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer select-none min-h-[38px] px-3 rounded-md border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519]">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(productForm.hasOffer)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setProductForm({
+                          ...productForm,
+                          hasOffer: checked,
+                          offerType: productForm.offerType || 'discount'
+                        });
+                      }}
+                      className="w-4 h-4 rounded"
+                    />
+                    <span className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">تفعيل عرض</span>
+                  </label>
+                </div>
+
+                {Boolean(productForm.hasOffer) && (
+                  <div className="space-y-4 pt-3 border-t border-[#E5E2DA] dark:border-[#232730]">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2] block">نوع العرض</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {[
+                          { id: 'discount', label: 'خصم على السعر', icon: Percent },
+                          { id: 'bonus', label: 'إضافة / هدية مجانية', icon: Gift },
+                          { id: 'bundle', label: 'عرض باقة / كمية', icon: Package },
+                          { id: 'free_delivery', label: 'توصيل مجاني', icon: Truck }
+                        ].map((opt) => {
+                          const IconComp = opt.icon;
+                          const isSelected = (productForm.offerType || 'discount') === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setProductForm({ ...productForm, offerType: opt.id })}
+                              className={`min-h-[42px] px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                                isSelected
+                                  ? `${getThemeClasses('bg')} border-transparent text-white`
+                                  : 'bg-white dark:bg-[#131519] border-[#E5E2DA] dark:border-[#232730] text-[#5C5B57] dark:text-zinc-300 hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26]'
+                              }`}
+                            >
+                              <IconComp className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">{opt.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <AdminInput
+                        label="السعر قبل الخصم (اختياري - ر.ي)"
+                        type="number"
+                        value={productForm.originalPrice === undefined || productForm.originalPrice === null ? '' : productForm.originalPrice.toString()}
+                        onChange={(v: string) => {
+                          const orig = v === '' ? '' : Number(v);
+                          const currentPrice = Number(productForm.price) || 0;
+                          const pct = productForm.discountPercent ? Number(productForm.discountPercent) : 0;
+                          if (orig && pct > 0 && pct < 100) {
+                            const discounted = Math.max(0, Math.round(Number(orig) * (1 - pct / 100)));
+                            setProductForm({ ...productForm, originalPrice: orig, price: discounted.toString() });
+                          } else if (orig && currentPrice > 0 && Number(orig) > currentPrice) {
+                            const calcPct = Math.round(((Number(orig) - currentPrice) / Number(orig)) * 100);
+                            setProductForm({ ...productForm, originalPrice: orig, discountPercent: calcPct.toString() });
+                          } else {
+                            setProductForm({ ...productForm, originalPrice: orig });
+                          }
+                        }}
+                        placeholder="مثال: 15000"
+                        extra="يظهر مشطوباً بجانب السعر النهائي بعد الخصم"
+                      />
+
+                      <AdminInput
+                        label="نسبة الخصم % (لحساب السعر تلقائياً)"
+                        type="number"
+                        value={productForm.discountPercent === undefined || productForm.discountPercent === null ? '' : productForm.discountPercent.toString()}
+                        onChange={(v: string) => {
+                          const pct = v === '' ? '' : Math.min(99, Math.max(0, Number(v)));
+                          const baseOrig = Number(productForm.originalPrice || productForm.price || 0);
+                          if (pct !== '' && Number(pct) > 0 && baseOrig > 0) {
+                            const discounted = Math.max(0, Math.round(baseOrig * (1 - Number(pct) / 100)));
+                            setProductForm({
+                              ...productForm,
+                              originalPrice: baseOrig.toString(),
+                              discountPercent: pct.toString(),
+                              price: discounted.toString()
+                            });
+                          } else {
+                            setProductForm({ ...productForm, discountPercent: pct === '' ? '' : pct.toString() });
+                          }
+                        }}
+                        placeholder="مثال: 20"
+                        extra="أدخل النسبة لحساب السعر الجديد تلقائياً من السعر الأساسي"
+                      />
+                    </div>
+
+                    {Number(productForm.originalPrice || 0) > Number(productForm.price || 0) && Number(productForm.price || 0) > 0 && (
+                      <div className="p-3 rounded-md bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="font-bold text-emerald-800 dark:text-emerald-300">
+                          السعر النهائي في العرض: {Number(productForm.price).toLocaleString()} ر.ي
+                        </span>
+                        <span className="font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                          يوفر العميل {(Number(productForm.originalPrice) - Number(productForm.price)).toLocaleString()} ر.ي (
+                          {Math.round(((Number(productForm.originalPrice) - Number(productForm.price)) / Number(productForm.originalPrice)) * 100)}%)
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <AdminInput
+                        label="عنوان العرض المختصر"
+                        value={productForm.offerTitle || ''}
+                        onChange={(v: string) => setProductForm({ ...productForm, offerTitle: v })}
+                        placeholder="مثال: خصم نهاية الأسبوع / عرض خاص"
+                      />
+                      <AdminInput
+                        label="تاريخ انتهاء العرض (اختياري)"
+                        type="date"
+                        value={productForm.offerExpiresAt || ''}
+                        onChange={(v: string) => setProductForm({ ...productForm, offerExpiresAt: v })}
+                      />
+                    </div>
+
+                    <AdminTextarea
+                      label="الإضافات والمزايا المجانية المرفقة مع المنتج"
+                      value={productForm.offerExtras || ''}
+                      onChange={(v: string) => setProductForm({ ...productForm, offerExtras: v })}
+                      placeholder="مثال: يشمل شاحن أصلي مجاني + غطاء حماية + تغليف هدايا مجاني"
+                    />
+                  </div>
+                )}
+              </div>
 
               {/* Pre-Order / Reservation Configuration */}
               {(() => {

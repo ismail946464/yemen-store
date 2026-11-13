@@ -23,6 +23,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { isProductOfferActive, getProductOfferBadgeText } from '../lib/offerUtils';
 import PreOrderModal from '../components/PreOrderModal';
 import { ProductGridSkeleton } from '../components/Skeletons';
 
@@ -417,7 +418,12 @@ export default function StoreProfile() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-8 sm:gap-x-6 sm:gap-y-10">
-            {products.map((product) => (
+            {products.map((product) => {
+              const hasOfferActive = isProductOfferActive(product);
+              const offerBadge = hasOfferActive ? getProductOfferBadgeText(product) : '';
+              const hasCrossedPrice = Number(product.originalPrice || 0) > Number(product.price || 0);
+
+              return (
               <article
                 key={product.id}
                 onClick={() => navigate(`/product/${product.id}`)}
@@ -428,6 +434,12 @@ export default function StoreProfile() {
                     src={product.image || (product.images && product.images[0])}
                     alt={product.title}
                   />
+
+                  {offerBadge && (
+                    <span className="absolute top-2.5 right-2.5 bg-[#111214] dark:bg-[#F4F4F2] text-white dark:text-[#111214] text-[10px] font-bold px-2 py-0.5 rounded-md z-10">
+                      {offerBadge}
+                    </span>
+                  )}
 
                   {!product.available && (
                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-2 text-center z-20">
@@ -446,13 +458,25 @@ export default function StoreProfile() {
                     <h3 className="font-bold text-xs sm:text-sm text-[#111214] dark:text-[#F4F4F2] line-clamp-2 leading-snug mt-0.5">
                       {product.title}
                     </h3>
+                    {hasOfferActive && (product.offerExtras || product.offerTitle) && (
+                      <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 line-clamp-1 mt-0.5">
+                        {product.offerExtras || product.offerTitle}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2 pt-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`text-sm sm:text-base font-extrabold ${getThemeClasses('price')} tabular-nums`}>
-                        {Number(product.price || 0).toLocaleString()} <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
-                      </span>
+                      <div className="flex items-baseline gap-1.5 flex-wrap">
+                        <span className={`text-sm sm:text-base font-extrabold ${getThemeClasses('price')} tabular-nums`}>
+                          {Number(product.price || 0).toLocaleString()} <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
+                        </span>
+                        {hasCrossedPrice && (
+                          <span className="text-[11px] text-[#5C5B57] dark:text-zinc-500 line-through tabular-nums">
+                            {Number(product.originalPrice).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
 
                       <button
                         type="button"
@@ -493,7 +517,8 @@ export default function StoreProfile() {
                   </div>
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

@@ -95,8 +95,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch {}
     return [];
   });
+  const cartRef = useRef<CartItem[]>(cart);
 
   useEffect(() => {
+    cartRef.current = cart;
     try {
       localStorage.setItem('yemen_store_cart_v1', JSON.stringify(cart));
     } catch {}
@@ -573,7 +575,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setUserData(data);
         setLoading(false);
 
-        // Keep session and local user in sync with Firestore data only if values actually changed
+        // Keep local user in sync with Firestore data only if values actually changed
         if (data) {
           setUser((prev: any) => {
             if (!prev) return prev;
@@ -583,16 +585,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             if (prev.displayName === newName && prev.photoURL === newPhoto && prev.role === newRole) {
               return prev;
             }
-            const updated = {
+            return {
               ...prev,
               displayName: newName,
               photoURL: newPhoto,
               role: newRole
             };
-            try {
-              localStorage.setItem('yemen_store_session', JSON.stringify(updated));
-            } catch {}
-            return updated;
           });
         }
 
@@ -682,6 +680,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     return () => unsubUser();
   }, [user?.uid, user?.email]);
+
+  useEffect(() => {
+    if (!user) return;
+    try {
+      if (localStorage.getItem('yemen_store_session')) {
+        localStorage.setItem('yemen_store_session', JSON.stringify(user));
+      }
+    } catch {}
+  }, [user]);
 
   const openLoginModal = (initialEmail?: string) => {
     if (initialEmail) setLoginModalInitialEmail(initialEmail);
@@ -928,45 +935,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addToCart = useCallback((product: any) => {
-    setCart((prev) => {
-      if (prev.length > 0) {
-        const firstStoreId = prev[0].product.ownerId || 'global';
-        const newStoreId = product.ownerId || 'global';
-        if (firstStoreId !== newStoreId) {
-          toast.error("يرجى إتمام طلب المتجر الحالي أولاً أو تفريغ السلة، لا يمكن الجمع بين منتجات من متاجر مختلفة في طلب واحد.", { id: 'cart-error' });
-          return prev;
-        }
+    const prev = cartRef.current;
+    if (prev.length > 0) {
+      const firstStoreId = prev[0].product.ownerId || 'global';
+      const newStoreId = product.ownerId || 'global';
+      if (firstStoreId !== newStoreId) {
+        toast.error("يرجى إتمام طلب المتجر الحالي أولاً أو تفريغ السلة، لا يمكن الجمع بين منتجات من متاجر مختلفة في طلب واحد.", { id: 'cart-error' });
+        return;
       }
+    }
 
-      const existing = prev.find((item) => item.product.id === product.id);
-      toast.success("تمت الإضافة للسلة", { id: 'cart-toast' });
-      if (existing) {
-        return prev.map((item) =>
+    const existing = prev.find((item) => item.product.id === product.id);
+    const nextCart = existing
+      ? prev.map((item) =>
           item.product.id === product.id
             ? { ...item, quantity: item.quantity + 1 }
             : item
-        );
-      }
-      return [...prev, { product, quantity: 1 }];
-    });
+        )
+      : [...prev, { product, quantity: 1 }];
+
+    cartRef.current = nextCart;
+    setCart(nextCart);
+    toast.success("تمت الإضافة للسلة", { id: 'cart-toast' });
   }, []);
 
   const removeFromCart = useCallback((productId: string) => {
-    setCart((prev) => prev.filter((item) => item.product.id !== productId));
+    const nextCart = cartRef.current.filter((item) => item.product.id !== productId);
+    cartRef.current = nextCart;
+    setCart(nextCart);
   }, []);
 
   const updateCartQuantity = useCallback((productId: string, quantity: number) => {
-    setCart((prev) => {
-      if (quantity <= 0) {
-        return prev.filter((item) => item.product.id !== productId);
-      }
-      return prev.map((item) =>
-        item.product.id === productId ? { ...item, quantity } : item
-      );
-    });
+    const nextCart = quantity <= 0
+      ? cartRef.current.filter((item) => item.product.id !== productId)
+      : cartRef.current.map((item) =>
+          item.product.id === productId ? { ...item, quantity } : item
+        );
+    cartRef.current = nextCart;
+    setCart(nextCart);
   }, []);
 
-  const clearCart = useCallback(() => setCart([]), []);
+  const clearCart = useCallback(() => {
+    cartRef.current = [];
+    setCart([]);
+  }, []);
 
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + ((Number(item.product.price) || 0) * item.quantity), 0), [cart]);
   

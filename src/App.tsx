@@ -280,11 +280,13 @@ function MainLayout() {
       }
       appleIcon.href = settings.storeLogo;
 
+      const rootOrigin = window.location.origin;
       const manifest = {
         short_name: settings.shortName || settings.storeName || 'المتجر',
         name: settings.storeName || 'متجر',
         description: settings.storeDescription || `منصة ${settings.storeName || 'المتجر'} للتجارة والمتاجر الموثوقة`,
-        start_url: '/',
+        start_url: `${rootOrigin}/`,
+        scope: `${rootOrigin}/`,
         display: 'standalone',
         theme_color: '#111214',
         background_color: '#f6f5f0',
@@ -413,32 +415,32 @@ function MainLayout() {
 export default function App() {
   return (
     <Router>
+      <Toaster
+        position="top-center"
+        gutter={8}
+        containerStyle={{ top: 20 }}
+        toastOptions={{
+          duration: 3200,
+          style: {
+            borderRadius: '8px',
+            background: '#111214',
+            color: '#f4f4f2',
+            padding: '10px 16px',
+            fontWeight: '600',
+            fontSize: '13px',
+            direction: 'rtl',
+            boxShadow: '0 8px 20px rgba(0, 0, 0, 0.16)',
+            border: '1px solid #232730',
+          },
+          success: {
+            iconTheme: { primary: '#10b981', secondary: '#fff' },
+          },
+          error: {
+            iconTheme: { primary: '#f43f5e', secondary: '#fff' },
+          },
+        }}
+      />
       <AppProvider>
-        <Toaster
-          position="top-center"
-          gutter={8}
-          containerStyle={{ top: 20 }}
-          toastOptions={{
-            duration: 3200,
-            style: {
-              borderRadius: '8px',
-              background: '#111214',
-              color: '#f4f4f2',
-              padding: '10px 16px',
-              fontWeight: '600',
-              fontSize: '13px',
-              direction: 'rtl',
-              boxShadow: '0 8px 20px rgba(0, 0, 0, 0.16)',
-              border: '1px solid #232730',
-            },
-            success: {
-              iconTheme: { primary: '#10b981', secondary: '#fff' },
-            },
-            error: {
-              iconTheme: { primary: '#f43f5e', secondary: '#fff' },
-            },
-          }}
-        />
         <MainLayout />
       </AppProvider>
     </Router>

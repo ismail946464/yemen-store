@@ -23,6 +23,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import { MerchantWallet } from '../components/WalletManagement';
+import { isProductOfferActive, getProductOfferBadgeText } from '../lib/offerUtils';
 
 const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800, quality = 0.65): Promise<string> => {
   return new Promise((resolve) => {
@@ -341,13 +342,18 @@ export default function Cart() {
         storeLocation: storeProfileData?.location || storeProfileData?.coordinates || null,
         storeMapsUrl: storeProfileData?.googleMapsUrl || storeProfileData?.mapsUrl || '',
         storePhone: storeProfileData?.phone || storeProfileData?.whatsapp || '',
-        deliveryFee: cart[0]?.product?.deliveryFee || 1500,
+        deliveryFee: (isProductOfferActive(cart[0]?.product) && cart[0]?.product?.offerType === 'free_delivery')
+          ? 0
+          : (cart[0]?.product?.deliveryFee ?? 1500),
         deliveryStatus: 'pending_pickup',
         customerAddress: customerNotes.trim() || 'العنوان محدد عبر الخريطة',
         items: cart.map(item => ({
           productId: item.product.id,
           title: item.product.title,
           price: item.product.price,
+          originalPrice: item.product.originalPrice || null,
+          offerTitle: isProductOfferActive(item.product) ? (item.product.offerTitle || null) : null,
+          offerExtras: isProductOfferActive(item.product) ? (item.product.offerExtras || null) : null,
           quantity: item.quantity,
           image: item.product.image || (item.product.images && item.product.images[0]) || ''
         })),
@@ -420,13 +426,30 @@ export default function Cart() {
                       />
                     </div>
                     <div className="flex-1 min-w-0 space-y-1">
-                      <h3 className="font-bold text-[#111214] dark:text-[#F4F4F2] text-sm sm:text-base line-clamp-1">
-                        {item.product.title}
-                      </h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-bold text-[#111214] dark:text-[#F4F4F2] text-sm sm:text-base line-clamp-1">
+                          {item.product.title}
+                        </h3>
+                        {isProductOfferActive(item.product) && (
+                          <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+                            {getProductOfferBadgeText(item.product)}
+                          </span>
+                        )}
+                      </div>
+                      {isProductOfferActive(item.product) && (item.product.offerExtras || item.product.offerTitle) && (
+                        <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 line-clamp-1">
+                          {item.product.offerExtras || item.product.offerTitle}
+                        </p>
+                      )}
                       <div className="flex items-center gap-2 text-xs text-[#5C5B57] dark:text-zinc-400">
                         <span className="tabular-nums font-semibold">
                           {unitPrice.toLocaleString()} ر.ي
                         </span>
+                        {Number(item.product.originalPrice || 0) > unitPrice && (
+                          <span className="line-through opacity-60 tabular-nums">
+                            {Number(item.product.originalPrice).toLocaleString()}
+                          </span>
+                        )}
                         <span aria-hidden="true">·</span>
                         <span>سعر الوحدة</span>
                       </div>

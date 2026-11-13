@@ -4,7 +4,7 @@ import {
   BookmarkCheck, ChevronRight, ChevronLeft, LayoutGrid,
   Laptop, Smartphone, Shirt, Sparkles, MapPin, Watch,
   ShoppingBag, Heart, Home, Gamepad2, Tag, Search,
-  SlidersHorizontal, X, ArrowUpDown, ShieldCheck
+  SlidersHorizontal, X, ArrowUpDown, ShieldCheck, Percent
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
@@ -12,6 +12,7 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
 import PreOrderModal from '../components/PreOrderModal';
 import { ProductGridSkeleton } from '../components/Skeletons';
+import { isProductOfferActive, getProductOfferBadgeText } from '../lib/offerUtils';
 
 const DEFAULT_CATEGORIES = [
   { id: 'cat-electronics', name: 'الإلكترونيات والأجهزة', slug: 'electronics', icon: 'laptop' },
@@ -69,7 +70,7 @@ export default function StoreFront() {
   const [sortBy, setSortBy] = useState<'newest' | 'price-asc' | 'price-desc'>('newest');
   const [verifiedOnly, setVerifiedOnly] = useState(false);
 
-  const { addToCart, settings, getThemeClasses, user, login } = useAppContext();
+  const { addToCart, settings, getThemeClasses, user, login, isStore, isAdmin } = useAppContext();
   const navigate = useNavigate();
 
   const [products, setProducts] = useState<any[]>([]);
@@ -154,12 +155,20 @@ export default function StoreFront() {
     return false;
   };
 
+  const offerProducts = useMemo(() => {
+    return products
+      .filter(isProductOfferActive)
+      .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
+  }, [products]);
+
   const filteredProducts = useMemo(() => {
     const activeCatObj = allAvailableCategories.find(c => c.slug === activeTab);
     const term = searchQuery.trim().toLowerCase();
 
     const list = products.filter(p => {
-      if (activeTab !== 'all' && !isProductInCategory(p, activeTab, activeCatObj?.name)) {
+      if (activeTab === 'offers') {
+        if (!isProductOfferActive(p)) return false;
+      } else if (activeTab !== 'all' && !isProductInCategory(p, activeTab, activeCatObj?.name)) {
         return false;
       }
       if (verifiedOnly) {
@@ -170,7 +179,8 @@ export default function StoreFront() {
         const matchTitle = String(p.title || '').toLowerCase().includes(term);
         const matchCat = String(p.category || '').toLowerCase().includes(term);
         const matchStore = String(p.ownerName || '').toLowerCase().includes(term);
-        if (!matchTitle && !matchCat && !matchStore) return false;
+        const matchOffer = String(p.offerTitle || '').toLowerCase().includes(term) || String(p.offerExtras || '').toLowerCase().includes(term);
+        if (!matchTitle && !matchCat && !matchStore && !matchOffer) return false;
       }
       return true;
     });
@@ -186,6 +196,7 @@ export default function StoreFront() {
 
   const getCategoryProductCount = (categorySlug: string, categoryName: string) => {
     if (categorySlug === 'all') return products.length;
+    if (categorySlug === 'offers') return offerProducts.length;
     return products.filter(p => isProductInCategory(p, categorySlug, categoryName)).length;
   };
 
@@ -234,6 +245,128 @@ export default function StoreFront() {
               </div>
             </div>
           </div>
+        </section>
+      )}
+
+      {/* Store Offers Showcase Section (خانة العروض) */}
+      {!isLoading && activeTab === 'all' && !searchQuery.trim() && !verifiedOnly && (
+        <section id="offers-section" className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#E5E2DA] dark:border-[#232730]">
+            <div className="flex items-center gap-2.5">
+              <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${getThemeClasses('bg')}`}>
+                <Percent className="w-4 h-4" />
+              </span>
+              <div>
+                <h2 className="font-display text-lg sm:text-xl font-extrabold text-[#111214] dark:text-[#F4F4F2]">
+                  العروض والخصومات
+                </h2>
+                <p className="text-[11px] sm:text-xs text-[#5C5B57] dark:text-zinc-400">
+                  تخفيضات مباشرة وإضافات مجانية متاحة من المتاجر
+                </p>
+              </div>
+            </div>
+
+            {offerProducts.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('offers');
+                  document.getElementById('products-section')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="min-h-[38px] px-3.5 py-1.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-xs font-bold text-[#111214] dark:text-[#F4F4F2] inline-flex items-center gap-1.5 transition-colors"
+              >
+                <span>عرض كل العروض ({offerProducts.length})</span>
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+            ) : (isStore || isAdmin) ? (
+              <Link
+                to="/admin?tab=products"
+                className="min-h-[38px] px-3.5 py-1.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-xs font-bold text-[#111214] dark:text-[#F4F4F2] inline-flex items-center gap-1.5 transition-colors"
+              >
+                <span>إضافة عرض لمنتج</span>
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </Link>
+            ) : null}
+          </div>
+
+          {offerProducts.length === 0 ? (
+            <div className="p-4 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm font-medium text-[#5C5B57] dark:text-zinc-400">
+                لا توجد عروض مفعّلة حالياً — ستظهر هنا تخفيضات المنتجات والهدايا المجانية فور إضافتها من المتاجر.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+              {offerProducts.slice(0, 4).map((product) => {
+                const ownerProf = product.ownerId ? storeProfiles[product.ownerId] : null;
+                const isStoreVerified = Boolean(product.ownerVerified || ownerProf?.isVerified);
+                const badgeText = getProductOfferBadgeText(product);
+                const hasCrossedPrice = Number(product.originalPrice || 0) > Number(product.price || 0);
+
+                return (
+                  <article
+                    key={`offer-${product.id}`}
+                    onClick={() => navigate(`/product/${product.id}`)}
+                    className="group/card rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] p-3 flex flex-col justify-between gap-3 cursor-pointer hover:border-[#111214]/40 dark:hover:border-zinc-500 transition-colors"
+                  >
+                    <div>
+                      <div className="relative aspect-[4/3] rounded-md overflow-hidden bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] mb-3">
+                        <ProductCardImage src={product.image || product.images?.[0]} alt={product.title} />
+                        {badgeText && (
+                          <span className="absolute top-2 right-2 bg-[#111214] dark:bg-[#F4F4F2] text-white dark:text-[#111214] text-[10px] font-bold px-2 py-0.5 rounded-md">
+                            {badgeText}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1 text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400 truncate">
+                          <span className="truncate">{product.ownerName || 'متجر معتمد'}</span>
+                          {isStoreVerified && <CheckCircle className={`w-3 h-3 shrink-0 ${getThemeClasses('verified')}`} />}
+                        </div>
+                        <h3 className="font-bold text-xs sm:text-sm line-clamp-1 text-[#111214] dark:text-[#F4F4F2]">
+                          {product.title}
+                        </h3>
+                        {(product.offerExtras || product.offerTitle) && (
+                          <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 line-clamp-1">
+                            {product.offerExtras || product.offerTitle}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E5E2DA] dark:border-[#232730]">
+                      <div className="flex items-baseline gap-1.5 flex-wrap">
+                        <span className={`text-sm font-extrabold tabular-nums ${getThemeClasses('price')}`}>
+                          {Number(product.price || 0).toLocaleString()} ر.ي
+                        </span>
+                        {hasCrossedPrice && (
+                          <span className="text-[11px] text-[#5C5B57] dark:text-zinc-500 line-through tabular-nums">
+                            {Number(product.originalPrice).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!user) { login(); return; }
+                          addToCart(product);
+                        }}
+                        className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 transition-colors ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                        title="إضافة إلى السلة"
+                        aria-label="إضافة إلى السلة"
+                      >
+                        <ShoppingCart className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </section>
       )}
 
@@ -300,6 +433,20 @@ export default function StoreFront() {
                 <LayoutGrid className="w-3.5 h-3.5" />
                 <span>الكل</span>
                 <span className="text-[11px] opacity-65 tabular-nums">({products.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('offers')}
+                className={`shrink-0 min-h-[44px] flex items-center gap-1.5 px-3 py-2.5 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === 'offers'
+                    ? `${getThemeClasses('border')} text-[#111214] dark:text-white font-bold`
+                    : 'border-transparent text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white'
+                }`}
+              >
+                <Percent className="w-3.5 h-3.5" />
+                <span>العروض</span>
+                <span className="text-[11px] opacity-65 tabular-nums">({offerProducts.length})</span>
               </button>
 
               {allAvailableCategories.map((c: any) => {
@@ -411,6 +558,9 @@ export default function StoreFront() {
             const depositAmt = (product.depositAmount && Number(product.depositAmount) > 0)
               ? Number(product.depositAmount)
               : Math.max(1000, Math.round(Number(product.price) * 0.2));
+            const hasOfferActive = isProductOfferActive(product);
+            const offerBadge = hasOfferActive ? getProductOfferBadgeText(product) : '';
+            const hasCrossedPrice = Number(product.originalPrice || 0) > Number(product.price || 0);
 
             return (
               <article
@@ -422,7 +572,11 @@ export default function StoreFront() {
                 <div className="relative aspect-[4/5] rounded-lg overflow-hidden bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] mb-3">
                   <ProductCardImage src={product.image || product.images?.[0]} alt={product.title} />
 
-                  {(product.category === 'local' || (product.category && String(product.category).includes('محلي'))) && (
+                  {offerBadge ? (
+                    <span className="absolute top-2.5 right-2.5 bg-[#111214] dark:bg-[#F4F4F2] text-white dark:text-[#111214] text-[10px] font-bold px-2 py-0.5 rounded-md">
+                      {offerBadge}
+                    </span>
+                  ) : (product.category === 'local' || (product.category && String(product.category).includes('محلي'))) && (
                     <span className="absolute top-2.5 right-2.5 bg-[#111214]/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
                       منتج محلي
                     </span>
@@ -458,13 +612,26 @@ export default function StoreFront() {
                     <h3 className="font-bold text-xs sm:text-sm line-clamp-2 text-[#111214] dark:text-[#F4F4F2] leading-snug">
                       {product.title}
                     </h3>
+
+                    {hasOfferActive && (product.offerExtras || product.offerTitle) && (
+                      <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 line-clamp-1">
+                        {product.offerExtras || product.offerTitle}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2 pt-1.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`text-sm sm:text-base font-extrabold tabular-nums ${getThemeClasses('price')}`}>
-                        {Number(product.price || 0).toLocaleString()} <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
-                      </span>
+                      <div className="flex items-baseline gap-1.5 flex-wrap">
+                        <span className={`text-sm sm:text-base font-extrabold tabular-nums ${getThemeClasses('price')}`}>
+                          {Number(product.price || 0).toLocaleString()} <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
+                        </span>
+                        {hasCrossedPrice && (
+                          <span className="text-[11px] text-[#5C5B57] dark:text-zinc-500 line-through tabular-nums">
+                            {Number(product.originalPrice).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
 
                       {user ? (
                         <button

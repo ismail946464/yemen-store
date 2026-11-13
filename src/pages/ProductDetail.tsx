@@ -6,11 +6,12 @@ import { useAppContext } from '../AppContext';
 import {
   ShoppingCart, ArrowRight, Share2, ShieldCheck, Truck,
   CheckCircle, Store, MessageCircle, Star, Send, User,
-  Image as ImageIcon, PackageX, BookmarkCheck, ShoppingBag
+  Image as ImageIcon, PackageX, BookmarkCheck, ShoppingBag, Percent, Gift
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PreOrderModal from '../components/PreOrderModal';
 import { ProductDetailSkeleton } from '../components/Skeletons';
+import { isProductOfferActive, getOfferTypeLabel, getProductDiscountPercent, getProductOfferBadgeText } from '../lib/offerUtils';
 
 export default function ProductDetail() {
   const { productId } = useParams<{ productId: string }>();
@@ -194,6 +195,11 @@ export default function ProductDetail() {
   const depositAmount = (product.depositAmount && Number(product.depositAmount) > 0)
     ? Number(product.depositAmount)
     : Math.max(1000, Math.round(Number(product.price) * 0.2));
+  const hasOfferActive = isProductOfferActive(product);
+  const offerDiscountPct = getProductDiscountPercent(product);
+  const hasCrossedPrice = Number(product.originalPrice || 0) > Number(product.price || 0);
+  const savingsAmount = hasCrossedPrice ? Number(product.originalPrice) - Number(product.price) : 0;
+  const offerBadge = hasOfferActive ? getProductOfferBadgeText(product) : '';
 
   return (
     <div className="py-2 sm:py-4 space-y-12" dir="rtl">
@@ -226,7 +232,11 @@ export default function ProductDetail() {
                 </div>
               )}
 
-              {product.category === 'local' && (
+              {offerBadge ? (
+                <span className="absolute top-3.5 right-3.5 bg-[#111214] dark:bg-[#F4F4F2] text-white dark:text-[#111214] text-[11px] font-bold px-2.5 py-1 rounded-md">
+                  {offerBadge}
+                </span>
+              ) : product.category === 'local' && (
                 <span className="absolute top-3.5 right-3.5 bg-[#111214]/90 text-white text-[11px] font-bold px-2.5 py-1 rounded-md">
                   منتج محلي
                 </span>
@@ -310,21 +320,68 @@ export default function ProductDetail() {
             {/* Price Ledger Line */}
             <div className="flex items-baseline justify-between flex-wrap gap-2 py-4 border-b border-[#E5E2DA] dark:border-[#232730]">
               <div>
-                <span className="text-xs text-[#5C5B57] dark:text-zinc-400 block mb-0.5">السعر</span>
-                <div className="flex items-baseline gap-1.5">
-                  <span className={`text-3xl font-extrabold tabular-nums ${getThemeClasses('price')}`}>
-                    {Number(product.price || 0).toLocaleString()}
-                  </span>
-                  <span className="text-sm font-semibold text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
+                <span className="text-xs text-[#5C5B57] dark:text-zinc-400 block mb-0.5">
+                  {hasCrossedPrice ? 'السعر بعد الخصم' : 'السعر'}
+                </span>
+                <div className="flex items-baseline gap-2.5 flex-wrap">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className={`text-3xl font-extrabold tabular-nums ${getThemeClasses('price')}`}>
+                      {Number(product.price || 0).toLocaleString()}
+                    </span>
+                    <span className="text-sm font-semibold text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
+                  </div>
+                  {hasCrossedPrice && (
+                    <span className="text-base font-bold text-[#5C5B57] dark:text-zinc-500 line-through tabular-nums">
+                      {Number(product.originalPrice).toLocaleString()} ر.ي
+                    </span>
+                  )}
+                  {offerDiscountPct > 0 && (
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800 tabular-nums">
+                      وفر {offerDiscountPct}% ({savingsAmount.toLocaleString()} ر.ي)
+                    </span>
+                  )}
                 </div>
               </div>
-              {product.deliveryFee > 0 && (
+              {hasOfferActive && product.offerType === 'free_delivery' ? (
+                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                  <Truck className="w-4 h-4" />
+                  توصيل مجاني ضمن العرض
+                </span>
+              ) : product.deliveryFee > 0 ? (
                 <span className="text-xs font-semibold text-[#5C5B57] dark:text-zinc-300 flex items-center gap-1.5 tabular-nums">
                   <Truck className="w-4 h-4" />
                   توصيل: {Number(product.deliveryFee).toLocaleString()} ر.ي
                 </span>
-              )}
+              ) : null}
             </div>
+
+            {/* Active Offer & Add-ons Ledger */}
+            {hasOfferActive && (
+              <div className="p-4 rounded-lg border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/60 dark:bg-emerald-950/20 space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                    {product.offerType === 'bonus' ? <Gift className="w-4 h-4 shrink-0" /> : <Percent className="w-4 h-4 shrink-0" />}
+                    <span>{getOfferTypeLabel(product.offerType)}</span>
+                    {product.offerTitle && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span>{product.offerTitle}</span>
+                      </>
+                    )}
+                  </div>
+                  {product.offerExpiresAt && (
+                    <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400 tabular-nums">
+                      ساري حتى {new Date(product.offerExpiresAt).toLocaleDateString('ar-YE')}
+                    </span>
+                  )}
+                </div>
+                {product.offerExtras && (
+                  <p className="text-xs sm:text-sm text-[#111214] dark:text-[#F4F4F2] font-medium leading-relaxed">
+                    الإضافات المشمولة: {product.offerExtras}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Primary Actions */}
             <div className="space-y-2.5">

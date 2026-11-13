@@ -149,6 +149,13 @@ service cloud.firestore {
         && (!('depositAmount' in data) || data.depositAmount is number)
         && (!('reservationDurationDays' in data) || data.reservationDurationDays is number)
         && (!('reservationTerms' in data) || (data.reservationTerms is string && data.reservationTerms.size() <= 2000))
+        && (!('hasOffer' in data) || data.hasOffer is bool)
+        && (!('offerType' in data) || data.offerType == null || (data.offerType is string && data.offerType.size() <= 50))
+        && (!('originalPrice' in data) || data.originalPrice == null || (data.originalPrice is number && data.originalPrice >= 0))
+        && (!('discountPercent' in data) || data.discountPercent == null || (data.discountPercent is number && data.discountPercent >= 0 && data.discountPercent <= 100))
+        && (!('offerTitle' in data) || data.offerTitle == null || (data.offerTitle is string && data.offerTitle.size() <= 200))
+        && (!('offerExtras' in data) || data.offerExtras == null || (data.offerExtras is string && data.offerExtras.size() <= 1000))
+        && (!('offerExpiresAt' in data) || data.offerExpiresAt == null || (data.offerExpiresAt is string && data.offerExpiresAt.size() <= 100))
         && (!('createdAt' in data) || data.createdAt is string)
         && (!('updatedAt' in data) || data.updatedAt is string);
     }

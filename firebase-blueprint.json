@@ -31,7 +31,14 @@
         "ownerId": { "type": "string" },
         "externalLink": { "type": "string" },
         "averageRating": { "type": "number" },
-        "ratingCount": { "type": "number" }
+        "ratingCount": { "type": "number" },
+        "hasOffer": { "type": "boolean" },
+        "offerType": { "type": "string", "enum": ["discount", "bonus", "bundle", "free_delivery"] },
+        "originalPrice": { "type": "number" },
+        "discountPercent": { "type": "number" },
+        "offerTitle": { "type": "string" },
+        "offerExtras": { "type": "string" },
+        "offerExpiresAt": { "type": "string" }
       },
       "required": ["title", "price", "category"]
     },
