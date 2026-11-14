@@ -1,20 +1,38 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# يمن ستور — Yemen Store (Web + PWA + Android APK)
 
-# Run and deploy your AI Studio app
+## تشغيل التطبيق محلياً (Run Locally)
 
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/3645fbbf-8fe8-4b8a-9113-047a44e34c52
-
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
+1. تثبيت الحزم:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. ضبط المتغيرات البيئية في `.env` بالاعتماد على `.env.example`
+3. تشغيل الخادم التطويري:
    `npm run dev`
+
+---
+
+## بناء نسخة أندرويد (APK) تلقائياً عبر GitHub
+
+> **ملاحظة تقنية مهمة:** ملف `ZIP` الذي يتم تنزيله عبر زر **Code → Download ZIP** من GitHub يحتوي على الشيفرة المصدرية فقط وليس ملف تطبيق مبني، لذلك **لا يمكن تحويل ملف الشيفرة المصدرية إلى `.apk` بمجرد إعادة التسمية** لأن أندرويد يتطلب ترجمة الكود وتوليد `classes.dex` وتوقيع الحزمة رقمياً.
+
+تم تجهيز المشروع بالكامل بملف أتمتة **GitHub Actions** (`.github/workflows/build-apk.yml`) وملف **Capacitor** (`capacitor.config.ts`) ليقوم ببناء وتوقيع ملف **APK حقيقي قابل للتثبيت** تلقائياً فور تصدير المشروع إلى GitHub:
+
+### خطوات الحصول على ملف APK جاهز للتثبيت من GitHub:
+1. صدّر المشروع (أو ارفعه) إلى مستودع GitHub على فرع `main` أو `master`.
+2. سيبدأ GitHub تلقائياً بتشغيل مسار **`Build Android APK`** في تبويب **Actions** (ويمكنك تشغيله يدوياً في أي وقت عبر زر **Run workflow**).
+3. بعد انتهاء البناء (~دقيقتين)، يمكنك تحميل التطبيق بطريقتين:
+   - **الطريقة المباشرة (موصى بها):** افتح قسم **Releases** في المستودع وحمّل ملف **`yemen-store.apk`** مباشرة وثبته على هاتفك الأندرويد فوراً.
+   - **من قسم Artifacts:** حمّل أرشيف `yemen-store-apk.zip` من نتيجة الـ Workflow وفك الضغط عنه للحصول على `yemen-store.apk`.
+
+### ربط التطبيق بموقعك المنشور (اختياري)
+- افتراضياً يتم دمج واجهة التطبيق الكاملة داخل ملف الـ APK ليعمل بسرعة ومن الهاتف مباشرة.
+- إذا أردت أن يفتح التطبيق نسخة الخادم الحية المنشورة (مثلاً على Vercel أو Cloud Run)، أضف متغيراً في GitHub تحت:
+  `Settings → Secrets and variables → Actions → Variables`
+  باسم **`CAPACITOR_SERVER_URL`** وضع فيه رابط موقعك الكامل (مثال: `https://your-domain.com`).
+
+### التوقيع الدائم للتحديثات (اختياري)
+- افتراضياً يقوم GitHub بإنشاء شهادة توقيع تلقائية لكل بناء.
+- للحفاظ على نفس التوقيع عبر كل التحديثات القادمة على أجهزة المستخدمين، يمكنك إضافة أسرار GitHub Secrets التالية:
+  - `ANDROID_KEYSTORE_BASE64`
+  - `ANDROID_KEYSTORE_PASSWORD`
+  - `ANDROID_KEY_ALIAS`
+  - `ANDROID_KEY_PASSWORD`

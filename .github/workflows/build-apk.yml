@@ -1,0 +1,189 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: "رقم الإصدار (اختياري، مثال: 1.0.1)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build Signed Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Set up Java 21 (Android Gradle)
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Install dependencies
+        run: npm ci || npm install --legacy-peer-deps
+
+      - name: Generate PWA & Android icons
+        run: node scripts/generate-icons.mjs
+
+      - name: Build web bundle
+        run: npx vite build
+
+      - name: Prepare Capacitor Android project
+        env:
+          CAPACITOR_SERVER_URL: ${{ vars.CAPACITOR_SERVER_URL }}
+        run: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+          npx cap sync android
+
+      - name: Configure Android manifest, permissions & app icons
+        run: |
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+
+            const manifestPath = path.join("android/app/src/main/AndroidManifest.xml");
+            let manifest = fs.readFileSync(manifestPath, "utf8");
+            const neededPerms = [
+              "android.permission.INTERNET",
+              "android.permission.ACCESS_NETWORK_STATE",
+              "android.permission.ACCESS_COARSE_LOCATION",
+              "android.permission.ACCESS_FINE_LOCATION"
+            ];
+            for (const perm of neededPerms) {
+              if (!manifest.includes(perm)) {
+                manifest = manifest.replace(
+                  "<application",
+                  `    <uses-permission android:name="${perm}" />\n\n    <application`
+                );
+              }
+            }
+            fs.writeFileSync(manifestPath, manifest);
+
+            // Copy generated PNG icon into all mipmap densities
+            const iconSrc = path.join("public/pwa-512x512.png");
+            if (fs.existsSync(iconSrc)) {
+              const resDir = path.join("android/app/src/main/res");
+              for (const dir of fs.readdirSync(resDir)) {
+                if (dir.startsWith("mipmap-")) {
+                  const full = path.join(resDir, dir);
+                  if (fs.statSync(full).isDirectory()) {
+                    for (const name of ["ic_launcher.png", "ic_launcher_round.png", "ic_launcher_foreground.png"]) {
+                      const target = path.join(full, name);
+                      if (fs.existsSync(target)) fs.copyFileSync(iconSrc, target);
+                    }
+                  }
+                }
+              }
+            }
+          '
+
+      - name: Update versionCode and versionName
+        run: |
+          VERSION_NAME="${{ github.event.inputs.version_name }}"
+          if [ -z "$VERSION_NAME" ]; then
+            VERSION_NAME="1.0.${{ github.run_number }}"
+          fi
+          echo "APP_VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
+          node -e '
+            const fs = require("fs");
+            const gradlePath = "android/app/build.gradle";
+            let gradle = fs.readFileSync(gradlePath, "utf8");
+            const vCode = Number(process.env.GITHUB_RUN_NUMBER || "1");
+            const vName = process.env.APP_VERSION_NAME;
+            gradle = gradle.replace(/versionCode\s+\d+/, `versionCode ${vCode}`);
+            gradle = gradle.replace(/versionName\s+"[^"]+"/, `versionName "${vName}"`);
+            fs.writeFileSync(gradlePath, gradle);
+          '
+
+      - name: Prepare release keystore
+        id: keystore
+        run: |
+          KEYSTORE_PATH="$RUNNER_TEMP/yemen-store-release.keystore"
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "$KEYSTORE_PATH"
+            echo "KEYSTORE_PASS=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+            echo "KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> $GITHUB_ENV
+            echo "KEY_PASS=${{ secrets.ANDROID_KEY_PASSWORD }}" >> $GITHUB_ENV
+          else
+            keytool -genkeypair -v \
+              -keystore "$KEYSTORE_PATH" \
+              -alias yemenstore \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass yemenstore2026 \
+              -keypass yemenstore2026 \
+              -dname "CN=Yemen Store, OU=Mobile, O=Yemen Store, L=Sanaa, S=Sanaa, C=YE"
+            echo "KEYSTORE_PASS=yemenstore2026" >> $GITHUB_ENV
+            echo "KEY_ALIAS=yemenstore" >> $GITHUB_ENV
+            echo "KEY_PASS=yemenstore2026" >> $GITHUB_ENV
+          fi
+          echo "path=$KEYSTORE_PATH" >> $GITHUB_OUTPUT
+
+      - name: Build and sign Release APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease
+          cd ..
+
+          ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          UNSIGNED_APK=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -n 1)
+
+          mkdir -p release-apk
+          ALIGNED_APK="release-apk/yemen-store-aligned.apk"
+          SIGNED_APK="release-apk/yemen-store.apk"
+          VERSIONED_APK="release-apk/yemen-store-v${APP_VERSION_NAME}.apk"
+
+          "$BUILD_TOOLS_DIR/zipalign" -p -f 4 "$UNSIGNED_APK" "$ALIGNED_APK"
+          "$BUILD_TOOLS_DIR/apksigner" sign \
+            --ks "${{ steps.keystore.outputs.path }}" \
+            --ks-pass "env:KEYSTORE_PASS" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --key-pass "env:KEY_PASS" \
+            --out "$SIGNED_APK" \
+            "$ALIGNED_APK"
+
+          "$BUILD_TOOLS_DIR/apksigner" verify "$SIGNED_APK"
+          rm -f "$ALIGNED_APK"
+          cp "$SIGNED_APK" "$VERSIONED_APK"
+
+      - name: Upload APK as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yemen-store-apk
+          path: release-apk/*.apk
+          retention-days: 90
+
+      - name: Publish direct APK download on GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.APP_VERSION_NAME }}
+          name: "تطبيق يمن ستور v${{ env.APP_VERSION_NAME }}"
+          body: |
+            ### تحميل وتثبيت تطبيق أندرويد (APK)
+            1. قم بتحميل ملف **`yemen-store.apk`** مباشرة من المرفقات أدناه على هاتفك الأندرويد.
+            2. افتح الملف لتثبيت التطبيق فوراً (يدعم التثبيت المباشر بدون فك ضغط).
+          files: |
+            release-apk/yemen-store.apk
+            release-apk/yemen-store-v${{ env.APP_VERSION_NAME }}.apk
+          draft: false
+          prerelease: false
