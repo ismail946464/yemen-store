@@ -4,6 +4,10 @@ import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, signOut 
 import { doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, increment, updateDoc, addDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
+import { getStockLimit, isItemOutOfStock } from './lib/stockUtils';
+import { expireDeliveryFeeProposalTransaction } from './lib/deliveryFeeUtils';
+import { expireReservationTransaction, isStorePickupOnlyProduct } from './lib/reservationUtils';
+import { StatsResetConfig, getLocalDateKey } from './lib/statsReportUtils';
 
 export interface AppUser {
   uid: string;
@@ -39,15 +43,23 @@ interface AppContextType {
   changePassword: (newPassword: string, currentPassword?: string, targetEmail?: string) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
   cart: CartItem[];
-  addToCart: (product: any) => void;
+  addToCart: (product: any, quantityToAdd?: number) => void;
   removeFromCart: (productId: string) => void;
   updateCartQuantity: (productId: string, quantity: number) => void;
+  syncCartItemStock: (productKey: string, patch: { stock?: number | null; available?: boolean; price?: number; noDelivery?: boolean }) => void;
   clearCart: () => void;
   cartTotal: number;
   unreadCount: number;
   markMessagesAsRead: () => Promise<void>;
   settingsLoading: boolean;
-  globalStats: { totalVisitors: number, totalRegistered: number, onlineCount: number, mainStoreLastSeen: string | null };
+  globalStats: {
+    totalVisitors: number;
+    totalRegistered: number;
+    onlineCount: number;
+    mainStoreLastSeen: string | null;
+    dailyVisits: Record<string, number>;
+    statsReset: StatsResetConfig | null;
+  };
   effectiveTheme: ThemeColor;
   userTheme: ThemeColor | null;
   setUserTheme: (theme: ThemeColor) => Promise<void> | void;
@@ -137,7 +149,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   const prevUnreadCount = useRef(0);
   const [settingsLoading, setSettingsLoading] = useState(true);
-  const [globalStats, setGlobalStats] = useState({ totalVisitors: 0, totalRegistered: 0, onlineCount: 0, mainStoreLastSeen: null as string | null });
+  const [globalStats, setGlobalStats] = useState<{
+    totalVisitors: number;
+    totalRegistered: number;
+    onlineCount: number;
+    mainStoreLastSeen: string | null;
+    dailyVisits: Record<string, number>;
+    statsReset: StatsResetConfig | null;
+  }>({
+    totalVisitors: 0,
+    totalRegistered: 0,
+    onlineCount: 0,
+    mainStoreLastSeen: null,
+    dailyVisits: {},
+    statsReset: null
+  });
 
   const toggleDarkMode = () => {
     if (effectiveTheme === 'white') {
@@ -215,15 +241,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const hasVisited = sessionStorage.getItem('visited_v2');
         if (!hasVisited) {
             const statsRef = doc(db, 'stats', 'global');
+            const todayKey = getLocalDateKey();
             getDoc(statsRef).then(snap => {
                 if (snap.exists()) {
-                   updateDoc(statsRef, { totalVisitors: increment(1) })
+                   updateDoc(statsRef, {
+                     totalVisitors: increment(1),
+                     [`dailyVisits.${todayKey}`]: increment(1)
+                   })
                      .then(() => sessionStorage.setItem('visited_v2', 'true'))
                      .catch(e => {
                        if (e.code === 'resource-exhausted') sessionStorage.setItem('visited_v2', 'true');
                      });
                 } else {
-                   setDoc(statsRef, { totalVisitors: 1 })
+                   setDoc(statsRef, {
+                     totalVisitors: 1,
+                     dailyVisits: { [todayKey]: 1 }
+                   })
                      .then(() => sessionStorage.setItem('visited_v2', 'true'))
                      .catch(() => {});
                 }
@@ -243,8 +276,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!user) return;
       const now = Date.now();
       
-      // Throttle: don't update more than once every 25 minutes
-      if (now - lastPresenceUpdateRef.current < 1500000) return;
+      // Throttle: don't update more than once every 5 minutes (aligned with 10m online window)
+      if (now - lastPresenceUpdateRef.current < 300000) return;
       
       const nowISO = new Date(now).toISOString();
       lastPresenceUpdateRef.current = now;
@@ -285,12 +318,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     updatePresence(true);
-    const interval = setInterval(() => updatePresence(true), 1500000); // 25m heartbeat
+    const interval = setInterval(() => updatePresence(true), 300000); // 5m heartbeat
     
-    // Activity tracking - only update presence on activity if it's been a while (20m+)
+    // Activity tracking - only update presence on activity if it's been 5m+
     const handleActivity = () => {
       const now = Date.now();
-      if (now - lastPresenceUpdateRef.current > 1200000) {
+      if (now - lastPresenceUpdateRef.current > 300000) {
         updatePresence(true);
       }
     };
@@ -323,7 +356,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           totalVisitors: data.totalVisitors || 0,
           totalRegistered: data.totalRegistered || 0,
           onlineCount: data.onlineCount || 0,
-          mainStoreLastSeen: data.mainStoreLastSeen || null
+          mainStoreLastSeen: data.mainStoreLastSeen || null,
+          dailyVisits: (data.dailyVisits && typeof data.dailyVisits === 'object') ? data.dailyVisits : {},
+          statsReset: data.statsReset || null
         }));
       }
     }, (error) => {
@@ -343,7 +378,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const tenMinutesAgo = new Date(Date.now() - 10 * 60000).toISOString();
         const qOnline = query(collection(db, 'users'), where('lastSeen', '>=', tenMinutesAgo));
         const snap = await getDocs(qOnline);
-        const count = Math.max(1, snap.size);
+        const count = snap.size;
         
         updateDoc(doc(db, 'stats', 'global'), { onlineCount: count }).catch(() => {});
         setGlobalStats(prev => (prev.onlineCount !== count ? { ...prev, onlineCount: count } : prev));
@@ -419,7 +454,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (document.hidden && "Notification" in window && Notification.permission === "granted") {
             new Notification("متجر يمن", {
               body: "لديك رسائل جديدة!",
-              icon: "/favicon.ico"
+              icon: "/pwa-192x192.png"
             });
           }
           
@@ -439,6 +474,90 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     return () => unsubscribe();
+  }, [user?.uid]);
+
+  // Background watcher: automatically expire overdue courier fee proposals AND overdue store-pickup/pre-order reservations
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+    let pendingFeeOrders: Array<{ id: string; expiresAtMs: number }> = [];
+    let pendingReservations: Array<{ id: string; expiresAtMs: number }> = [];
+    const triggeredResIds = new Set<string>();
+
+    const checkAndSchedule = () => {
+      if (timerId) {
+        clearTimeout(timerId);
+        timerId = null;
+      }
+      const now = Date.now();
+      let nextDelayMs: number | null = null;
+
+      for (const item of pendingFeeOrders) {
+        if (item.expiresAtMs <= now) {
+          expireDeliveryFeeProposalTransaction(item.id);
+        } else {
+          const delay = item.expiresAtMs - now + 250;
+          if (nextDelayMs === null || delay < nextDelayMs) {
+            nextDelayMs = delay;
+          }
+        }
+      }
+
+      for (const item of pendingReservations) {
+        if (item.expiresAtMs <= now) {
+          if (!triggeredResIds.has(item.id)) {
+            triggeredResIds.add(item.id);
+            expireReservationTransaction(item.id).catch(() => {
+              triggeredResIds.delete(item.id);
+            });
+          }
+        } else {
+          const delay = item.expiresAtMs - now + 250;
+          if (nextDelayMs === null || delay < nextDelayMs) {
+            nextDelayMs = delay;
+          }
+        }
+      }
+
+      if (nextDelayMs !== null) {
+        timerId = setTimeout(checkAndSchedule, Math.min(nextDelayMs, 60_000));
+      }
+    };
+
+    const qOrders = query(
+      collection(db, 'orders'),
+      where('userId', '==', user.uid)
+    );
+
+    const unsubscribeOrders = onSnapshot(qOrders, (snap) => {
+      const docs = snap.docs.map(d => ({ id: d.id, data: d.data() as any }));
+
+      pendingFeeOrders = docs
+        .filter(({ data }) => data.deliveryFeeApprovalStatus === 'pending_customer' && data.deliveryFeeExpiresAt)
+        .map(({ id, data }) => ({
+          id,
+          expiresAtMs: new Date(data.deliveryFeeExpiresAt).getTime()
+        }))
+        .filter(item => !Number.isNaN(item.expiresAtMs));
+
+      pendingReservations = docs
+        .filter(({ data }) => (data.status === 'reserved' || data.status === 'deposit_paid') && data.reservationExpiresAt)
+        .map(({ id, data }) => ({
+          id,
+          expiresAtMs: new Date(data.reservationExpiresAt).getTime()
+        }))
+        .filter(item => !Number.isNaN(item.expiresAtMs));
+
+      checkAndSchedule();
+    }, (err) => {
+      console.warn('Order fee/reservation expiration watcher notice:', err.message);
+    });
+
+    return () => {
+      unsubscribeOrders();
+      if (timerId) clearTimeout(timerId);
+    };
   }, [user?.uid]);
 
   const markMessagesAsRead = async () => {
@@ -847,9 +966,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateUserProfile = async (updates: { name?: string; phone?: string; photoURL?: string }): Promise<boolean> => {
     if (!user) return false;
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/auth/update-profile', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders
+        },
         body: JSON.stringify({ email: user.email, ...updates })
       });
       const data = await res.json();
@@ -934,7 +1057,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast.success('تم تسجيل الخروج بنجاح', { id: 'auth-toast' });
   };
 
-  const addToCart = useCallback((product: any) => {
+  const getCartItemKey = (product: any) =>
+    product?._cartKey || (product?.selectedVariantId ? `${product.id}__variant__${product.selectedVariantId}` : product?.id);
+
+  const addToCart = useCallback((product: any, quantityToAdd = 1) => {
+    if (isStorePickupOnlyProduct(product)) {
+      toast.error("هذا المنتج لا يدعم التوصيل؛ يجب حجزه والاستلام من المتجر نفسه فقط", { id: 'cart-nodelivery-error' });
+      return;
+    }
+
     const prev = cartRef.current;
     if (prev.length > 0) {
       const firstStoreId = prev[0].product.ownerId || 'global';
@@ -945,34 +1076,115 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const existing = prev.find((item) => item.product.id === product.id);
+    if (isItemOutOfStock(product)) {
+      toast.error("نفدت الكمية المتوفرة من هذا المنتج حالياً", { id: 'cart-stock-error' });
+      return;
+    }
+
+    const qtyDelta = Math.max(1, Math.floor(Number(quantityToAdd) || 1));
+    const stockLimit = getStockLimit(product);
+    const targetKey = getCartItemKey(product);
+    const existing = prev.find((item) => getCartItemKey(item.product) === targetKey);
+    const currentQty = existing ? existing.quantity : 0;
+
+    if (stockLimit !== null && currentQty >= stockLimit) {
+      toast.error(`لا تتوفر كمية إضافية؛ الحد الأقصى المتاح بالمخزون هو ${stockLimit}`, { id: 'cart-stock-error' });
+      return;
+    }
+
+    const desiredQty = currentQty + qtyDelta;
+    const clampedQty = stockLimit !== null ? Math.min(desiredQty, stockLimit) : desiredQty;
+    const wasClamped = stockLimit !== null && desiredQty > stockLimit;
+
     const nextCart = existing
       ? prev.map((item) =>
-          item.product.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
+          getCartItemKey(item.product) === targetKey
+            ? { ...item, product: { ...item.product, ...product }, quantity: clampedQty }
             : item
         )
-      : [...prev, { product, quantity: 1 }];
+      : [...prev, { product, quantity: clampedQty }];
 
     cartRef.current = nextCart;
     setCart(nextCart);
-    toast.success("تمت الإضافة للسلة", { id: 'cart-toast' });
+    if (wasClamped) {
+      toast.success(`تمت إضافة أقصى كمية متوفرة (${stockLimit}) للسلة`, { id: 'cart-toast' });
+    } else {
+      toast.success(product.selectedVariantName ? `تمت إضافة (${product.selectedVariantName}) للسلة` : "تمت الإضافة للسلة", { id: 'cart-toast' });
+    }
   }, []);
 
-  const removeFromCart = useCallback((productId: string) => {
-    const nextCart = cartRef.current.filter((item) => item.product.id !== productId);
+  const removeFromCart = useCallback((productKey: string) => {
+    const nextCart = cartRef.current.filter((item) => getCartItemKey(item.product) !== productKey && item.product.id !== productKey);
     cartRef.current = nextCart;
     setCart(nextCart);
   }, []);
 
-  const updateCartQuantity = useCallback((productId: string, quantity: number) => {
-    const nextCart = quantity <= 0
-      ? cartRef.current.filter((item) => item.product.id !== productId)
-      : cartRef.current.map((item) =>
-          item.product.id === productId ? { ...item, quantity } : item
-        );
+  const updateCartQuantity = useCallback((productKey: string, quantity: number) => {
+    const cleanQty = Math.floor(Number(quantity) || 0);
+    if (cleanQty <= 0) {
+      const nextCart = cartRef.current.filter((item) => getCartItemKey(item.product) !== productKey && item.product.id !== productKey);
+      cartRef.current = nextCart;
+      setCart(nextCart);
+      return;
+    }
+
+    const targetItem = cartRef.current.find((item) => getCartItemKey(item.product) === productKey || item.product.id === productKey);
+    if (!targetItem) return;
+
+    const stockLimit = getStockLimit(targetItem.product);
+    if (stockLimit !== null && stockLimit <= 0) {
+      toast.error("نفدت الكمية المتوفرة من هذا المنتج وتمت إزالته", { id: 'cart-stock-error' });
+      const nextCart = cartRef.current.filter((item) => getCartItemKey(item.product) !== productKey && item.product.id !== productKey);
+      cartRef.current = nextCart;
+      setCart(nextCart);
+      return;
+    }
+
+    let finalQty = cleanQty;
+    if (stockLimit !== null && cleanQty > stockLimit) {
+      finalQty = stockLimit;
+      toast.error(`لا تتوفر كمية أكبر؛ المتاح في المخزون هو ${stockLimit} فقط`, { id: 'cart-stock-error' });
+    }
+
+    const nextCart = cartRef.current.map((item) =>
+      (getCartItemKey(item.product) === productKey || item.product.id === productKey)
+        ? { ...item, quantity: finalQty }
+        : item
+    );
     cartRef.current = nextCart;
     setCart(nextCart);
+  }, []);
+
+  const syncCartItemStock = useCallback((productKey: string, patch: { stock?: number | null; available?: boolean; price?: number; noDelivery?: boolean }) => {
+    let changed = false;
+    const nextCart = cartRef.current.map((item) => {
+      if (getCartItemKey(item.product) !== productKey) {
+        return item;
+      }
+      const nextStock = patch.stock !== undefined ? patch.stock : item.product.stock;
+      const nextAvailable = patch.available !== undefined ? patch.available : item.product.available;
+      const nextPrice = patch.price !== undefined ? patch.price : item.product.price;
+      const nextNoDelivery = patch.noDelivery !== undefined ? patch.noDelivery : item.product.noDelivery;
+      const nextProduct = { ...item.product, stock: nextStock, available: nextAvailable, price: nextPrice, noDelivery: nextNoDelivery };
+      const limit = getStockLimit(nextProduct);
+      const nextQty = limit !== null && limit > 0 ? Math.min(item.quantity, limit) : item.quantity;
+
+      if (
+        item.product.stock === nextStock &&
+        item.product.available === nextAvailable &&
+        item.product.price === nextPrice &&
+        item.product.noDelivery === nextNoDelivery &&
+        item.quantity === nextQty
+      ) {
+        return item;
+      }
+      changed = true;
+      return { ...item, product: nextProduct, quantity: nextQty };
+    });
+    if (changed) {
+      cartRef.current = nextCart;
+      setCart(nextCart);
+    }
   }, []);
 
   const clearCart = useCallback(() => {
@@ -1115,6 +1327,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addToCart, 
     removeFromCart, 
     updateCartQuantity,
+    syncCartItemStock,
     clearCart, 
     cartTotal, 
     unreadCount, 
@@ -1146,6 +1359,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addToCart,
     removeFromCart,
     updateCartQuantity,
+    syncCartItemStock,
     clearCart,
     unreadCount, 
     globalStats,

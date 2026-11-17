@@ -18,12 +18,20 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
-import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
-import { useNavigate } from 'react-router-dom';
+import { collection, addDoc, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import { MerchantWallet } from '../components/WalletManagement';
 import { isProductOfferActive, getProductOfferBadgeText } from '../lib/offerUtils';
+import {
+  getStockLimit,
+  isItemOutOfStock,
+  reserveStockTransaction,
+  restoreStockTransaction,
+  StockLineItem,
+} from '../lib/stockUtils';
+import { getProductVariants } from '../lib/variantUtils';
 
 const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800, quality = 0.65): Promise<string> => {
   return new Promise((resolve) => {
@@ -56,35 +64,6 @@ const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800, quali
   });
 };
 
-const getDefaultFallbackWallets = (storeName: string = 'يمن ستور'): MerchantWallet[] => [
-  {
-    id: 'kuraimi-default',
-    name: 'الكريمي كاش (Kuraimi)',
-    accountNumber: '777000000',
-    accountName: `متجر ${storeName} الرسمي`,
-    transferType: 'subscriber',
-    isActive: true,
-    notes: 'تحويل مباشر لحساب المشترك عبر تطبيق كريمي جوال أو صرافات الكريمي'
-  },
-  {
-    id: 'jawali-default',
-    name: 'محفظة جوالي (Jawali)',
-    accountNumber: '777111222',
-    accountName: `متجر ${storeName} الرسمي`,
-    transferType: 'subscriber',
-    isActive: true,
-    notes: 'تحويل لمشترك جوالي فوري'
-  },
-  {
-    id: 'jeeb-default',
-    name: 'محفظة جيب (Jeeb)',
-    accountNumber: '777333444',
-    accountName: `متجر ${storeName} الرسمي`,
-    transferType: 'subscriber',
-    isActive: true,
-    notes: 'تحويل مباشر عبر محفظة جيب'
-  }
-];
 
 function CartItemThumbnail({ src, alt }: { src?: string; alt: string }) {
   const [failed, setFailed] = useState(false);
@@ -111,15 +90,15 @@ function CartItemThumbnail({ src, alt }: { src?: string; alt: string }) {
 }
 
 export default function Cart() {
-  const { cart, removeFromCart, updateCartQuantity, cartTotal, user, userData, clearCart, getThemeClasses, settings } = useAppContext();
+  const { cart, removeFromCart, updateCartQuantity, syncCartItemStock, cartTotal, user, userData, clearCart, getThemeClasses, settings, openLoginModal } = useAppContext();
   const currentStoreName = settings?.storeName || 'يمن ستور';
-  const defaultWallets = getDefaultFallbackWallets(currentStoreName);
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'wallet'>('cod');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
 
   const [merchantWallets, setMerchantWallets] = useState<MerchantWallet[]>([]);
+  const [walletsLoading, setWalletsLoading] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState<MerchantWallet | null>(null);
   const [transferReference, setTransferReference] = useState('');
   const [paymentProof, setPaymentProof] = useState<string | null>(null);
@@ -131,51 +110,136 @@ export default function Cart() {
 
   const navigate = useNavigate();
 
+  const getCartKey = (p: any) =>
+    p?._cartKey || (p?.selectedVariantId ? `${p.id}__variant__${p.selectedVariantId}` : p?.id);
+
+  const cartProductIdsKey = Array.from(new Set(cart.map((i) => i.product?.id).filter(Boolean)))
+    .sort()
+    .join(',');
+
+  const applyProductSnapshotToCart = (pid: string, exists: boolean, prodData?: any) => {
+    const matchingItems = cart.filter((i) => i.product?.id === pid);
+    for (const ci of matchingItems) {
+      const key = getCartKey(ci.product);
+      if (!exists || !prodData || prodData.status !== 'active') {
+        syncCartItemStock(key, { stock: 0, available: false });
+        continue;
+      }
+      if (ci.product?.selectedVariantId) {
+        const matchedVariant = getProductVariants({ id: pid, ...prodData }).find(
+          (v) => String(v.id) === String(ci.product.selectedVariantId)
+        );
+        if (!matchedVariant) {
+          syncCartItemStock(key, { stock: 0, available: false });
+        } else {
+          const vStock = getStockLimit(matchedVariant);
+          const vAvail = matchedVariant.available !== false && (vStock === null || vStock > 0);
+          syncCartItemStock(key, {
+            stock: vStock,
+            available: vAvail,
+            price: Number(matchedVariant.price) > 0 ? Number(matchedVariant.price) : Number(prodData.price || 0),
+            noDelivery: Boolean(prodData.noDelivery),
+          });
+        }
+      } else {
+        const bStock = getStockLimit(prodData);
+        const bAvail = prodData.available !== false && (bStock === null || bStock > 0);
+        syncCartItemStock(key, {
+          stock: bStock,
+          available: bAvail,
+          price: Number(prodData.price || 0),
+          noDelivery: Boolean(prodData.noDelivery),
+        });
+      }
+    }
+  };
+
+  const refreshLiveCartStock = async () => {
+    const uniqueIds = Array.from(new Set(cart.map((i) => i.product?.id).filter(Boolean))) as string[];
+    await Promise.all(
+      uniqueIds.map(async (pid) => {
+        try {
+          const snap = await getDoc(doc(db, 'products', pid));
+          applyProductSnapshotToCart(pid, snap.exists(), snap.exists() ? snap.data() : undefined);
+        } catch (err) {
+          console.warn('Stock refresh notice:', err);
+        }
+      })
+    );
+  };
+
+  // Real-time stock & price sync for items currently in cart
+  useEffect(() => {
+    if (!cartProductIdsKey) return;
+    const ids = cartProductIdsKey.split(',').filter(Boolean);
+    const unsubs = ids.map((pid) =>
+      onSnapshot(
+        doc(db, 'products', pid),
+        (snap) => {
+          applyProductSnapshotToCart(pid, snap.exists(), snap.exists() ? snap.data() : undefined);
+        },
+        (err) => {
+          console.warn('Cart product snapshot notice:', err.message);
+        }
+      )
+    );
+    return () => unsubs.forEach((u) => u());
+  }, [cartProductIdsKey]);
+
   useEffect(() => {
     if (userData?.phone && !customerPhone) {
       setCustomerPhone(userData.phone);
     }
   }, [userData?.phone]);
 
-  useEffect(() => {
-    if (cart.length === 0) return;
-    const storeId = cart[0]?.product?.ownerId || 'global';
+  const activeCartStoreId = cart[0]?.product?.ownerId || 'global';
 
+  useEffect(() => {
+    if (cart.length === 0) {
+      setMerchantWallets([]);
+      setSelectedWallet(null);
+      setWalletsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
     const loadWallets = async () => {
+      setWalletsLoading(true);
       try {
-        const storeRef = doc(db, 'storeWallets', storeId);
+        const storeRef = doc(db, 'storeWallets', activeCartStoreId);
         const storeSnap = await getDoc(storeRef);
 
         let loaded: MerchantWallet[] = [];
-        if (storeSnap.exists() && storeSnap.data()?.wallets) {
+        if (storeSnap.exists() && Array.isArray(storeSnap.data()?.wallets)) {
           loaded = (storeSnap.data().wallets as MerchantWallet[]).filter(w => w.isActive);
         }
 
-        if (loaded.length === 0 && storeId !== 'global') {
+        if (loaded.length === 0 && activeCartStoreId !== 'global') {
           const globalRef = doc(db, 'storeWallets', 'global');
           const globalSnap = await getDoc(globalRef);
-          if (globalSnap.exists() && globalSnap.data()?.wallets) {
+          if (globalSnap.exists() && Array.isArray(globalSnap.data()?.wallets)) {
             loaded = (globalSnap.data().wallets as MerchantWallet[]).filter(w => w.isActive);
           }
         }
 
-        if (loaded.length === 0) {
-          loaded = defaultWallets;
-        }
-
+        if (cancelled) return;
         setMerchantWallets(loaded);
-        if (loaded.length > 0 && !selectedWallet) {
-          setSelectedWallet(loaded[0]);
-        }
+        setSelectedWallet((prev) => loaded.find((w) => w.id === prev?.id) || loaded[0] || null);
       } catch (err) {
         console.error('Error fetching wallets in cart:', err);
-        setMerchantWallets(defaultWallets);
-        setSelectedWallet(defaultWallets[0]);
+        if (cancelled) return;
+        setMerchantWallets([]);
+        setSelectedWallet(null);
+      } finally {
+        if (!cancelled) setWalletsLoading(false);
       }
     };
 
     loadWallets();
-  }, [cart]);
+    return () => {
+      cancelled = true;
+    };
+  }, [cartProductIdsKey, activeCartStoreId]);
 
   const requestLocation = (silent = false) => {
     if (!silent) setIsGettingLocation(true);
@@ -270,10 +334,44 @@ export default function Cart() {
     );
   }
 
+  const hasFreeDeliveryOffer = cart.some(
+    (item) => isProductOfferActive(item.product) && item.product?.offerType === 'free_delivery'
+  );
+  const rawDeliveryFee = cart.reduce((maxFee, item) => {
+    const fee = Number(item.product?.deliveryFee);
+    return Number.isFinite(fee) && fee > maxFee ? fee : maxFee;
+  }, 0);
+  const effectiveDeliveryFee = hasFreeDeliveryOffer ? 0 : rawDeliveryFee;
+  const finalOrderTotal = cartTotal + effectiveDeliveryFee;
+
+  const hasNoDeliveryItem = cart.some((item) => Boolean(item.product?.noDelivery));
+  const hasStockIssue = cart.some((item) => {
+    if (isItemOutOfStock(item.product)) return true;
+    const limit = getStockLimit(item.product);
+    return limit !== null && item.quantity > limit;
+  });
+
   const handleCheckout = async () => {
     if (!user) {
       toast.error("الرجاء تسجيل الدخول أولاً لإتمام الطلب");
+      openLoginModal();
       return;
+    }
+
+    for (const item of cart) {
+      if (item.product?.noDelivery) {
+        toast.error(`المنتج «${item.product.title}» لا يدعم التوصيل؛ يرجى إزالته من السلة وحجزه للاستلام من المتجر`);
+        return;
+      }
+      if (isItemOutOfStock(item.product)) {
+        toast.error(`المنتج «${item.product.title}» غير متوفر حالياً، يرجى إزالته من السلة أولاً`);
+        return;
+      }
+      const limit = getStockLimit(item.product);
+      if (limit !== null && item.quantity > limit) {
+        toast.error(`الكمية المطلوبة من «${item.product.title}» تتجاوز المتاح بالمخزون (${limit})`);
+        return;
+      }
     }
 
     if (paymentMethod === 'wallet' && !selectedWallet) {
@@ -311,6 +409,14 @@ export default function Cart() {
 
   const finalizeOrder = async (loc: { lat: number; lng: number } | null) => {
     setIsSubmitting(true);
+    const stockItems: StockLineItem[] = cart.map((item) => ({
+      productId: item.product.id,
+      variantId: item.product.selectedVariantId || null,
+      variantName: item.product.selectedVariantName || null,
+      title: item.product.title,
+      quantity: item.quantity,
+    }));
+
     try {
       const targetStoreId = cart[0]?.product?.ownerId;
       let storeProfileData: any = null;
@@ -330,6 +436,9 @@ export default function Cart() {
         }
       }
 
+      // 1. Atomically validate and decrement product/variant stock in Firestore
+      await reserveStockTransaction(stockItems);
+
       const orderData = {
         userId: user?.uid,
         customerName: userData?.displayName || userData?.name || user?.displayName || `عميل ${currentStoreName}`,
@@ -342,22 +451,24 @@ export default function Cart() {
         storeLocation: storeProfileData?.location || storeProfileData?.coordinates || null,
         storeMapsUrl: storeProfileData?.googleMapsUrl || storeProfileData?.mapsUrl || '',
         storePhone: storeProfileData?.phone || storeProfileData?.whatsapp || '',
-        deliveryFee: (isProductOfferActive(cart[0]?.product) && cart[0]?.product?.offerType === 'free_delivery')
-          ? 0
-          : (cart[0]?.product?.deliveryFee ?? 1500),
+        deliveryFee: effectiveDeliveryFee,
         deliveryStatus: 'pending_pickup',
         customerAddress: customerNotes.trim() || 'العنوان محدد عبر الخريطة',
         items: cart.map(item => ({
           productId: item.product.id,
+          variantId: item.product.selectedVariantId || null,
+          variantName: item.product.selectedVariantName || null,
           title: item.product.title,
-          price: item.product.price,
+          price: Number(item.product.price || 0),
           originalPrice: item.product.originalPrice || null,
           offerTitle: isProductOfferActive(item.product) ? (item.product.offerTitle || null) : null,
           offerExtras: isProductOfferActive(item.product) ? (item.product.offerExtras || null) : null,
           quantity: item.quantity,
           image: item.product.image || (item.product.images && item.product.images[0]) || ''
         })),
-        total: cartTotal,
+        subtotal: cartTotal,
+        total: finalOrderTotal,
+        stockDeducted: true,
         status: 'pending',
         paymentMethod: paymentMethod,
         selectedWallet: paymentMethod === 'wallet' && selectedWallet ? {
@@ -375,14 +486,24 @@ export default function Cart() {
         createdAt: new Date().toISOString(),
       };
 
-      await addDoc(collection(db, 'orders'), orderData);
+      try {
+        await addDoc(collection(db, 'orders'), orderData);
+      } catch (orderErr) {
+        // Roll back stock reservation if writing order document failed
+        await restoreStockTransaction(stockItems).catch(() => {});
+        throw orderErr;
+      }
 
-      toast.success("تم استلام طلبك بنجاح! سيتم التواصل معك والبدء بالتجهيز فوراً.");
+      toast.success("تم استلام طلبك بنجاح! وتم خصم الكمية من المخزون.");
       clearCart();
       navigate('/orders');
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating order", error);
-      toast.error("حدث خطأ أثناء إتمام الطلب. تأكد من اتصالك بالإنترنت.");
+      const errMsg = error?.message && /[\u0600-\u06FF]/.test(error.message)
+        ? error.message
+        : "حدث خطأ أثناء إتمام الطلب. تأكد من اتصالك بالإنترنت.";
+      toast.error(errMsg);
+      await refreshLiveCartStock();
     } finally {
       setIsSubmitting(false);
     }
@@ -412,10 +533,14 @@ export default function Cart() {
             {cart.map((item) => {
               const unitPrice = Number(item.product.price || 0);
               const lineSubtotal = unitPrice * item.quantity;
+              const itemKey = getCartKey(item.product);
+              const stockLimit = getStockLimit(item.product);
+              const itemOutOfStock = isItemOutOfStock(item.product);
+              const atMaxStock = itemOutOfStock || (stockLimit !== null && item.quantity >= stockLimit);
 
               return (
                 <div
-                  key={item.product.id}
+                  key={itemKey}
                   className="p-4 sm:p-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4"
                 >
                   <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -430,6 +555,16 @@ export default function Cart() {
                         <h3 className="font-bold text-[#111214] dark:text-[#F4F4F2] text-sm sm:text-base line-clamp-1">
                           {item.product.title}
                         </h3>
+                        {item.product.selectedVariantName && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#EFEDE6] text-[#111214] border border-[#E5E2DA] dark:bg-[#1C1F26] dark:text-[#F4F4F2] dark:border-[#232730]">
+                            الصنف: {item.product.selectedVariantName}
+                          </span>
+                        )}
+                        {item.product.noDelivery && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800">
+                            استلام من المتجر فقط · لا يوجد توصيل
+                          </span>
+                        )}
                         {isProductOfferActive(item.product) && (
                           <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
                             {getProductOfferBadgeText(item.product)}
@@ -441,7 +576,7 @@ export default function Cart() {
                           {item.product.offerExtras || item.product.offerTitle}
                         </p>
                       )}
-                      <div className="flex items-center gap-2 text-xs text-[#5C5B57] dark:text-zinc-400">
+                      <div className="flex items-center gap-2 text-xs text-[#5C5B57] dark:text-zinc-400 flex-wrap">
                         <span className="tabular-nums font-semibold">
                           {unitPrice.toLocaleString()} ر.ي
                         </span>
@@ -452,6 +587,15 @@ export default function Cart() {
                         )}
                         <span aria-hidden="true">·</span>
                         <span>سعر الوحدة</span>
+                        {itemOutOfStock ? (
+                          <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                            · نفدت الكمية (يرجى الإزالة)
+                          </span>
+                        ) : stockLimit !== null ? (
+                          <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                            · المتاح: {stockLimit}
+                          </span>
+                        ) : null}
                       </div>
                       <div className={`text-sm font-extrabold ${getThemeClasses('price')} tabular-nums`}>
                         {lineSubtotal.toLocaleString()} <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
@@ -463,7 +607,7 @@ export default function Cart() {
                     <div className="flex items-center rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26]">
                       <button
                         type="button"
-                        onClick={() => updateCartQuantity(item.product.id, item.quantity - 1)}
+                        onClick={() => updateCartQuantity(itemKey, item.quantity - 1)}
                         className="w-10 h-10 flex items-center justify-center text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] transition-colors rounded-r-lg"
                         aria-label="إنقاص الكمية"
                       >
@@ -474,9 +618,11 @@ export default function Cart() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => updateCartQuantity(item.product.id, item.quantity + 1)}
-                        className="w-10 h-10 flex items-center justify-center text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] transition-colors rounded-l-lg"
+                        onClick={() => updateCartQuantity(itemKey, item.quantity + 1)}
+                        disabled={atMaxStock}
+                        className="w-10 h-10 flex items-center justify-center text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] transition-colors rounded-l-lg disabled:opacity-30 disabled:cursor-not-allowed"
                         aria-label="زيادة الكمية"
+                        title={atMaxStock ? 'تم الوصول للحد الأقصى المتاح بالمخزون' : 'زيادة الكمية'}
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
@@ -484,7 +630,7 @@ export default function Cart() {
 
                     <button
                       type="button"
-                      onClick={() => removeFromCart(item.product.id)}
+                      onClick={() => removeFromCart(itemKey)}
                       className="w-10 h-10 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#1C1F26] text-[#5C5B57] hover:text-rose-600 hover:border-rose-300 dark:hover:border-rose-800 flex items-center justify-center transition-colors shrink-0"
                       title="إزالة من السلة"
                       aria-label="إزالة من السلة"
@@ -550,12 +696,14 @@ export default function Cart() {
               </div>
               <div className="flex justify-between items-center py-1">
                 <span className="text-[#5C5B57] dark:text-zinc-400 font-medium text-xs">رسوم التوصيل</span>
-                <span className={`${getThemeClasses('price')} font-bold text-xs`}>مجاناً</span>
+                <span className={`${effectiveDeliveryFee === 0 ? getThemeClasses('price') : 'text-[#111214] dark:text-[#F4F4F2]'} font-bold text-xs tabular-nums`}>
+                  {effectiveDeliveryFee === 0 ? 'مجاناً' : `${effectiveDeliveryFee.toLocaleString()} ر.ي`}
+                </span>
               </div>
               <div className="pt-3 border-t border-dashed border-[#E5E2DA] dark:border-[#232730] flex justify-between items-end">
                 <span className="text-[#5C5B57] dark:text-zinc-300 font-bold text-xs">الإجمالي النهائي</span>
                 <span className={`text-2xl sm:text-3xl font-extrabold ${getThemeClasses('price')} tabular-nums`}>
-                  {cartTotal.toLocaleString()} <span className="text-xs text-[#5C5B57] dark:text-zinc-400 font-bold">ر.ي</span>
+                  {finalOrderTotal.toLocaleString()} <span className="text-xs text-[#5C5B57] dark:text-zinc-400 font-bold">ر.ي</span>
                 </span>
               </div>
             </div>
@@ -654,43 +802,70 @@ export default function Cart() {
                       اختر المحفظة الإلكترونية للتاجر:
                     </label>
 
-                    <div className="divide-y divide-[#E5E2DA] dark:divide-[#232730] rounded-lg border border-[#E5E2DA] dark:border-[#232730] max-h-52 overflow-y-auto">
-                      {merchantWallets.map((wallet) => {
-                        const isSelected = selectedWallet?.id === wallet.id;
-                        return (
-                          <div
-                            key={wallet.id}
-                            onClick={() => setSelectedWallet(wallet)}
-                            className={`p-3 cursor-pointer transition-colors flex items-center justify-between ${
-                              isSelected
-                                ? `${getThemeClasses('bgLight')}`
-                                : 'bg-white dark:bg-[#131519] hover:bg-[#FAF9F6] dark:hover:bg-[#1C1F26]'
-                            }`}
+                    {walletsLoading ? (
+                      <div className="p-4 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] text-xs font-semibold text-[#5C5B57] dark:text-zinc-400 text-center">
+                        جاري تحميل محافظ المتجر المتاحة...
+                      </div>
+                    ) : merchantWallets.length === 0 ? (
+                      <div className="p-4 rounded-lg border border-amber-200 dark:border-amber-800/60 bg-amber-50/70 dark:bg-amber-950/30 space-y-3">
+                        <p className="text-xs font-bold text-amber-900 dark:text-amber-200 leading-relaxed">
+                          لم يقم هذا المتجر بإضافة محافظ إلكترونية مفعّلة بعد. يمكنك اختيار «الدفع عند الاستلام» أو التواصل مباشرة مع المتجر لتنسيق التحويل.
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPaymentMethod('cod')}
+                            className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#111214] dark:bg-[#F4F4F2] text-white dark:text-[#111214] text-xs font-bold transition-colors"
                           >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className={`w-8 h-8 rounded-md flex items-center justify-center text-xs shrink-0 ${
-                                isSelected ? `${getThemeClasses('bg')}` : 'bg-[#EFEDE6] dark:bg-[#1C1F26] text-[#5C5B57] dark:text-zinc-300'
-                              }`}>
-                                <Wallet className="w-4 h-4" />
+                            التحويل إلى الدفع عند الاستلام
+                          </button>
+                          <Link
+                            to={activeCartStoreId && activeCartStoreId !== 'global' ? `/contact?to=${activeCartStoreId}` : '/contact'}
+                            className="min-h-[36px] px-3 py-1.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] text-xs font-bold transition-colors inline-flex items-center"
+                          >
+                            مراسلة المتجر
+                          </Link>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-[#E5E2DA] dark:divide-[#232730] rounded-lg border border-[#E5E2DA] dark:border-[#232730] max-h-52 overflow-y-auto">
+                        {merchantWallets.map((wallet) => {
+                          const isSelected = selectedWallet?.id === wallet.id;
+                          return (
+                            <div
+                              key={wallet.id}
+                              onClick={() => setSelectedWallet(wallet)}
+                              className={`p-3 cursor-pointer transition-colors flex items-center justify-between ${
+                                isSelected
+                                  ? `${getThemeClasses('bgLight')}`
+                                  : 'bg-white dark:bg-[#131519] hover:bg-[#FAF9F6] dark:hover:bg-[#1C1F26]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className={`w-8 h-8 rounded-md flex items-center justify-center text-xs shrink-0 ${
+                                  isSelected ? `${getThemeClasses('bg')}` : 'bg-[#EFEDE6] dark:bg-[#1C1F26] text-[#5C5B57] dark:text-zinc-300'
+                                }`}>
+                                  <Wallet className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <h5 className="font-bold text-xs text-[#111214] dark:text-[#F4F4F2] truncate">{wallet.name}</h5>
+                                  <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400 font-mono tabular-nums">
+                                    {wallet.accountNumber}
+                                  </span>
+                                </div>
                               </div>
-                              <div className="min-w-0">
-                                <h5 className="font-bold text-xs text-[#111214] dark:text-[#F4F4F2] truncate">{wallet.name}</h5>
-                                <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400 font-mono tabular-nums">
-                                  {wallet.accountNumber}
-                                </span>
-                              </div>
-                            </div>
 
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-[11px] font-semibold text-[#5C5B57] dark:text-zinc-400">
-                                {wallet.transferType === 'point' ? 'نقطة' : 'مشترك'}
-                              </span>
-                              {isSelected && <Check className={`w-4 h-4 ${getThemeClasses('text')}`} />}
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[11px] font-semibold text-[#5C5B57] dark:text-zinc-400">
+                                  {wallet.transferType === 'point' ? 'نقطة' : 'مشترك'}
+                                </span>
+                                {isSelected && <Check className={`w-4 h-4 ${getThemeClasses('text')}`} />}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {selectedWallet && (
@@ -806,12 +981,24 @@ export default function Cart() {
               )}
             </AnimatePresence>
 
+            {hasNoDeliveryItem && (
+              <div className="p-3 rounded-lg border border-amber-300 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/30 text-xs font-bold text-amber-900 dark:text-amber-200">
+                يوجد منتج في السلة متاح للاستلام من المتجر فقط (لا يوجد توصيل). يرجى إزالته من السلة وحجزه مباشرة من صفحة المنتج.
+              </div>
+            )}
+
+            {hasStockIssue && (
+              <div className="p-3 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/30 text-xs font-bold text-rose-700 dark:text-rose-300">
+                يوجد منتج في السلة نفدت كميته أو تتجاوز كميته المتاح بالمخزون. يرجى التعديل أو الإزالة لإتمام الطلب.
+              </div>
+            )}
+
             {/* Primary Confirm Button */}
             <button
               type="button"
               onClick={handleCheckout}
-              disabled={isSubmitting}
-              className={`w-full ${getThemeClasses('bg')} ${getThemeClasses('hover')} min-h-[48px] py-3 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50`}
+              disabled={isSubmitting || hasStockIssue || hasNoDeliveryItem || (paymentMethod === 'wallet' && (walletsLoading || !selectedWallet))}
+              className={`w-full ${getThemeClasses('bg')} ${getThemeClasses('hover')} min-h-[48px] py-3 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {isSubmitting ? (
                 <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />

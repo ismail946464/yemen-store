@@ -1,33 +1,53 @@
 import { useState, useEffect } from 'react';
-import { ShoppingCart, Home, ShoppingBag, User as UserIcon, MessageSquare, Share2, Image as ImageIcon } from 'lucide-react';
+import { ShoppingCart, Home, ShoppingBag, User as UserIcon, MessageSquare, Share2, Image as ImageIcon, Layers, BookmarkCheck, Store } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { PageLoadingSkeleton } from '../components/Skeletons';
+import PreOrderModal from '../components/PreOrderModal';
+import ProductVariantsModal from '../components/ProductVariantsModal';
+import ProductPublisherMiniCard from '../components/ProductPublisherMiniCard';
 import { isProductOfferActive, getProductOfferBadgeText } from '../lib/offerUtils';
+import { getAvailableProductVariants, buildBaseProductForCart } from '../lib/variantUtils';
+import { getStockLimit, isItemOutOfStock, calculateSafeDeposit } from '../lib/stockUtils';
 
 export default function StoreSite() {
   const { slug } = useParams();
   const [activeTab, setActiveTab] = useState('all');
-  const { addToCart, settings, getThemeClasses, login, cart } = useAppContext();
+  const { addToCart, settings, getThemeClasses, login, cart, user } = useAppContext();
   const navigate = useNavigate();
 
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [storeProfiles, setStoreProfiles] = useState<Record<string, any>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [variantsModalProduct, setVariantsModalProduct] = useState<any | null>(null);
+  const [selectedPreOrderProduct, setSelectedPreOrderProduct] = useState<any | null>(null);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [prodSnap, catSnap] = await Promise.all([
+        const [prodSnap, catSnap, profSnap] = await Promise.all([
           getDocs(collection(db, 'products')),
-          getDocs(collection(db, 'categories'))
+          getDocs(collection(db, 'categories')),
+          getDocs(collection(db, 'storeProfiles'))
         ]);
 
-        setProducts(prodSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setProducts(
+          prodSnap.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter((p: any) => p.status === 'active')
+        );
         setCategories(catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const pMap: Record<string, any> = {};
+        profSnap.docs.forEach(d => {
+          const data = d.data();
+          const isVer = Boolean(data.verified) && (!data.verifiedUntil || data.verifiedUntil === '' || new Date(data.verifiedUntil).getTime() >= Date.now());
+          pMap[d.id] = { ...data, isVerified: isVer };
+        });
+        setStoreProfiles(pMap);
       } catch (e) {
         console.error("Error loading products", e);
       } finally {
@@ -239,6 +259,17 @@ export default function StoreSite() {
               const hasOfferActive = isProductOfferActive(product);
               const offerBadge = hasOfferActive ? getProductOfferBadgeText(product) : '';
               const hasCrossedPrice = Number(product.originalPrice || 0) > Number(product.price || 0);
+              const availableVariants = getAvailableProductVariants(product);
+              const baseOutOfStock = isItemOutOfStock(product);
+              const fullyOutOfStock = baseOutOfStock && availableVariants.length === 0;
+              const stockLimit = getStockLimit(product);
+              const inCartQty = cart.find(
+                (c) => (c.product?._cartKey || (c.product?.selectedVariantId ? `${c.product.id}__variant__${c.product.selectedVariantId}` : c.product?.id)) === product.id
+              )?.quantity || 0;
+              const baseAtCartMax = baseOutOfStock || (stockLimit !== null && inCartQty >= stockLimit);
+              const isNoDelivery = Boolean(product.noDelivery);
+              const depositAmt = calculateSafeDeposit(Number(product.price || 0), product.depositAmount);
+              const ownerProf = product.ownerId ? storeProfiles[product.ownerId] : null;
 
               return (
                 <article
@@ -265,16 +296,30 @@ export default function StoreSite() {
                         {offerBadge}
                       </span>
                     )}
+                    {fullyOutOfStock && (
+                      <div className="absolute inset-0 bg-black/55 flex items-center justify-center z-10">
+                        <span className="text-white font-bold text-xs bg-[#111214] px-3 py-1 rounded-md">نفدت الكمية</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-col flex-1 justify-between gap-2">
-                    <div>
-                      <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400 block truncate">
-                        {product.category || 'منتج'}
-                      </span>
-                      <h3 className="font-bold text-xs sm:text-sm line-clamp-2 mt-0.5 leading-snug">
+                    <div className="space-y-1">
+                      <ProductPublisherMiniCard
+                        product={product}
+                        storeProfile={ownerProf}
+                        variant="compact"
+                        storePathPrefix={`/s/${slug}/store`}
+                      />
+                      <h3 className="font-bold text-xs sm:text-sm line-clamp-2 leading-snug">
                         {titleText}
                       </h3>
+                      {isNoDelivery && (
+                        <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1 line-clamp-1 mt-0.5">
+                          <Store className="w-3 h-3 shrink-0" />
+                          <span>لا يوجد توصيل · استلام من المتجر فقط</span>
+                        </p>
+                      )}
                       {hasOfferActive && (product.offerExtras || product.offerTitle) && (
                         <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 line-clamp-1 mt-0.5">
                           {product.offerExtras || product.offerTitle}
@@ -282,28 +327,87 @@ export default function StoreSite() {
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between gap-2 pt-1">
-                      <div className="flex items-baseline gap-1.5 flex-wrap">
-                        <span className={`text-sm sm:text-base font-extrabold tabular-nums ${getThemeClasses('price')}`}>
-                          {Number(product.price || 0).toLocaleString()} <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
-                        </span>
-                        {hasCrossedPrice && (
-                          <span className="text-[11px] text-[#5C5B57] dark:text-zinc-500 line-through tabular-nums">
-                            {Number(product.originalPrice).toLocaleString()}
+                    <div className="space-y-2 pt-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-baseline gap-1.5 flex-wrap">
+                          <span className={`text-sm sm:text-base font-extrabold tabular-nums ${getThemeClasses('price')}`}>
+                            {Number(product.price || 0).toLocaleString()} <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
                           </span>
+                          {hasCrossedPrice && (
+                            <span className="text-[11px] text-[#5C5B57] dark:text-zinc-500 line-through tabular-nums">
+                              {Number(product.originalPrice).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                        {isNoDelivery ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!user) { login(); return; }
+                              setSelectedPreOrderProduct(product);
+                            }}
+                            disabled={baseOutOfStock}
+                            aria-label="حجز للاستلام من المتجر"
+                            title={baseOutOfStock ? 'نفدت الكمية' : 'حجز للاستلام من المتجر (لا يوجد توصيل)'}
+                            className="w-9 h-9 rounded-lg bg-amber-600 hover:bg-amber-700 text-white flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <BookmarkCheck className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addToCart(buildBaseProductForCart(product));
+                            }}
+                            disabled={baseOutOfStock || baseAtCartMax}
+                            aria-label="أضف للسلة"
+                            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                          >
+                            <ShoppingCart className="w-4 h-4" />
+                          </button>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          addToCart(product);
-                        }}
-                        aria-label="أضف للسلة"
-                        className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors shrink-0 ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
-                      >
-                        <ShoppingCart className="w-4 h-4" />
-                      </button>
+
+                      {availableVariants.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setVariantsModalProduct(product);
+                          }}
+                          className="w-full min-h-[34px] py-1.5 px-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] text-[11px] font-bold flex items-center justify-between transition-colors text-[#111214] dark:text-[#F4F4F2]"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <Layers className="w-3.5 h-3.5 shrink-0" />
+                            <span>أصناف</span>
+                          </span>
+                          <span className="tabular-nums text-[#5C5B57] dark:text-zinc-400">
+                            {availableVariants.length} متاح
+                          </span>
+                        </button>
+                      )}
+
+                      {isNoDelivery && !baseOutOfStock && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!user) { login(); return; }
+                            setSelectedPreOrderProduct(product);
+                          }}
+                          className="w-full min-h-[34px] py-1.5 px-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-[11px] font-bold flex items-center justify-between transition-colors text-[#111214] dark:text-[#F4F4F2]"
+                        >
+                          <span className="flex items-center gap-1 text-[#5C5B57] dark:text-zinc-300">
+                            <BookmarkCheck className="w-3.5 h-3.5 shrink-0" />
+                            <span>حجز للمتجر ({product.reservationDurationDays || 3}أ)</span>
+                          </span>
+                          <span className="tabular-nums">
+                            {depositAmt.toLocaleString()} ر.ي
+                          </span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </article>
@@ -312,6 +416,23 @@ export default function StoreSite() {
           </div>
         )}
       </main>
+
+      {selectedPreOrderProduct && (
+        <PreOrderModal
+          product={buildBaseProductForCart(selectedPreOrderProduct)}
+          isOpen={!!selectedPreOrderProduct}
+          onClose={() => setSelectedPreOrderProduct(null)}
+        />
+      )}
+
+      {variantsModalProduct && (
+        <ProductVariantsModal
+          product={variantsModalProduct}
+          isOpen={!!variantsModalProduct}
+          onClose={() => setVariantsModalProduct(null)}
+          onNavigateToVariant={(pid, vid) => navigate(`/s/${slug}/variant/${pid}/${vid}`)}
+        />
+      )}
 
       {/* Mobile Nav Bar */}
       <nav className="fixed bottom-0 left-0 w-full bg-white/95 dark:bg-[#0A0B0D]/95 backdrop-blur-md border-t border-[#E5E2DA] dark:border-[#232730] px-4 flex justify-around items-center h-14 z-50 md:hidden">

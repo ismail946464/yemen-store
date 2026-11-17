@@ -38,6 +38,7 @@ interface ContextAnalysis {
     | 'store_verification'
     | 'order_tracking'
     | 'contact_support'
+    | 'offers'
     | 'out_of_bounds'
     | 'greeting'
     | 'general_help';
@@ -156,6 +157,20 @@ function analyzeContext(userQuery: string, catalog: AssistantProduct[]): Context
     normQuery.includes('مساعده مباشره')
   ) {
     return { intent: 'contact_support', keywords: tokens, matchedProducts: [] };
+  }
+
+  if (
+    normQuery.includes('عروض') ||
+    normQuery.includes('عرض') ||
+    normQuery.includes('خصم') ||
+    normQuery.includes('تخفيض') ||
+    normQuery.includes('هديه') ||
+    normQuery.includes('اضافات')
+  ) {
+    const offerItems = catalog.filter(
+      (p: any) => Boolean(p.hasOffer) || (Number(p.originalPrice || 0) > Number(p.price || 0))
+    );
+    return { intent: 'offers', keywords: tokens, matchedProducts: offerItems.slice(0, 6) };
   }
 
   if (
@@ -297,7 +312,7 @@ export function runStandaloneStoreAi(
 
     case 'shipping_delivery': {
       return {
-        reply: `خدمات الشحن والتوصيل في منصة ${storeName}: 🛵📦\n\n• تغطية جغرافية شاملة: نوفر التوصيل السريع داخل المدن الرئيسية (صنعاء، عدن، تعز، الحديدة، المكلا، إب، ذمار) ولكافة المحافظات اليمنية.\n• أجور التوصيل: محددة ورمزية وتبدأ غالباً من 1,500 ريال يمني داخل المدينة الواحدة، وتظهر محسوبة بدقة في سلة الشراء قبل التأكيد.\n• تتبع دقيق بالملاحة: يتم ربط الطلب بمندوب توصيل معتمد يتحرك بملاحة الـ GPS من موقع المتجر إلى موقعك الجغرافي مباشرة.\n• فحص وسلامة الشحنة: يلتزم المندوب بتسليمك الطرد مغلفاً ومحمياً وفق معايير سلامة البضائع.`,
+        reply: `خدمات الشحن والتوصيل في منصة ${storeName}: 🛵📦\n\n• تغطية جغرافية شاملة: نوفر التوصيل السريع داخل المدن الرئيسية (صنعاء، عدن، تعز، الحديدة، المكلا، إب، ذمار) ولكافة المحافظات اليمنية.\n• أجور التوصيل: يحددها كل متجر وتظهر بوضوح في بطاقة المنتج وسلة الشراء قبل تأكيد الطلب (وقد تكون مجانية ضمن العروض).\n• تتبع دقيق بالملاحة: يتم ربط الطلب بمندوب توصيل معتمد يتحرك بملاحة الـ GPS من موقع المتجر إلى موقعك الجغرافي مباشرة.\n• فحص وسلامة الشحنة: يلتزم المندوب بتسليمك الطرد مغلفاً ومحمياً وفق معايير سلامة البضائع.`,
         products: [],
         suggestedQuestions: [
           'كم المدة المستغرقة لوصول الطلب؟',
@@ -349,14 +364,40 @@ export function runStandaloneStoreAi(
 
     case 'contact_support': {
       const adminContacts = settings?.adminContacts || [];
-      const primaryPhone = adminContacts[0]?.phone || '777000000';
+      const primaryPhone = String(adminContacts[0]?.phone || '').trim();
+      const phoneLine = primaryPhone ? `\n• الهاتف والواتساب المعتمد: ${primaryPhone}` : '';
       return {
-        reply: `مركز الدعم والتواصل المباشر مع إدارة ${storeName}: 📞🤝\n\nنحن هنا لخدمتك ومساعدتك في أي استفسار أو شكوى:\n\n• المراسلة الفورية داخل التطبيق:\nيمكنك إرسال رسالة مباشرة لحساب "الإدارة" عبر صفحة الرسائل الحالية وسيقوم فريق الدعم بالرد عليك فوراً.\n• الهاتف والواتساب المعتمد: ${primaryPhone}\n• فريق خدمة العملاء متاح يومياً لمتابعة الشحنات والرد على استفسارات المتاجر والمشترين.`,
+        reply: `مركز الدعم والتواصل المباشر مع إدارة ${storeName}: 📞🤝\n\nنحن هنا لخدمتك ومساعدتك في أي استفسار أو شكوى:\n\n• المراسلة الفورية داخل التطبيق:\nيمكنك إرسال رسالة مباشرة لحساب "الإدارة" عبر صفحة الرسائل الحالية وسيقوم فريق الدعم بالرد عليك فوراً.${phoneLine}\n• فريق خدمة العملاء متاح يومياً لمتابعة الشحنات والرد على استفسارات المتاجر والمشترين.`,
         products: [],
         suggestedQuestions: [
           'مراسلة الإدارة الآن',
           'الاستفسار عن الشحن والتوصيل',
           'تقديم شكوى أو اقتراح'
+        ],
+        provider: 'standalone_store_ai'
+      };
+    }
+
+    case 'offers': {
+      const offerProds = analysis.matchedProducts;
+      if (offerProds.length > 0) {
+        return {
+          reply: `إليك أحدث العروض والخصومات المتاحة حالياً في ${storeName}:\n\nيمكنك الضغط على أي منتج أدناه لمشاهدة تفاصيل الخصم أو الإضافات المجانية المشمولة وإتمام الطلب مباشرة:`,
+          products: offerProds,
+          suggestedQuestions: [
+            'هل يشمل العرض توصيلاً مجانياً؟',
+            'كيف أطلب أحد منتجات العروض؟',
+            'عرض جميع المنتجات المتوفرة'
+          ],
+          provider: 'standalone_store_ai'
+        };
+      }
+      return {
+        reply: `لا توجد منتجات بعروض خاصة مفعلة في هذه اللحظة داخل ${storeName}، ولكن يمكنك تصفح أحدث المنتجات المتوفرة حالياً أدناه أو التوجه إلى خانة العروض في الصفحة الرئيسية.`,
+        products: catalog.slice(0, 4),
+        suggestedQuestions: [
+          'عرض أحدث المنتجات المتوفرة',
+          'كيف يعمل نظام الحجز ودفع العربون؟'
         ],
         provider: 'standalone_store_ai'
       };

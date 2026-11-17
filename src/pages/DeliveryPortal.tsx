@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import {
   Bike, Package, MapPin, Navigation, Phone, MessageCircle, CheckCircle2,
-  AlertCircle, ExternalLink, Store, User, DollarSign, Search, X
+  AlertCircle, ExternalLink, Store, User, DollarSign, Search, X, Clock, RotateCcw
 } from 'lucide-react';
 import { db, auth } from '../firebase';
 import {
@@ -19,6 +19,16 @@ import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
 import { OrderListSkeleton } from '../components/Skeletons';
+import {
+  proposeDeliveryFeeTransaction,
+  withdrawDeliveryFeeProposalTransaction,
+  expireDeliveryFeeProposalTransaction,
+  computeOrderBaseSubtotal,
+  getRemainingMs,
+  formatRemainingDuration,
+  DeliveryFeeApprovalStatus
+} from '../lib/deliveryFeeUtils';
+import { isStorePickupOnlyOrder } from '../lib/reservationUtils';
 
 interface OrderItem {
   productId: string;
@@ -42,19 +52,35 @@ interface DeliveryOrder {
   storeLocation?: { lat: number; lng: number } | null;
   storeMapsUrl?: string;
   items: OrderItem[];
+  subtotal?: number;
   total: number;
   deliveryFee?: number;
+  proposedDeliveryFee?: number | null;
+  deliveryFeeApprovalStatus?: DeliveryFeeApprovalStatus;
+  deliveryFeeAcceptMinutes?: number | null;
+  deliveryFeeProposedAt?: string | null;
+  deliveryFeeExpiresAt?: string | null;
+  isPreOrder?: boolean;
   status: string;
   deliveryStatus?: string;
   deliveryNotes?: string;
-  courierId?: string;
-  courierName?: string;
-  courierPhone?: string;
+  courierId?: string | null;
+  courierName?: string | null;
+  courierPhone?: string | null;
   paymentMethod?: string;
   selectedWallet?: any;
   location?: { lat: number; lng: number } | null;
   createdAt: string;
 }
+
+const FEE_PRESETS = [500, 1000, 1500, 2000, 3000];
+const DURATION_PRESETS = [
+  { minutes: 10, label: '10 دقائق' },
+  { minutes: 15, label: '15 دقيقة' },
+  { minutes: 30, label: '30 دقيقة' },
+  { minutes: 60, label: 'ساعة واحدة' },
+  { minutes: 120, label: 'ساعتان' }
+];
 
 export default function DeliveryPortal() {
   const { user, userData, isDelivery, getThemeClasses } = useAppContext();
@@ -67,6 +93,10 @@ export default function DeliveryPortal() {
   const [selectedOrderForNotes, setSelectedOrderForNotes] = useState<DeliveryOrder | null>(null);
   const [deliveryNoteText, setDeliveryNoteText] = useState('');
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [claimingOrder, setClaimingOrder] = useState<DeliveryOrder | null>(null);
+  const [proposedFeeInput, setProposedFeeInput] = useState('');
+  const [acceptMinutesInput, setAcceptMinutesInput] = useState('15');
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   // Real-time listener for orders
   useEffect(() => {
@@ -114,6 +144,32 @@ export default function DeliveryPortal() {
     return () => unsubscribe();
   }, [user]);
 
+  const hasPendingProposals = orders.some(o => o.deliveryFeeApprovalStatus === 'pending_customer');
+
+  // Tick every second when any order has a pending customer delivery fee acceptance
+  useEffect(() => {
+    if (!hasPendingProposals) return;
+    setNowMs(Date.now());
+    const interval = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [hasPendingProposals]);
+
+  // Auto-expire overdue delivery fee proposals so rejected/unanswered claims return to available orders
+  useEffect(() => {
+    if (!hasPendingProposals) return;
+    orders.forEach((o) => {
+      if (
+        o.deliveryFeeApprovalStatus === 'pending_customer' &&
+        o.deliveryFeeExpiresAt &&
+        new Date(o.deliveryFeeExpiresAt).getTime() <= nowMs
+      ) {
+        expireDeliveryFeeProposalTransaction(o.id);
+      }
+    });
+  }, [orders, nowMs, hasPendingProposals]);
+
   // Access check: STRICTLY restricted to delivery role only
   if (!user || !isDelivery) {
     return (
@@ -150,15 +206,16 @@ export default function DeliveryPortal() {
     );
   }
 
-  // Filter orders by active tab
+  // Filter orders by active tab (exclude store-pickup-only / noDelivery orders from delivery pool)
   const availableOrders = orders.filter(o =>
+    !isStorePickupOnlyOrder(o) &&
     (!o.courierId || o.courierId === '') &&
-    (o.status === 'pending' || o.status === 'processing')
+    (o.status === 'pending' || o.status === 'processing' || (o.isPreOrder && o.status === 'reserved'))
   );
 
   const activeCourierOrders = orders.filter(o =>
     o.courierId === user.uid &&
-    (o.status === 'processing' || o.status === 'out_for_delivery' || o.deliveryStatus === 'out_for_delivery')
+    (o.status === 'processing' || o.status === 'out_for_delivery' || o.deliveryStatus === 'out_for_delivery' || o.deliveryStatus === 'fee_pending_customer')
   );
 
   const deliveredOrders = orders.filter(o =>
@@ -166,7 +223,7 @@ export default function DeliveryPortal() {
     (o.status === 'delivered' || o.deliveryStatus === 'delivered')
   );
 
-  const totalEarnedDeliveryFees = deliveredOrders.reduce((sum, o) => sum + (o.deliveryFee || 1500), 0);
+  const totalEarnedDeliveryFees = deliveredOrders.reduce((sum, o) => sum + Number(o.deliveryFee || 0), 0);
 
   const currentTabList = activeTab === 'available'
     ? availableOrders
@@ -185,32 +242,76 @@ export default function DeliveryPortal() {
     );
   });
 
-  // Action 1: Courier accepts/claims an order
-  const handleClaimOrder = async (order: DeliveryOrder) => {
-    setActionLoadingId(order.id);
-    const toastId = toast.loading('جاري قبول الطلب وتعيينه لك...');
+  // Action 1a: Open fee + acceptance duration proposal modal
+  const openClaimModal = (order: DeliveryOrder) => {
+    setClaimingOrder(order);
+    setProposedFeeInput(Number(order.deliveryFee || 0) > 0 ? String(order.deliveryFee) : '1000');
+    setAcceptMinutesInput('15');
+  };
+
+  // Action 1b: Courier accepts order by submitting proposed fee and customer acceptance timeout
+  const handleSubmitDeliveryProposal = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!claimingOrder) return;
+
+    const feeVal = Number(proposedFeeInput);
+    if (proposedFeeInput.trim() === '' || Number.isNaN(feeVal) || feeVal < 0) {
+      toast.error('يرجى إدخال رسوم توصيل صحيحة (0 أو أكثر)');
+      return;
+    }
+
+    const minutesVal = Number(acceptMinutesInput);
+    if (!acceptMinutesInput.trim() || Number.isNaN(minutesVal) || minutesVal < 1 || minutesVal > 1440) {
+      toast.error('يرجى تحديد مدة قبول بين 1 و 1440 دقيقة');
+      return;
+    }
+
+    setActionLoadingId(claimingOrder.id);
+    const toastId = toast.loading('جاري قبول الطلب وإرسال رسوم التوصيل للعميل...');
     try {
-      const orderRef = doc(db, 'orders', order.id);
-      await updateDoc(orderRef, {
+      await proposeDeliveryFeeTransaction({
+        orderId: claimingOrder.id,
         courierId: user.uid,
         courierName: userData?.displayName || userData?.name || user.displayName || 'مندوب توصيل',
         courierPhone: userData?.phone || '',
-        deliveryStatus: 'assigned',
-        status: 'processing'
+        proposedFee: feeVal,
+        acceptDurationMinutes: minutesVal
       });
-      toast.success('تم قبول الطلب بنجاح! انتقل إلى تبويب «قيد التوصيل معي» للبدء بالتوجه للمتجر.', { id: toastId });
+      toast.success('تم إرسال عرض رسوم التوصيل للعميل! بانتظار موافقته قبل الاستلام من المتجر.', { id: toastId });
+      setClaimingOrder(null);
       setActiveTab('active');
     } catch (err: any) {
-      console.error('Claim error:', err);
-      handleFirestoreError(err, OperationType.UPDATE, `orders/${order.id}`, auth);
-      toast.error('تعذر قبول الطلب: ' + (err?.message || 'خطأ غير متوقع'), { id: toastId });
+      console.error('Claim proposal error:', err);
+      toast.error(err?.message || 'تعذر إرسال عرض التوصيل', { id: toastId });
     } finally {
       setActionLoadingId(null);
     }
   };
 
-  // Action 2: Courier confirms pickup from store
+  // Action 1c: Courier cancels/withdraws pending proposal and returns order to available pool
+  const handleWithdrawProposal = async (order: DeliveryOrder) => {
+    setActionLoadingId(order.id);
+    const toastId = toast.loading('جاري إلغاء القبول وإعادة الطلب للطلبات المتوفرة...');
+    try {
+      await withdrawDeliveryFeeProposalTransaction({
+        orderId: order.id,
+        courierId: user.uid
+      });
+      toast.success('تم إلغاء قبول الطلب وإعادته لقائمة الطلبات المتوفرة للتوصيل', { id: toastId });
+    } catch (err: any) {
+      console.error('Withdraw proposal error:', err);
+      toast.error(err?.message || 'تعذر إلغاء العرض', { id: toastId });
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  // Action 2: Courier confirms pickup from store (only after customer approves fee)
   const handleConfirmStorePickup = async (order: DeliveryOrder) => {
+    if (order.deliveryFeeApprovalStatus === 'pending_customer') {
+      toast.error('لا يمكنك تأكيد الاستلام قبل موافقة العميل على رسوم التوصيل');
+      return;
+    }
     setActionLoadingId(order.id);
     const toastId = toast.loading('جاري تأكيد الاستلام من المتجر...');
     try {
@@ -472,8 +573,17 @@ export default function DeliveryPortal() {
             const customerPhone = order.customerPhone || '';
             const customerAddress = order.customerAddress || order.customerNotes || 'العنوان محدد بالخريطة';
             const isAssignedToMe = order.courierId === user.uid;
+            const isPendingFeeApproval = isAssignedToMe && order.deliveryFeeApprovalStatus === 'pending_customer';
+            const remainingFeeMs = isPendingFeeApproval ? getRemainingMs(order.deliveryFeeExpiresAt, nowMs) : 0;
             const isOutForDelivery = order.status === 'out_for_delivery' || order.deliveryStatus === 'out_for_delivery';
             const isDelivered = order.status === 'delivered' || order.deliveryStatus === 'delivered';
+            const baseSubtotal = computeOrderBaseSubtotal(order);
+            const displayedFee = isPendingFeeApproval
+              ? Number(order.proposedDeliveryFee ?? order.deliveryFee ?? 0)
+              : Number(order.deliveryFee || 0);
+            const projectedCollection = isPendingFeeApproval
+              ? baseSubtotal + displayedFee
+              : Number(order.total || 0);
 
             return (
               <div
@@ -497,19 +607,30 @@ export default function DeliveryPortal() {
                               ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
                               : isOutForDelivery
                                 ? 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800'
-                                : isAssignedToMe
+                                : isPendingFeeApproval
                                   ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
-                                  : 'bg-[#EFEDE6] text-[#111214] border-[#E5E2DA] dark:bg-[#1C1F26] dark:text-[#F4F4F2] dark:border-[#232730]'
+                                  : isAssignedToMe
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                                    : 'bg-[#EFEDE6] text-[#111214] border-[#E5E2DA] dark:bg-[#1C1F26] dark:text-[#F4F4F2] dark:border-[#232730]'
                           }`}
                         >
                           {isDelivered
                             ? 'تم التسليم بنجاح'
                             : isOutForDelivery
                               ? 'في الطريق للزبون'
-                              : isAssignedToMe
-                                ? 'معي — جاري الاستلام من المتجر'
-                                : 'متاح للاستلام والتوصيل'}
+                              : isPendingFeeApproval
+                                ? 'بانتظار موافقة العميل على الرسوم'
+                                : isAssignedToMe
+                                  ? 'تمت الموافقة — جاهز للاستلام من المتجر'
+                                  : 'متاح للاستلام والتوصيل'}
                         </span>
+                        {!order.courierId && (order.deliveryFeeApprovalStatus === 'rejected' || order.deliveryFeeApprovalStatus === 'expired') && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/60 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300">
+                            {order.deliveryFeeApprovalStatus === 'expired'
+                              ? 'أُعيد للمتاح لانتهاء مهلة القبول'
+                              : 'أُعيد للمتاح بعد رفض العميل'}
+                          </span>
+                        )}
                       </div>
                       <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400 tabular-nums">
                         {order.createdAt ? new Date(order.createdAt).toLocaleString('ar-YE', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
@@ -520,19 +641,53 @@ export default function DeliveryPortal() {
                   {/* Financial Overview */}
                   <div className="flex items-center gap-4">
                     <div className="text-right">
-                      <div className="text-[10px] text-[#5C5B57] dark:text-zinc-400 font-medium">التحصيل من الزبون</div>
+                      <div className="text-[10px] text-[#5C5B57] dark:text-zinc-400 font-medium">
+                        {isPendingFeeApproval ? 'التحصيل المتوقع بعد القبول' : 'التحصيل من الزبون'}
+                      </div>
                       <div className="text-sm sm:text-base font-bold text-[#111214] dark:text-[#F4F4F2] tabular-nums">
-                        {order.paymentMethod === 'wallet' ? '0 ر.ي (مدفوع بالمحفظة)' : `${Number(order.total || 0).toLocaleString('ar-YE')} ر.ي`}
+                        {order.paymentMethod === 'wallet' && !order.isPreOrder
+                          ? (displayedFee > 0 ? `${displayedFee.toLocaleString('ar-YE')} ر.ي (رسوم توصيل)` : '0 ر.ي (مدفوع بالمحفظة)')
+                          : `${projectedCollection.toLocaleString('ar-YE')} ر.ي`}
                       </div>
                     </div>
                     <div className="px-3 py-1.5 rounded-lg bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] text-right">
-                      <div className="text-[10px] text-[#5C5B57] dark:text-zinc-400 font-medium">أجرة التوصيل</div>
-                      <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                        {(order.deliveryFee || 1500).toLocaleString('ar-YE')} ر.ي
+                      <div className="text-[10px] text-[#5C5B57] dark:text-zinc-400 font-medium">
+                        {isPendingFeeApproval ? 'رسومك المقترحة' : 'أجرة التوصيل'}
+                      </div>
+                      <div className={`text-xs font-bold tabular-nums ${
+                        isPendingFeeApproval
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-emerald-600 dark:text-emerald-400'
+                      }`}>
+                        {displayedFee > 0
+                          ? `${displayedFee.toLocaleString('ar-YE')} ر.ي`
+                          : isPendingFeeApproval || order.deliveryFeeApprovalStatus === 'accepted'
+                            ? 'مجاناً'
+                            : 'يحددها الموصل'}
                       </div>
                     </div>
                   </div>
                 </div>
+
+                {/* Customer Fee Approval Pending Banner for Courier */}
+                {isPendingFeeApproval && (
+                  <div className="px-4 sm:px-5 py-3 bg-amber-50/80 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800/60 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-start sm:items-center gap-2.5 text-xs">
+                      <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
+                      <div>
+                        <p className="font-bold text-amber-900 dark:text-amber-200">
+                          تم إرسال إشعار ورسالة نظام للعميل بسعر التوصيل ({displayedFee === 0 ? 'مجاناً' : `${displayedFee.toLocaleString('ar-YE')} ر.ي`})
+                        </p>
+                        <p className="text-[11px] font-medium text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+                          ينتظر تأكيد العميل قبل التوجه للاستلام من المتجر. في حال عدم القبول قبل انتهاء المهلة سيعود الطلب تلقائياً للطلبات المتاحة.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="px-3 py-1.5 rounded-lg bg-white dark:bg-[#131519] border border-amber-300 dark:border-amber-700/70 text-xs font-extrabold text-amber-700 dark:text-amber-300 tabular-nums shrink-0">
+                      متبقي: {formatRemainingDuration(remainingFeeMs)}
+                    </div>
+                  </div>
+                )}
 
                 {/* Two-Station Grid: Store Pickup & Customer Delivery */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x lg:divide-x-reverse divide-[#E5E2DA] dark:divide-[#232730]">
@@ -713,7 +868,7 @@ export default function DeliveryPortal() {
                 <div className="px-4 sm:px-5 py-2.5 bg-[#FAF9F6] dark:bg-[#101216] border-t border-[#E5E2DA] dark:border-[#232730] flex items-center justify-between text-xs flex-wrap gap-2">
                   <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
                     <span className="font-bold text-[#5C5B57] dark:text-zinc-400 shrink-0 text-[11px]">محتويات الشحنة:</span>
-                    {order.items.map((it, idx) => (
+                    {(Array.isArray(order.items) ? order.items : []).map((it, idx) => (
                       <span
                         key={idx}
                         className="px-2 py-0.5 rounded-md bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] text-[11px] font-medium text-[#111214] dark:text-[#F4F4F2] shrink-0 tabular-nums"
@@ -742,19 +897,30 @@ export default function DeliveryPortal() {
                     تدوين ملاحظة على الطلب
                   </button>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {!order.courierId && (
                       <button
-                        onClick={() => handleClaimOrder(order)}
+                        onClick={() => openClaimModal(order)}
                         disabled={actionLoadingId === order.id}
                         className={`min-h-[44px] px-5 py-2.5 ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white rounded-lg font-bold text-xs transition flex items-center gap-2 disabled:opacity-50`}
                       >
                         <Bike className="w-4 h-4" />
-                        <span>قبول واستلام الطلب للتوصيل</span>
+                        <span>قبول وتحديد رسوم التوصيل</span>
                       </button>
                     )}
 
-                    {isAssignedToMe && !isOutForDelivery && !isDelivered && (
+                    {isPendingFeeApproval && (
+                      <button
+                        onClick={() => handleWithdrawProposal(order)}
+                        disabled={actionLoadingId === order.id}
+                        className="min-h-[44px] px-4 py-2.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-950/70 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 rounded-lg font-bold text-xs transition flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        <span>إلغاء القبول وإعادة للمتاح</span>
+                      </button>
+                    )}
+
+                    {isAssignedToMe && !isPendingFeeApproval && !isOutForDelivery && !isDelivered && (
                       <button
                         onClick={() => handleConfirmStorePickup(order)}
                         disabled={actionLoadingId === order.id}
@@ -787,6 +953,149 @@ export default function DeliveryPortal() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Courier Fee & Timeout Proposal Modal */}
+      {claimingOrder && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setClaimingOrder(null)}
+        >
+          <form
+            onSubmit={handleSubmitDeliveryProposal}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-[#131519] rounded-xl p-5 sm:p-6 w-full max-w-md shadow-xl border border-[#E5E2DA] dark:border-[#232730] space-y-4 max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#E5E2DA] dark:border-[#232730]">
+              <div>
+                <h3 className="font-display text-base font-bold text-[#111214] dark:text-[#F4F4F2] flex items-center gap-2">
+                  <Bike className="w-4 h-4 text-[#5C5B57] dark:text-zinc-400" />
+                  <span>تحديد رسوم التوصيل ومهلة القبول</span>
+                </h3>
+                <span className="text-[11px] font-mono text-[#5C5B57] dark:text-zinc-400 tabular-nums" dir="ltr">
+                  #{claimingOrder.id.slice(0, 8)}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setClaimingOrder(null)}
+                className="w-10 h-10 rounded-lg flex items-center justify-center text-[#5C5B57] dark:text-zinc-400 hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition"
+                aria-label="إغلاق"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-[#5C5B57] dark:text-zinc-400">العميل:</span>
+                <span className="font-bold text-[#111214] dark:text-[#F4F4F2]">{claimingOrder.customerName || 'عميل المتجر'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#5C5B57] dark:text-zinc-400">قيمة المنتجات:</span>
+                <span className="font-bold text-[#111214] dark:text-[#F4F4F2] tabular-nums">
+                  {computeOrderBaseSubtotal(claimingOrder).toLocaleString('ar-YE')} ر.ي
+                </span>
+              </div>
+            </div>
+
+            {/* Delivery Fee Input */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">
+                رسوم التوصيل المطلوبة (ر.ي)
+              </label>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                required
+                value={proposedFeeInput}
+                onChange={(e) => setProposedFeeInput(e.target.value)}
+                placeholder="مثال: 1000 أو 0 للتوصيل المجاني"
+                className="w-full min-h-[44px] px-3.5 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] text-sm font-bold outline-none focus:bg-white dark:focus:bg-[#131519] focus:border-[#111214] dark:focus:border-zinc-400 text-[#111214] dark:text-[#F4F4F2] tabular-nums"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {FEE_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setProposedFeeInput(String(preset))}
+                    className={`px-2.5 py-1.5 rounded-md text-[11px] font-bold border transition tabular-nums ${
+                      Number(proposedFeeInput) === preset
+                        ? 'bg-[#111214] text-white border-[#111214] dark:bg-[#F4F4F2] dark:text-[#111214] dark:border-[#F4F4F2]'
+                        : 'bg-[#FAF9F6] dark:bg-[#101216] text-[#111214] dark:text-[#F4F4F2] border-[#E5E2DA] dark:border-[#232730] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26]'
+                    }`}
+                  >
+                    {preset.toLocaleString('ar-YE')} ر.ي
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Acceptance Duration Input */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">
+                مدة مهلة قبول العميل (بالدقائق)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={1440}
+                required
+                value={acceptMinutesInput}
+                onChange={(e) => setAcceptMinutesInput(e.target.value)}
+                placeholder="مثال: 15"
+                className="w-full min-h-[44px] px-3.5 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] text-sm font-bold outline-none focus:bg-white dark:focus:bg-[#131519] focus:border-[#111214] dark:focus:border-zinc-400 text-[#111214] dark:text-[#F4F4F2] tabular-nums"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {DURATION_PRESETS.map((preset) => (
+                  <button
+                    key={preset.minutes}
+                    type="button"
+                    onClick={() => setAcceptMinutesInput(String(preset.minutes))}
+                    className={`px-2.5 py-1.5 rounded-md text-[11px] font-bold border transition ${
+                      Number(acceptMinutesInput) === preset.minutes
+                        ? 'bg-[#111214] text-white border-[#111214] dark:bg-[#F4F4F2] dark:text-[#111214] dark:border-[#F4F4F2]'
+                        : 'bg-[#FAF9F6] dark:bg-[#101216] text-[#111214] dark:text-[#F4F4F2] border-[#E5E2DA] dark:border-[#232730] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26]'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Projected Total Summary */}
+            <div className="p-3 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] space-y-1.5 text-xs">
+              <div className="flex justify-between font-bold text-[#111214] dark:text-[#F4F4F2]">
+                <span>الإجمالي النهائي للعميل:</span>
+                <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
+                  {(computeOrderBaseSubtotal(claimingOrder) + Math.max(0, Number(proposedFeeInput || 0))).toLocaleString('ar-YE')} ر.ي
+                </span>
+              </div>
+              <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400 leading-relaxed">
+                سيصل للعميل إشعار ورسالة من النظام فوراً. إذا لم يقبل العميل خلال المهلة المحددة، سيُلغى قبولك تلقائياً ويعود الطلب لقائمة الطلبات المتوفرة.
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="submit"
+                disabled={actionLoadingId === claimingOrder.id}
+                className={`flex-1 min-h-[44px] py-2.5 ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white rounded-lg font-bold text-xs transition disabled:opacity-50`}
+              >
+                إرسال العرض وقبول الطلب
+              </button>
+              <button
+                type="button"
+                onClick={() => setClaimingOrder(null)}
+                className="min-h-[44px] px-5 py-2.5 bg-[#FAF9F6] hover:bg-[#EFEDE6] dark:bg-[#101216] dark:hover:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] rounded-lg font-bold text-xs transition border border-[#E5E2DA] dark:border-[#232730]"
+              >
+                تراجع
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

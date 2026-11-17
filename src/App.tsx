@@ -22,9 +22,11 @@ const Cart = lazy(() => import('./pages/Cart'));
 const Orders = lazy(() => import('./pages/Orders'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const Profile = lazy(() => import('./pages/Profile'));
+const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 const Contact = lazy(() => import('./pages/Contact'));
 const StoreProfile = lazy(() => import('./pages/StoreProfile'));
 const ProductDetail = lazy(() => import('./pages/ProductDetail'));
+const VariantDetail = lazy(() => import('./pages/VariantDetail'));
 const StoreSearch = lazy(() => import('./pages/StoreSearch'));
 const DeliveryPortal = lazy(() => import('./pages/DeliveryPortal'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
@@ -311,7 +313,7 @@ function MainLayout() {
     const currentStoreName = settings?.storeName || 'يمن ستور';
     document.title = currentStoreName;
 
-    const currentUrl = settings?.storePublicUrl || 'https://www.yemenstoreonline.com';
+    const currentUrl = settings?.storePublicUrl || window.location.origin;
     const dynamicDescription = settings?.storeDescription || `منصة ${currentStoreName} للتجارة والمتاجر الموثوقة`;
     const metaTags = [
       { property: 'og:title', content: currentStoreName },
@@ -392,7 +394,9 @@ function MainLayout() {
             <Route path="/orders" element={<Orders />} />
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/change-password" element={<ChangePassword />} />
             <Route path="/product/:productId" element={<ProductDetail />} />
+            <Route path="/variant/:productId/:variantId" element={<VariantDetail />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/delivery" element={<DeliveryPortal />} />
             <Route path="/store/:userId" element={<StoreProfile />} />
@@ -400,7 +404,12 @@ function MainLayout() {
             <Route path="/s/:slug/cart" element={<Cart />} />
             <Route path="/s/:slug/orders" element={<Orders />} />
             <Route path="/s/:slug/product/:productId" element={<ProductDetail />} />
+            <Route path="/s/:slug/variant/:productId/:variantId" element={<VariantDetail />} />
             <Route path="/store-site/:slug" element={<StoreSite />} />
+            <Route path="/store-site/:slug/cart" element={<Cart />} />
+            <Route path="/store-site/:slug/orders" element={<Orders />} />
+            <Route path="/store-site/:slug/product/:productId" element={<ProductDetail />} />
+            <Route path="/store-site/:slug/variant/:productId/:variantId" element={<VariantDetail />} />
             <Route path="/search-stores" element={<StoreSearch />} />
             <Route path="/safety-guide" element={<SafetyGuide />} />
             <Route path="*" element={<StoreFront />} />

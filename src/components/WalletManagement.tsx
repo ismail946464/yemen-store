@@ -380,11 +380,12 @@ export default function WalletManagement({ merchantId }: { merchantId: string })
                 </label>
                 <input
                   type="text"
+                  dir="ltr"
                   required
                   placeholder="مثال: 777123456 أو 12345678"
                   value={form.accountNumber}
                   onChange={(e) => setForm({ ...form, accountNumber: e.target.value })}
-                  className="w-full min-h-[44px] bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] rounded-lg px-3.5 py-2.5 text-sm font-mono font-bold text-[#111214] dark:text-[#F4F4F2] outline-none focus:border-[#111214] dark:focus:border-zinc-400 dir-ltr text-right"
+                  className="w-full min-h-[44px] bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] rounded-lg px-3.5 py-2.5 text-sm font-mono font-bold text-[#111214] dark:text-[#F4F4F2] outline-none focus:border-[#111214] dark:focus:border-zinc-400 text-right"
                 />
               </div>
 

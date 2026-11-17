@@ -25,8 +25,8 @@ export default function InstallPrompt() {
         navigator.serviceWorker.ready.then(registration => {
           registration.showNotification(settings?.storeName || 'يمن ستور', {
             body: 'قم بتثبيت التطبيق للوصول السريع وإدارة الطلبات.',
-            icon: settings?.storeLogo || '/favicon.ico',
-            badge: settings?.storeLogo || '/favicon.ico',
+            icon: settings?.storeLogo || '/pwa-192x192.png',
+            badge: settings?.storeLogo || '/pwa-192x192.png',
             tag: 'install-yemen-store',
             requireInteraction: true,
             dir: 'rtl'

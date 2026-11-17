@@ -138,7 +138,8 @@ export async function processUpdateProfile(input: {
     return { success: false, message: "لم يتم العثور على الحساب" };
   }
 
-  if (input.name) account.name = String(input.name).trim();
+  const trimmedName = input.name !== undefined ? String(input.name).trim() : "";
+  if (trimmedName) account.name = trimmedName;
   if (input.phone !== undefined) account.phone = String(input.phone).trim();
   if (input.photoURL !== undefined) account.photoURL = String(input.photoURL).trim();
 
@@ -303,7 +304,8 @@ export async function processAdminUpdateAccount(payload: {
         account.role = payload.role as any;
       }
     }
-    if (payload.name) account.name = String(payload.name).trim();
+    const trimmedAdminName = payload.name !== undefined ? String(payload.name).trim() : "";
+    if (trimmedAdminName) account.name = trimmedAdminName;
     if (payload.phone !== undefined) account.phone = String(payload.phone).trim();
     if (payload.status) account.status = payload.status;
     await saveAccount(account);
@@ -320,8 +322,9 @@ export async function processAdminUpdateAccount(payload: {
           if (payload.role && (uidToUpdate !== MASTER_ADMIN_UID || payload.role === "admin")) {
             updates.role = payload.role;
           }
-          if (payload.name) updates.name = payload.name;
-          if (payload.phone !== undefined) updates.phone = payload.phone;
+          const cleanName = payload.name !== undefined ? String(payload.name).trim() : "";
+          if (cleanName) updates.name = cleanName;
+          if (payload.phone !== undefined) updates.phone = String(payload.phone).trim();
           if (Object.keys(updates).length > 0) {
             await setDoc(doc(db, "users", uidToUpdate), updates, { merge: true });
           }

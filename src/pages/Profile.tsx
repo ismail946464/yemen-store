@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
-import { User, Shield, LogOut, Camera, Loader2, LayoutDashboard, Moon, Sun, Lock, Eye, EyeOff, KeyRound, CheckCircle2, Palette, Bike } from 'lucide-react';
+import {
+  User, Shield, LogOut, Camera, Loader2, LayoutDashboard, Moon, Sun,
+  Lock, KeyRound, Palette, Bike, Store
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -18,7 +21,6 @@ export default function Profile() {
     isDarkMode,
     toggleDarkMode,
     updateUserProfile,
-    changePassword,
     effectiveTheme,
     setUserTheme,
     allowUserThemeOverride
@@ -30,14 +32,6 @@ export default function Profile() {
   const [isUploading, setIsUploading] = useState(false);
   const [message, setMessage] = useState('');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showCurrentPass, setShowCurrentPass] = useState(false);
-  const [showNewPass, setShowNewPass] = useState(false);
-  const [isChangingPassword, setIsChangingPassword] = useState(false);
-  const [passwordStatusMsg, setPasswordStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     if (userData) {
@@ -110,44 +104,6 @@ export default function Profile() {
       toast.error("حدث خطأ أثناء حفظ التعديلات");
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    setPasswordStatusMsg(null);
-
-    const trimmedNew = newPassword.trim();
-    if (trimmedNew.length < 4) {
-      const msg = 'يجب أن تكون كلمة المرور الجديدة 4 أحرف على الأقل';
-      setPasswordStatusMsg({ type: 'error', text: msg });
-      toast.error(msg);
-      return;
-    }
-
-    if (trimmedNew !== confirmPassword.trim()) {
-      const msg = 'كلمة المرور الجديدة وتأكيدها غير متطابقين';
-      setPasswordStatusMsg({ type: 'error', text: msg });
-      toast.error(msg);
-      return;
-    }
-
-    setIsChangingPassword(true);
-    try {
-      const res = await changePassword(trimmedNew, currentPassword.trim() || undefined);
-      if (res.success) {
-        setPasswordStatusMsg({ type: 'success', text: res.message || 'تم تحديث كلمة المرور بنجاح' });
-        toast.success(res.message || 'تم تغيير كلمة المرور بنجاح');
-        setCurrentPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
-      } else {
-        setPasswordStatusMsg({ type: 'error', text: res.message || 'فشل تغيير كلمة المرور' });
-        toast.error(res.message || 'فشل تغيير كلمة المرور');
-      }
-    } finally {
-      setIsChangingPassword(false);
     }
   };
 
@@ -231,7 +187,7 @@ export default function Profile() {
             <h2 className="font-display text-lg font-extrabold text-[#111214] dark:text-[#F4F4F2] mt-4">
               {name || 'مستخدم جديد'}
             </h2>
-            <p className="text-xs font-medium text-[#5C5B57] dark:text-zinc-400 mt-0.5 dir-ltr">{user.email}</p>
+            <p dir="ltr" className="text-xs font-medium text-[#5C5B57] dark:text-zinc-400 mt-0.5">{user.email}</p>
 
             {isAdmin && (
               <div className="mt-4 w-full p-3 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] flex items-center gap-2.5 text-right">
@@ -242,13 +198,22 @@ export default function Profile() {
 
             <div className="w-full space-y-2 mt-5 pt-5 border-t border-[#E5E2DA] dark:border-[#232730]">
               {(isAdmin || isStore) && (
-                <Link
-                  to="/admin"
-                  className={`w-full min-h-[42px] flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-colors ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
-                >
-                  <LayoutDashboard className="w-4 h-4" />
-                  <span>الانتقال إلى لوحة التحكم</span>
-                </Link>
+                <>
+                  <Link
+                    to="/admin"
+                    className={`w-full min-h-[42px] flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-colors ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                  >
+                    <LayoutDashboard className="w-4 h-4" />
+                    <span>الانتقال إلى لوحة التحكم</span>
+                  </Link>
+                  <Link
+                    to="/admin?tab=store-profile"
+                    className="w-full min-h-[42px] flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-bold text-xs border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] text-[#111214] dark:text-[#F4F4F2] transition-colors"
+                  >
+                    <Store className="w-4 h-4" />
+                    <span>إدارة الملف التجاري والعنوان الفعلي</span>
+                  </Link>
+                </>
               )}
 
               {isDelivery && (
@@ -379,117 +344,21 @@ export default function Profile() {
             </form>
           </div>
 
-          {/* Change Password Card */}
-          <div className="p-5 sm:p-6 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] space-y-5">
-            <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#E5E2DA] dark:border-[#232730]">
-              <div className="flex items-center gap-2.5">
-                <KeyRound className="w-4.5 h-4.5 text-[#111214] dark:text-[#F4F4F2]" />
-                <div>
-                  <h3 className="font-display text-base font-extrabold text-[#111214] dark:text-[#F4F4F2]">تغيير كلمة المرور</h3>
-                  <p className="text-xs text-[#5C5B57] dark:text-zinc-400">تحديث كلمة مرور الدخول الخاصة بحسابك</p>
-                </div>
-              </div>
-              {isAdmin && (
-                <Link
-                  to="/admin"
-                  className="text-xs font-bold text-[#5C5B57] dark:text-zinc-300 underline hover:text-[#111214] dark:hover:text-white shrink-0"
-                >
-                  إدارة الأعضاء ←
-                </Link>
-              )}
-            </div>
-
-            {passwordStatusMsg && (
-              <div className={`p-3 rounded-lg text-xs font-bold flex items-center gap-2 border ${
-                passwordStatusMsg.type === 'success'
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
-                  : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800'
-              }`}>
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>{passwordStatusMsg.text}</span>
-              </div>
-            )}
-
-            <form onSubmit={handlePasswordChange} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold mb-1.5 text-[#111214] dark:text-zinc-300">
-                  كلمة المرور الحالية <span className="text-[11px] font-normal text-[#5C5B57] dark:text-zinc-400">(اختياري للدخول بجوجل أو رمز التحقق)</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showCurrentPass ? 'text' : 'password'}
-                    value={currentPassword}
-                    onChange={e => setCurrentPassword(e.target.value)}
-                    placeholder="••••••••"
-                    dir="ltr"
-                    className="w-full min-h-[44px] border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] rounded-lg px-3.5 py-2.5 pl-10 outline-none focus:border-[#111214] dark:focus:border-zinc-400 text-left font-mono text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCurrentPass(!showCurrentPass)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5C5B57] hover:text-[#111214] dark:hover:text-white"
-                    tabIndex={-1}
-                  >
-                    {showCurrentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold mb-1.5 text-[#111214] dark:text-zinc-300">
-                    كلمة المرور الجديدة
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showNewPass ? 'text' : 'password'}
-                      required
-                      minLength={4}
-                      value={newPassword}
-                      onChange={e => setNewPassword(e.target.value)}
-                      placeholder="4 أحرف على الأقل"
-                      dir="ltr"
-                      className="w-full min-h-[44px] border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] rounded-lg px-3.5 py-2.5 pl-10 outline-none focus:border-[#111214] dark:focus:border-zinc-400 text-left font-mono text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowNewPass(!showNewPass)}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5C5B57] hover:text-[#111214] dark:hover:text-white"
-                      tabIndex={-1}
-                    >
-                      {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold mb-1.5 text-[#111214] dark:text-zinc-300">
-                    تأكيد كلمة المرور الجديدة
-                  </label>
-                  <input
-                    type={showNewPass ? 'text' : 'password'}
-                    required
-                    minLength={4}
-                    value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="أعد كتابة كلمة المرور"
-                    dir="ltr"
-                    className="w-full min-h-[44px] border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] rounded-lg px-3.5 py-2.5 outline-none focus:border-[#111214] dark:focus:border-zinc-400 text-left font-mono text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-1">
-                <button
-                  type="submit"
-                  disabled={isChangingPassword}
-                  className="min-h-[44px] flex items-center justify-center gap-2 font-bold text-sm rounded-lg px-6 py-2.5 transition-colors bg-[#111214] hover:bg-[#24262B] text-white dark:bg-[#F4F4F2] dark:hover:bg-[#E4E4E0] dark:text-[#111214] disabled:opacity-50"
-                >
-                  {isChangingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-                  <span>{isChangingPassword ? 'جاري التحديث...' : 'حفظ كلمة المرور'}</span>
-                </button>
-              </div>
-            </form>
+          {/* Compact Change Password Link */}
+          <div className="flex items-center justify-start px-1 pt-0.5">
+            <Link
+              to="/change-password"
+              className={`inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-bold rounded-md px-2 py-1 transition-colors border border-transparent ${
+                effectiveTheme === 'red'
+                  ? 'text-red-700 hover:text-red-800 hover:bg-red-100/70 hover:border-red-200 dark:text-rose-300 dark:hover:text-rose-200 dark:hover:bg-rose-950/50 dark:hover:border-rose-800/60'
+                  : effectiveTheme === 'black'
+                    ? 'text-red-600 hover:text-red-700 hover:bg-zinc-200/70 hover:border-red-200 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-zinc-900 dark:hover:border-red-900/50'
+                    : 'text-red-600 hover:text-red-700 hover:bg-red-50/90 hover:border-red-200/80 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-950/35 dark:hover:border-rose-900/50'
+              }`}
+            >
+              <KeyRound className="w-3 h-3 shrink-0" />
+              <span className="underline underline-offset-4">تغيير كلمة المرور</span>
+            </Link>
           </div>
         </div>
       </div>

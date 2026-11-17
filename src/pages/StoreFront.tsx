@@ -4,15 +4,19 @@ import {
   BookmarkCheck, ChevronRight, ChevronLeft, LayoutGrid,
   Laptop, Smartphone, Shirt, Sparkles, MapPin, Watch,
   ShoppingBag, Heart, Home, Gamepad2, Tag, Search,
-  SlidersHorizontal, X, ArrowUpDown, ShieldCheck, Percent
+  SlidersHorizontal, X, ArrowUpDown, ShieldCheck, Percent, Layers, Store
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
 import PreOrderModal from '../components/PreOrderModal';
+import ProductVariantsModal from '../components/ProductVariantsModal';
+import ProductPublisherMiniCard from '../components/ProductPublisherMiniCard';
 import { ProductGridSkeleton } from '../components/Skeletons';
 import { isProductOfferActive, getProductOfferBadgeText } from '../lib/offerUtils';
+import { getAvailableProductVariants, buildBaseProductForCart } from '../lib/variantUtils';
+import { getStockLimit, isItemOutOfStock, calculateSafeDeposit } from '../lib/stockUtils';
 
 const DEFAULT_CATEGORIES = [
   { id: 'cat-electronics', name: 'الإلكترونيات والأجهزة', slug: 'electronics', icon: 'laptop' },
@@ -67,10 +71,10 @@ const ProductCardImage = ({ src, alt }: { src?: string; alt: string }) => {
 export default function StoreFront() {
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'newest' | 'price-asc' | 'price-desc'>('newest');
+  const [sortBy, setSortBy] = useState<'newest' | 'price-asc' | 'price-desc' | 'rating-desc'>('newest');
   const [verifiedOnly, setVerifiedOnly] = useState(false);
 
-  const { addToCart, settings, getThemeClasses, user, login, isStore, isAdmin } = useAppContext();
+  const { addToCart, cart, settings, getThemeClasses, user, login } = useAppContext();
   const navigate = useNavigate();
 
   const [products, setProducts] = useState<any[]>([]);
@@ -78,6 +82,7 @@ export default function StoreFront() {
   const [storeProfiles, setStoreProfiles] = useState<Record<string, any>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPreOrderProduct, setSelectedPreOrderProduct] = useState<any | null>(null);
+  const [variantsModalProduct, setVariantsModalProduct] = useState<any | null>(null);
 
   const categoriesScrollRef = useRef<HTMLDivElement>(null);
 
@@ -94,7 +99,11 @@ export default function StoreFront() {
     const q = query(collection(db, 'products'), where('status', '==', 'active'));
     const unsubProducts = onSnapshot(q, (snap) => {
       const productsData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
-      setProducts(productsData.filter(p => p.stock === undefined || p.stock === null || Number(p.stock) > 0));
+      setProducts(
+        productsData.filter(
+          (p) => !isItemOutOfStock(p) || getAvailableProductVariants(p).length > 0
+        )
+      );
       setIsLoading(false);
     }, (err) => {
       console.warn('StoreFront products listener notice (handled):', err.message);
@@ -171,16 +180,16 @@ export default function StoreFront() {
       } else if (activeTab !== 'all' && !isProductInCategory(p, activeTab, activeCatObj?.name)) {
         return false;
       }
-      if (verifiedOnly) {
-        const ownerProf = p.ownerId ? storeProfiles[p.ownerId] : null;
-        if (!Boolean(p.ownerVerified || ownerProf?.isVerified)) return false;
-      }
+      const ownerProf = p.ownerId ? storeProfiles[p.ownerId] : null;
+      const isStoreVerified = Boolean(p.ownerVerified || ownerProf?.isVerified);
+      if (verifiedOnly && !isStoreVerified) return false;
       if (term) {
         const matchTitle = String(p.title || '').toLowerCase().includes(term);
         const matchCat = String(p.category || '').toLowerCase().includes(term);
         const matchStore = String(p.ownerName || '').toLowerCase().includes(term);
         const matchOffer = String(p.offerTitle || '').toLowerCase().includes(term) || String(p.offerExtras || '').toLowerCase().includes(term);
-        if (!matchTitle && !matchCat && !matchStore && !matchOffer) return false;
+        const matchVariant = Array.isArray(p.variants) && p.variants.some((v: any) => String(v?.name || '').toLowerCase().includes(term));
+        if (!matchTitle && !matchCat && !matchStore && !matchOffer && !matchVariant) return false;
       }
       return true;
     });
@@ -190,6 +199,9 @@ export default function StoreFront() {
     }
     if (sortBy === 'price-desc') {
       return [...list].sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+    }
+    if (sortBy === 'rating-desc') {
+      return [...list].sort((a, b) => Number(b.averageRating || 0) - Number(a.averageRating || 0));
     }
     return [...list].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   }, [products, activeTab, allAvailableCategories, verifiedOnly, storeProfiles, searchQuery, sortBy]);
@@ -245,128 +257,6 @@ export default function StoreFront() {
               </div>
             </div>
           </div>
-        </section>
-      )}
-
-      {/* Store Offers Showcase Section (خانة العروض) */}
-      {!isLoading && activeTab === 'all' && !searchQuery.trim() && !verifiedOnly && (
-        <section id="offers-section" className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#E5E2DA] dark:border-[#232730]">
-            <div className="flex items-center gap-2.5">
-              <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${getThemeClasses('bg')}`}>
-                <Percent className="w-4 h-4" />
-              </span>
-              <div>
-                <h2 className="font-display text-lg sm:text-xl font-extrabold text-[#111214] dark:text-[#F4F4F2]">
-                  العروض والخصومات
-                </h2>
-                <p className="text-[11px] sm:text-xs text-[#5C5B57] dark:text-zinc-400">
-                  تخفيضات مباشرة وإضافات مجانية متاحة من المتاجر
-                </p>
-              </div>
-            </div>
-
-            {offerProducts.length > 0 ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('offers');
-                  document.getElementById('products-section')?.scrollIntoView({ behavior: 'smooth' });
-                }}
-                className="min-h-[38px] px-3.5 py-1.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-xs font-bold text-[#111214] dark:text-[#F4F4F2] inline-flex items-center gap-1.5 transition-colors"
-              >
-                <span>عرض كل العروض ({offerProducts.length})</span>
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-            ) : (isStore || isAdmin) ? (
-              <Link
-                to="/admin?tab=products"
-                className="min-h-[38px] px-3.5 py-1.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-xs font-bold text-[#111214] dark:text-[#F4F4F2] inline-flex items-center gap-1.5 transition-colors"
-              >
-                <span>إضافة عرض لمنتج</span>
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </Link>
-            ) : null}
-          </div>
-
-          {offerProducts.length === 0 ? (
-            <div className="p-4 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs sm:text-sm font-medium text-[#5C5B57] dark:text-zinc-400">
-                لا توجد عروض مفعّلة حالياً — ستظهر هنا تخفيضات المنتجات والهدايا المجانية فور إضافتها من المتاجر.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-              {offerProducts.slice(0, 4).map((product) => {
-                const ownerProf = product.ownerId ? storeProfiles[product.ownerId] : null;
-                const isStoreVerified = Boolean(product.ownerVerified || ownerProf?.isVerified);
-                const badgeText = getProductOfferBadgeText(product);
-                const hasCrossedPrice = Number(product.originalPrice || 0) > Number(product.price || 0);
-
-                return (
-                  <article
-                    key={`offer-${product.id}`}
-                    onClick={() => navigate(`/product/${product.id}`)}
-                    className="group/card rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] p-3 flex flex-col justify-between gap-3 cursor-pointer hover:border-[#111214]/40 dark:hover:border-zinc-500 transition-colors"
-                  >
-                    <div>
-                      <div className="relative aspect-[4/3] rounded-md overflow-hidden bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] mb-3">
-                        <ProductCardImage src={product.image || product.images?.[0]} alt={product.title} />
-                        {badgeText && (
-                          <span className="absolute top-2 right-2 bg-[#111214] dark:bg-[#F4F4F2] text-white dark:text-[#111214] text-[10px] font-bold px-2 py-0.5 rounded-md">
-                            {badgeText}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400 truncate">
-                          <span className="truncate">{product.ownerName || 'متجر معتمد'}</span>
-                          {isStoreVerified && <CheckCircle className={`w-3 h-3 shrink-0 ${getThemeClasses('verified')}`} />}
-                        </div>
-                        <h3 className="font-bold text-xs sm:text-sm line-clamp-1 text-[#111214] dark:text-[#F4F4F2]">
-                          {product.title}
-                        </h3>
-                        {(product.offerExtras || product.offerTitle) && (
-                          <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 line-clamp-1">
-                            {product.offerExtras || product.offerTitle}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E5E2DA] dark:border-[#232730]">
-                      <div className="flex items-baseline gap-1.5 flex-wrap">
-                        <span className={`text-sm font-extrabold tabular-nums ${getThemeClasses('price')}`}>
-                          {Number(product.price || 0).toLocaleString()} ر.ي
-                        </span>
-                        {hasCrossedPrice && (
-                          <span className="text-[11px] text-[#5C5B57] dark:text-zinc-500 line-through tabular-nums">
-                            {Number(product.originalPrice).toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (!user) { login(); return; }
-                          addToCart(product);
-                        }}
-                        className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 transition-colors ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
-                        title="إضافة إلى السلة"
-                        aria-label="إضافة إلى السلة"
-                      >
-                        <ShoppingCart className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
         </section>
       )}
 
@@ -514,15 +404,17 @@ export default function StoreFront() {
 
             <div className="flex items-center gap-1.5">
               <ArrowUpDown className="w-3.5 h-3.5 text-[#5C5B57] dark:text-zinc-400" />
+              <span className="text-[11px] font-semibold text-[#5C5B57] dark:text-zinc-400 hidden sm:inline">الترتيب حسب:</span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                aria-label="ترتيب المنتجات"
+                aria-label="الترتيب حسب"
                 className="min-h-[38px] px-2.5 py-1.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] text-xs font-bold outline-none cursor-pointer"
               >
                 <option value="newest">الأحدث</option>
                 <option value="price-asc">الأقل سعراً</option>
                 <option value="price-desc">الأعلى سعراً</option>
+                <option value="rating-desc">الأعلى تقييماً</option>
               </select>
             </div>
           </div>
@@ -554,13 +446,20 @@ export default function StoreFront() {
           {filteredProducts.map((product) => {
             const ownerProf = product.ownerId ? storeProfiles[product.ownerId] : null;
             const isStoreVerified = Boolean(product.ownerVerified || ownerProf?.isVerified);
-            const canPreOrder = isStoreVerified && (product.isPreOrderEnabled ?? true);
-            const depositAmt = (product.depositAmount && Number(product.depositAmount) > 0)
-              ? Number(product.depositAmount)
-              : Math.max(1000, Math.round(Number(product.price) * 0.2));
+            const isNoDelivery = Boolean(product.noDelivery);
+            const canPreOrder = isNoDelivery || (isStoreVerified && (product.isPreOrderEnabled ?? true));
+            const depositAmt = calculateSafeDeposit(Number(product.price || 0), product.depositAmount);
             const hasOfferActive = isProductOfferActive(product);
             const offerBadge = hasOfferActive ? getProductOfferBadgeText(product) : '';
             const hasCrossedPrice = Number(product.originalPrice || 0) > Number(product.price || 0);
+            const availableVariants = getAvailableProductVariants(product);
+            const baseOutOfStock = isItemOutOfStock(product);
+            const fullyOutOfStock = baseOutOfStock && availableVariants.length === 0;
+            const stockLimit = getStockLimit(product);
+            const inCartQty = cart.find(
+              (c) => (c.product?._cartKey || (c.product?.selectedVariantId ? `${c.product.id}__variant__${c.product.selectedVariantId}` : c.product?.id)) === product.id
+            )?.quantity || 0;
+            const baseAtCartMax = baseOutOfStock || (stockLimit !== null && inCartQty >= stockLimit);
 
             return (
               <article
@@ -582,7 +481,7 @@ export default function StoreFront() {
                     </span>
                   )}
 
-                  {product.stock !== undefined && product.stock !== null && Number(product.stock) <= 0 && (
+                  {fullyOutOfStock && (
                     <div className="absolute inset-0 bg-black/55 flex items-center justify-center z-10">
                       <span className="text-white font-bold text-xs bg-[#111214] px-3 py-1 rounded-md">نفدت الكمية</span>
                     </div>
@@ -592,26 +491,22 @@ export default function StoreFront() {
                 {/* Unboxed Clean Product Typography */}
                 <div className="flex-1 flex flex-col justify-between gap-2">
                   <div className="space-y-1">
-                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400 truncate" onClick={(e) => e.stopPropagation()}>
-                      {product.ownerId ? (
-                        <Link to={`/store/${product.ownerId}`} className="inline-flex items-center gap-1 hover:text-[#111214] dark:hover:text-white truncate">
-                          <span className="truncate">{product.ownerName || 'متجر معتمد'}</span>
-                          {isStoreVerified && <CheckCircle className={`w-3 h-3 shrink-0 ${getThemeClasses('verified')}`} />}
-                        </Link>
-                      ) : (
-                        <span className="truncate">{product.category || 'منتج'}</span>
-                      )}
-                      {ownerProf?.averageRating ? (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="tabular-nums shrink-0">★ {Number(ownerProf.averageRating).toFixed(1)}</span>
-                        </>
-                      ) : null}
-                    </div>
+                    <ProductPublisherMiniCard
+                      product={product}
+                      storeProfile={ownerProf}
+                      variant="compact"
+                    />
 
                     <h3 className="font-bold text-xs sm:text-sm line-clamp-2 text-[#111214] dark:text-[#F4F4F2] leading-snug">
                       {product.title}
                     </h3>
+
+                    {isNoDelivery && (
+                      <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1 line-clamp-1">
+                        <Store className="w-3 h-3 shrink-0" />
+                        <span>لا يوجد توصيل · استلام من المتجر فقط</span>
+                      </p>
+                    )}
 
                     {hasOfferActive && (product.offerExtras || product.offerTitle) && (
                       <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 line-clamp-1">
@@ -633,17 +528,36 @@ export default function StoreFront() {
                         )}
                       </div>
 
-                      {user ? (
+                      {isNoDelivery ? (
                         <button
                           type="button"
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            addToCart(product);
+                            if (!user) {
+                              login();
+                              return;
+                            }
+                            setSelectedPreOrderProduct(product);
                           }}
-                          disabled={product.stock !== undefined && product.stock !== null && Number(product.stock) <= 0}
-                          className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
-                          title="إضافة إلى السلة"
+                          disabled={baseOutOfStock}
+                          className="w-9 h-9 rounded-lg bg-amber-600 hover:bg-amber-700 text-white flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                          title={baseOutOfStock ? 'نفدت الكمية' : 'حجز للاستلام من المتجر (لا يوجد توصيل)'}
+                          aria-label="حجز للاستلام من المتجر"
+                        >
+                          <BookmarkCheck className="h-4 w-4" />
+                        </button>
+                      ) : user ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            addToCart(buildBaseProductForCart(product));
+                          }}
+                          disabled={baseOutOfStock || baseAtCartMax}
+                          className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                          title={baseOutOfStock ? 'نفدت الكمية من المنتج الأساسي' : baseAtCartMax ? 'بلغت الحد الأقصى المتاح بالمخزون' : 'إضافة إلى السلة'}
                           aria-label="إضافة إلى السلة"
                         >
                           <ShoppingCart className="h-4 w-4" />
@@ -663,7 +577,27 @@ export default function StoreFront() {
                       )}
                     </div>
 
-                    {canPreOrder && (
+                    {availableVariants.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setVariantsModalProduct(product);
+                        }}
+                        className="w-full min-h-[34px] py-1.5 px-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] text-[11px] font-bold flex items-center justify-between transition-colors text-[#111214] dark:text-[#F4F4F2]"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5 shrink-0" />
+                          <span>أصناف</span>
+                        </span>
+                        <span className="tabular-nums text-[#5C5B57] dark:text-zinc-400">
+                          {availableVariants.length} متاح
+                        </span>
+                      </button>
+                    )}
+
+                    {canPreOrder && !baseOutOfStock && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -679,7 +613,7 @@ export default function StoreFront() {
                       >
                         <span className="flex items-center gap-1 font-semibold text-[#5C5B57] dark:text-zinc-300">
                           <BookmarkCheck className="w-3.5 h-3.5" />
-                          <span>حجز مسبق</span>
+                          <span>{isNoDelivery ? `حجز للمتجر (${product.reservationDurationDays || 3}أ)` : 'حجز مسبق'}</span>
                         </span>
                         <span className="font-bold tabular-nums">
                           {depositAmt.toLocaleString()} ر.ي
@@ -710,9 +644,18 @@ export default function StoreFront() {
 
       {selectedPreOrderProduct && (
         <PreOrderModal
-          product={selectedPreOrderProduct}
+          product={buildBaseProductForCart(selectedPreOrderProduct)}
           isOpen={!!selectedPreOrderProduct}
           onClose={() => setSelectedPreOrderProduct(null)}
+        />
+      )}
+
+      {variantsModalProduct && (
+        <ProductVariantsModal
+          product={variantsModalProduct}
+          isOpen={!!variantsModalProduct}
+          onClose={() => setVariantsModalProduct(null)}
+          onNavigateToVariant={(pid, vid) => navigate(`/variant/${pid}/${vid}`)}
         />
       )}
     </div>

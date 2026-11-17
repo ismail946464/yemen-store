@@ -55,7 +55,7 @@ service cloud.firestore {
     }
 
     function isValidStoreProfile(data) {
-      return data.keys().hasAny(['userId', 'name', 'description', 'bannerUrl', 'logoUrl', 'whatsapp', 'tiktok', 'instagram', 'ratingCount', 'averageRating', 'averageCredibility', 'updatedAt', 'lastSeen', 'seoTitle', 'seoDescription', 'verified', 'verifiedUntil', 'address', 'city', 'phone'])
+      return data.keys().hasAny(['userId', 'name', 'description', 'bannerUrl', 'logoUrl', 'whatsapp', 'tiktok', 'instagram', 'ratingCount', 'averageRating', 'averageCredibility', 'updatedAt', 'lastSeen', 'seoTitle', 'seoDescription', 'verified', 'verifiedUntil', 'address', 'city', 'district', 'landmark', 'workingHours', 'googleMapsUrl', 'location', 'coordinates', 'phone', 'statsReset', 'adminOptions', 'storeCategoryIds'])
         && (!('userId' in data) || (data.userId is string && data.userId.size() <= 128))
         && (!('name' in data) || (data.name is string && data.name.size() <= 200))
         && (!('description' in data) || (data.description is string && data.description.size() <= 2000))
@@ -67,6 +67,12 @@ service cloud.firestore {
         && (!('phone' in data) || (data.phone is string && data.phone.size() <= 100))
         && (!('address' in data) || (data.address is string && data.address.size() <= 500))
         && (!('city' in data) || (data.city is string && data.city.size() <= 100))
+        && (!('district' in data) || (data.district is string && data.district.size() <= 150))
+        && (!('landmark' in data) || (data.landmark is string && data.landmark.size() <= 300))
+        && (!('workingHours' in data) || (data.workingHours is string && data.workingHours.size() <= 200))
+        && (!('googleMapsUrl' in data) || (data.googleMapsUrl is string && data.googleMapsUrl.size() <= 1000))
+        && (!('location' in data) || data.location == null || data.location is map)
+        && (!('coordinates' in data) || data.coordinates == null || data.coordinates is map)
         && (!('tiktok' in data) || (data.tiktok is string && data.tiktok.size() <= 500))
         && (!('instagram' in data) || (data.instagram is string && data.instagram.size() <= 500))
         && (!('seoTitle' in data) || (data.seoTitle is string && data.seoTitle.size() <= 200))
@@ -74,7 +80,10 @@ service cloud.firestore {
         && (!('ratingCount' in data) || data.ratingCount is number)
         && (!('averageRating' in data) || data.averageRating is number)
         && (!('averageCredibility' in data) || data.averageCredibility is number)
-        && (!('lastSeen' in data) || data.lastSeen is string);
+        && (!('lastSeen' in data) || data.lastSeen is string)
+        && (!('statsReset' in data) || data.statsReset == null || data.statsReset is map)
+        && (!('adminOptions' in data) || data.adminOptions == null || (data.adminOptions is list && data.adminOptions.size() <= 30))
+        && (!('storeCategoryIds' in data) || data.storeCategoryIds == null || (data.storeCategoryIds is list && data.storeCategoryIds.size() <= 20));
     }
 
     function isValidRating(data) {
@@ -111,21 +120,19 @@ service cloud.firestore {
     }
 
     function isValidStat(data) {
-      return data.keys().hasAny(['totalVisitors', 'totalRegistered', 'onlineCount', 'mainStoreLastSeen'])
-        && (!('totalVisitors' in data) || data.totalVisitors is number)
-        && (!('totalRegistered' in data) || data.totalRegistered is number)
-        && (!('onlineCount' in data) || data.onlineCount is number)
-        && (!('mainStoreLastSeen' in data) || data.mainStoreLastSeen is string);
+      return data.keys().hasAny(['totalVisitors', 'totalRegistered', 'onlineCount', 'mainStoreLastSeen', 'dailyVisits', 'statsReset'])
+        && (!('totalVisitors' in data) || data.totalVisitors == null || data.totalVisitors is number)
+        && (!('totalRegistered' in data) || data.totalRegistered == null || data.totalRegistered is number)
+        && (!('onlineCount' in data) || data.onlineCount == null || data.onlineCount is number)
+        && (!('mainStoreLastSeen' in data) || data.mainStoreLastSeen == null || data.mainStoreLastSeen is string)
+        && (!('dailyVisits' in data) || data.dailyVisits == null || data.dailyVisits is map)
+        && (!('statsReset' in data) || data.statsReset == null || data.statsReset is map);
     }
 
     match /stats/{statId} {
       allow read: if true;
-      allow create: if true;
-      allow update: if (isValidStat(incoming()) && (
-        isAdmin() || 
-        (incoming().diff(existing()).affectedKeys().hasAny(['totalVisitors', 'totalRegistered'])) ||
-        (isStore() && incoming().diff(existing()).affectedKeys().hasOnly(['mainStoreLastSeen']))
-      ));
+      allow create: if isValidStat(incoming());
+      allow update: if isValidStat(incoming());
     }
     
     function isValidProduct(data) {
@@ -137,18 +144,26 @@ service cloud.firestore {
         && (!('image' in data) || (data.image is string && data.image.size() <= 2000000))
         && (!('images' in data) || (data.images is list && data.images.size() <= 20))
         && (!('available' in data) || data.available is bool)
-        && (!('status' in data) || data.status is string)
+        && (!('status' in data) || data.status in ['queued', 'pending_review', 'active', 'rejected', 'draft'])
+        && (!('moderationStatus' in data) || data.moderationStatus == null || data.moderationStatus in ['queued', 'pending_review', 'approved', 'rejected'])
+        && (!('rejectionReason' in data) || data.rejectionReason == null || (data.rejectionReason is string && data.rejectionReason.size() <= 1000))
+        && (!('queuedAt' in data) || data.queuedAt == null || (data.queuedAt is string && data.queuedAt.size() <= 100))
+        && (!('submittedForReviewAt' in data) || data.submittedForReviewAt == null || (data.submittedForReviewAt is string && data.submittedForReviewAt.size() <= 100))
+        && (!('reviewedAt' in data) || data.reviewedAt == null || (data.reviewedAt is string && data.reviewedAt.size() <= 100))
+        && (!('reviewedBy' in data) || data.reviewedBy == null || (data.reviewedBy is string && data.reviewedBy.size() <= 128))
         && (!('stock' in data) || data.stock is number || data.stock == null)
         && (!('ownerId' in data) || (data.ownerId is string && data.ownerId.size() <= 128))
+        && (!('ownerName' in data) || data.ownerName == null || (data.ownerName is string && data.ownerName.size() <= 200))
         && (!('ownerPhotoURL' in data) || (data.ownerPhotoURL is string && data.ownerPhotoURL.size() <= 2000000))
         && (!('externalLink' in data) || (data.externalLink is string && data.externalLink.size() <= 2000))
         && (!('averageRating' in data) || data.averageRating is number)
         && (!('ratingCount' in data) || data.ratingCount is number)
         && (!('deliveryFee' in data) || data.deliveryFee is number)
+        && (!('noDelivery' in data) || data.noDelivery is bool)
         && (!('isPreOrderEnabled' in data) || data.isPreOrderEnabled is bool)
-        && (!('depositAmount' in data) || data.depositAmount is number)
-        && (!('reservationDurationDays' in data) || data.reservationDurationDays is number)
-        && (!('reservationTerms' in data) || (data.reservationTerms is string && data.reservationTerms.size() <= 2000))
+        && (!('depositAmount' in data) || data.depositAmount == null || data.depositAmount is number)
+        && (!('reservationDurationDays' in data) || data.reservationDurationDays == null || data.reservationDurationDays is number)
+        && (!('reservationTerms' in data) || data.reservationTerms == null || (data.reservationTerms is string && data.reservationTerms.size() <= 2000))
         && (!('hasOffer' in data) || data.hasOffer is bool)
         && (!('offerType' in data) || data.offerType == null || (data.offerType is string && data.offerType.size() <= 50))
         && (!('originalPrice' in data) || data.originalPrice == null || (data.originalPrice is number && data.originalPrice >= 0))
@@ -156,6 +171,15 @@ service cloud.firestore {
         && (!('offerTitle' in data) || data.offerTitle == null || (data.offerTitle is string && data.offerTitle.size() <= 200))
         && (!('offerExtras' in data) || data.offerExtras == null || (data.offerExtras is string && data.offerExtras.size() <= 1000))
         && (!('offerExpiresAt' in data) || data.offerExpiresAt == null || (data.offerExpiresAt is string && data.offerExpiresAt.size() <= 100))
+        && (!('variants' in data) || (
+          data.variants is list
+          && data.variants.size() <= 30
+          && (data.variants.size() == 0 || (
+            data.variants[0] is map
+            && (!('ownerId' in data) || !('storeId' in data.variants[0]) || data.variants[0].storeId == data.ownerId)
+          ))
+        ))
+        && (!('adminOptions' in data) || data.adminOptions == null || (data.adminOptions is list && data.adminOptions.size() <= 30))
         && (!('createdAt' in data) || data.createdAt is string)
         && (!('updatedAt' in data) || data.updatedAt is string);
     }
@@ -196,6 +220,42 @@ service cloud.firestore {
       allow create, update: if isValidCategory(incoming());
       allow delete: if true;
     }
+
+    function isValidStoreCategory(data) {
+      return data.keys().hasAll(['name', 'slug'])
+        && data.name is string && data.name.size() <= 100
+        && data.slug is string && data.slug.size() <= 100
+        && (!('icon' in data) || (data.icon is string && data.icon.size() <= 50))
+        && (!('order' in data) || data.order is number);
+    }
+
+    match /storeCategories/{categoryId} {
+      allow read: if true;
+      allow create, update: if isValidStoreCategory(incoming());
+      allow delete: if true;
+    }
+
+    function isValidBannerAd(data) {
+      return data.keys().hasAll(['image', 'order', 'active'])
+        && data.image is string && data.image.size() > 0 && data.image.size() <= 950000
+        && data.order is number && data.order >= 1 && data.order <= 20
+        && data.active is bool
+        && (!('title' in data) || data.title == null || (data.title is string && data.title.size() <= 200))
+        && (!('subtitle' in data) || data.subtitle == null || (data.subtitle is string && data.subtitle.size() <= 500))
+        && (!('badgeText' in data) || data.badgeText == null || (data.badgeText is string && data.badgeText.size() <= 80))
+        && (!('buttonText' in data) || data.buttonText == null || (data.buttonText is string && data.buttonText.size() <= 100))
+        && (!('targetStoreId' in data) || data.targetStoreId == null || (data.targetStoreId is string && data.targetStoreId.size() <= 128))
+        && (!('targetStoreName' in data) || data.targetStoreName == null || (data.targetStoreName is string && data.targetStoreName.size() <= 200))
+        && (!('customLink' in data) || data.customLink == null || (data.customLink is string && data.customLink.size() <= 2000))
+        && (!('createdAt' in data) || data.createdAt is string)
+        && (!('updatedAt' in data) || data.updatedAt is string);
+    }
+
+    match /bannerAds/{adId} {
+      allow read: if true;
+      allow create, update: if isValidBannerAd(incoming());
+      allow delete: if true;
+    }
     
     function isValidMessage(data) {
       return data.keys().hasAll(['createdAt', 'senderId', 'recipientId', 'conversationId', 'participants'])
@@ -234,7 +294,7 @@ service cloud.firestore {
     }
     
     function isValidSettings(data) {
-      return data.keys().hasAny(['storeName', 'storeLogo', 'storeTheme', 'storeFont', 'heroBanner', 'heroTitle', 'heroSubtitle', 'heroButtonText', 'heroLink', 'showHeroBanner', 'adminContacts', 'bannerMessage', 'themeColor', 'customCss', 'features', 'storeFonts', 'seoTitle', 'seoDescription', 'seoKeywords', 'cleanupMonths', 'autoCleanupEnabled', 'geminiApiKey', 'siteIcon', 'siteIconShape', 'siteIconBg', 'siteIconSize', 'siteIconBorder', 'storePublicUrl', 'storeHandle'])
+      return data.keys().hasAny(['storeName', 'storeLogo', 'storeTheme', 'storeFont', 'heroBanner', 'heroTitle', 'heroSubtitle', 'heroButtonText', 'heroLink', 'showHeroBanner', 'adminContacts', 'bannerMessage', 'themeColor', 'customCss', 'features', 'storeFonts', 'seoTitle', 'seoDescription', 'seoKeywords', 'cleanupMonths', 'autoCleanupEnabled', 'geminiApiKey', 'siteIcon', 'siteIconShape', 'siteIconBg', 'siteIconSize', 'siteIconBorder', 'storePublicUrl', 'storeHandle', 'discoveryConfig', 'allowUserThemeOverride'])
         && (!('storeName' in data) || (data.storeName is string && data.storeName.size() <= 1000))
         && (!('storeLogo' in data) || (data.storeLogo is string && data.storeLogo.size() <= 2000000))
         && (!('siteIcon' in data) || (data.siteIcon is string && data.siteIcon.size() <= 2000000))
@@ -263,7 +323,9 @@ service cloud.firestore {
         && (!('seoDescription' in data) || (data.seoDescription is string && data.seoDescription.size() <= 500))
         && (!('seoKeywords' in data) || (data.seoKeywords is string && data.seoKeywords.size() <= 500))
         && (!('cleanupMonths' in data) || data.cleanupMonths is number)
-        && (!('autoCleanupEnabled' in data) || data.autoCleanupEnabled is bool);
+        && (!('autoCleanupEnabled' in data) || data.autoCleanupEnabled is bool)
+        && (!('allowUserThemeOverride' in data) || data.allowUserThemeOverride is bool)
+        && (!('discoveryConfig' in data) || data.discoveryConfig == null || data.discoveryConfig is map);
     }
 
     function isValidNotification(data) {
@@ -324,7 +386,19 @@ service cloud.firestore {
         && (!('storeAddress' in data) || (data.storeAddress is string && data.storeAddress.size() <= 500))
         && (!('storePhone' in data) || (data.storePhone is string && data.storePhone.size() <= 100))
         && (!('customerAddress' in data) || (data.customerAddress is string && data.customerAddress.size() <= 500))
-        && (!('deliveryFee' in data) || data.deliveryFee is number);
+        && (!('deliveryFee' in data) || data.deliveryFee is number)
+        && (!('subtotal' in data) || data.subtotal is number)
+        && (!('proposedDeliveryFee' in data) || data.proposedDeliveryFee == null || (data.proposedDeliveryFee is number && data.proposedDeliveryFee >= 0))
+        && (!('deliveryFeeApprovalStatus' in data) || data.deliveryFeeApprovalStatus == null || data.deliveryFeeApprovalStatus in ['pending_customer', 'accepted', 'rejected', 'expired'])
+        && (!('deliveryFeeAcceptMinutes' in data) || data.deliveryFeeAcceptMinutes == null || (data.deliveryFeeAcceptMinutes is number && data.deliveryFeeAcceptMinutes >= 1))
+        && (!('deliveryFeeProposedAt' in data) || data.deliveryFeeProposedAt == null || (data.deliveryFeeProposedAt is string && data.deliveryFeeProposedAt.size() <= 100))
+        && (!('deliveryFeeExpiresAt' in data) || data.deliveryFeeExpiresAt == null || (data.deliveryFeeExpiresAt is string && data.deliveryFeeExpiresAt.size() <= 100))
+        && (!('deliveryFeeRespondedAt' in data) || data.deliveryFeeRespondedAt == null || (data.deliveryFeeRespondedAt is string && data.deliveryFeeRespondedAt.size() <= 100))
+        && (!('deliveryFeeExpiredAt' in data) || data.deliveryFeeExpiredAt == null || (data.deliveryFeeExpiredAt is string && data.deliveryFeeExpiredAt.size() <= 100))
+        && (!('noDelivery' in data) || data.noDelivery == null || data.noDelivery is bool)
+        && (!('fulfillmentType' in data) || data.fulfillmentType == null || data.fulfillmentType in ['delivery', 'store_pickup'])
+        && (!('depositForfeited' in data) || data.depositForfeited == null || data.depositForfeited is bool)
+        && (!('depositForfeitedAt' in data) || data.depositForfeitedAt == null || (data.depositForfeitedAt is string && data.depositForfeitedAt.size() <= 100));
     }
 
     match /orders/{orderId} {

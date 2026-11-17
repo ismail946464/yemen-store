@@ -131,11 +131,32 @@ async function startServer() {
 
   app.post("/api/auth/update-profile", async (req, res) => {
     try {
+      const rawHeader = req.headers?.authorization || req.headers?.Authorization;
+      const authHeader = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+      const caller = await verifyAuthToken(authHeader);
+      if (!caller) {
+        return res.status(401).json({
+          success: false,
+          message: "غير مصرح: يرجى تسجيل الدخول أولاً لتحديث الملف الشخصي"
+        });
+      }
+
       const { email, name, phone, photoURL } = req.body || {};
-      if (!email) {
+      const targetEmail = String(email || caller.email || "").trim().toLowerCase();
+      if (!targetEmail) {
         return res.status(400).json({ success: false, message: "البريد الإلكتروني مطلوب" });
       }
-      const result = await processUpdateProfile({ email, name, phone, photoURL });
+
+      const callerEmail = (caller.email || "").trim().toLowerCase();
+      const isCallerAdmin = caller.role === "admin" || Boolean(caller.isMasterAdmin);
+      if (callerEmail !== targetEmail && !isCallerAdmin) {
+        return res.status(403).json({
+          success: false,
+          message: "مرفوض: لا يمكنك تعديل بيانات حساب آخر"
+        });
+      }
+
+      const result = await processUpdateProfile({ email: targetEmail, name, phone, photoURL });
       return res.status(result.success ? 200 : 400).json(result);
     } catch (err: any) {
       console.error("update-profile error:", err);
@@ -255,8 +276,10 @@ async function startServer() {
     }
   });
 
-  // 3. Sender & SMTP Configuration Info
+  // 3. Sender & SMTP Configuration Info (Admin only)
   app.get("/api/auth/otp-settings", async (req, res) => {
+    const admin = await requireAdminAuth(req, res);
+    if (!admin) return;
     try {
       const config = await getSenderConfig();
       return res.json({
@@ -364,8 +387,10 @@ async function startServer() {
     }
   });
 
-  // 6.1 Test Gemini API Connection
+  // 6.1 Test Gemini API Connection (Admin only)
   app.post("/api/ai/test-gemini", async (req, res) => {
+    const admin = await requireAdminAuth(req, res);
+    if (!admin) return;
     try {
       const { apiKey } = req.body || {};
       let keyToTest = apiKey;
@@ -397,15 +422,37 @@ async function startServer() {
   });
 
   // Vite middleware for development (with HMR disabled per constraints) vs static dist for production
+  // Initialize Vite asynchronously so port 3000 binds immediately for health/readiness checks
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
+    let viteInstance: any = null;
+    const vitePromise = createViteServer({
       server: {
         middlewareMode: true,
         hmr: false,
       },
       appType: "spa",
+    })
+      .then((vite) => {
+        viteInstance = vite;
+        return vite;
+      })
+      .catch((err) => {
+        console.error("Vite dev server creation error:", err);
+        throw err;
+      });
+
+    app.use(async (req, res, next) => {
+      if (req.path.startsWith("/api/")) return next();
+      try {
+        const vite = viteInstance || (await vitePromise);
+        if (vite) {
+          return vite.middlewares(req, res, next);
+        }
+        return next();
+      } catch (err) {
+        return next(err);
+      }
     });
-    app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));

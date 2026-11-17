@@ -28,7 +28,22 @@
         "image": { "type": "string" },
         "images": { "type": "array", "items": { "type": "string" } },
         "available": { "type": "boolean" },
+        "stock": { "type": ["number", "null"] },
+        "status": {
+          "type": "string",
+          "enum": ["queued", "pending_review", "active", "rejected", "draft"]
+        },
+        "moderationStatus": {
+          "type": ["string", "null"],
+          "enum": ["queued", "pending_review", "approved", "rejected", null]
+        },
+        "rejectionReason": { "type": ["string", "null"] },
+        "queuedAt": { "type": ["string", "null"] },
+        "submittedForReviewAt": { "type": ["string", "null"] },
+        "reviewedAt": { "type": ["string", "null"] },
+        "reviewedBy": { "type": ["string", "null"] },
         "ownerId": { "type": "string" },
+        "ownerName": { "type": ["string", "null"] },
         "externalLink": { "type": "string" },
         "averageRating": { "type": "number" },
         "ratingCount": { "type": "number" },
@@ -38,7 +53,21 @@
         "discountPercent": { "type": "number" },
         "offerTitle": { "type": "string" },
         "offerExtras": { "type": "string" },
-        "offerExpiresAt": { "type": "string" }
+        "offerExpiresAt": { "type": "string" },
+        "noDelivery": { "type": "boolean" },
+        "isPreOrderEnabled": { "type": "boolean" },
+        "depositAmount": { "type": ["number", "null"] },
+        "reservationDurationDays": { "type": ["number", "null"] },
+        "reservationTerms": { "type": ["string", "null"] },
+        "variants": {
+          "type": "array",
+          "description": "Individual product variants added exclusively by the publishing store."
+        },
+        "adminOptions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Filter/badge option IDs assigned exclusively by admin."
+        }
       },
       "required": ["title", "price", "category"]
     },
@@ -66,6 +95,38 @@
         "slug": { "type": "string" }
       },
       "required": ["name", "slug"]
+    },
+    "StoreCategory": {
+      "title": "Store Category",
+      "description": "Admin-managed directory category for stores (e.g., pharmacies, malls, shops, mechanic workshops).",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "icon": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["name", "slug"]
+    },
+    "BannerAd": {
+      "title": "Banner Ad",
+      "description": "Admin-managed hero advertising banner slot (up to 5 slots, linked to a store or promo).",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "subtitle": { "type": ["string", "null"] },
+        "badgeText": { "type": ["string", "null"] },
+        "image": { "type": "string" },
+        "buttonText": { "type": ["string", "null"] },
+        "targetStoreId": { "type": ["string", "null"] },
+        "targetStoreName": { "type": ["string", "null"] },
+        "customLink": { "type": ["string", "null"] },
+        "order": { "type": "number" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["image", "order", "active"]
     },
     "Message": {
       "title": "Message",
@@ -102,13 +163,55 @@
       "properties": {
         "userId": { "type": "string" },
         "items": { "type": "array" },
+        "subtotal": { "type": "number" },
         "total": { "type": "number" },
-        "status": { "type": "string", "enum": ["pending", "processing", "shipped", "delivered"] },
+        "deliveryFee": { "type": "number" },
+        "proposedDeliveryFee": { "type": ["number", "null"] },
+        "deliveryFeeApprovalStatus": {
+          "type": "string",
+          "enum": ["pending_customer", "accepted", "rejected", "expired"]
+        },
+        "deliveryFeeAcceptMinutes": { "type": ["number", "null"] },
+        "deliveryFeeProposedAt": { "type": ["string", "null"] },
+        "deliveryFeeExpiresAt": { "type": ["string", "null"] },
+        "deliveryFeeRespondedAt": { "type": ["string", "null"] },
+        "deliveryFeeExpiredAt": { "type": ["string", "null"] },
+        "courierId": { "type": ["string", "null"] },
+        "courierName": { "type": ["string", "null"] },
+        "courierPhone": { "type": ["string", "null"] },
+        "deliveryStatus": { "type": ["string", "null"] },
+        "noDelivery": { "type": ["boolean", "null"] },
+        "fulfillmentType": { "type": ["string", "null"], "enum": ["delivery", "store_pickup", null] },
+        "isPreOrder": { "type": ["boolean", "null"] },
+        "depositAmount": { "type": ["number", "null"] },
+        "remainingAmount": { "type": ["number", "null"] },
+        "reservationDurationDays": { "type": ["number", "null"] },
+        "reservationExpiresAt": { "type": ["string", "null"] },
+        "reservationStatus": { "type": ["string", "null"] },
+        "reservationTerms": { "type": ["string", "null"] },
+        "depositForfeited": { "type": ["boolean", "null"] },
+        "depositForfeitedAt": { "type": ["string", "null"] },
+        "storeAddress": { "type": ["string", "null"] },
+        "storePhone": { "type": ["string", "null"] },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "processing",
+            "shipped",
+            "delivered",
+            "cancelled",
+            "reserved",
+            "deposit_paid",
+            "reservation_expired",
+            "out_for_delivery"
+          ]
+        },
         "paymentMethod": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "total", "status"]
-   },
+    },
     "StoreProfile": {
       "title": "Store Profile",
       "description": "Information about a specific store.",
@@ -122,13 +225,28 @@
         "verified": { "type": "boolean" },
         "verifiedUntil": { "type": "string" },
         "whatsapp": { "type": "string" },
+        "phone": { "type": "string" },
+        "city": { "type": "string" },
+        "district": { "type": "string" },
+        "address": { "type": "string" },
+        "landmark": { "type": "string" },
+        "workingHours": { "type": "string" },
+        "googleMapsUrl": { "type": "string" },
+        "location": { "type": ["object", "null"] },
+        "coordinates": { "type": ["object", "null"] },
         "tiktok": { "type": "string" },
         "instagram": { "type": "string" },
         "seoTitle": { "type": "string" },
         "seoDescription": { "type": "string" },
         "ratingCount": { "type": "number" },
         "averageRating": { "type": "number" },
-        "averageCredibility": { "type": "number" }
+        "averageCredibility": { "type": "number" },
+        "statsReset": { "type": ["object", "null"] },
+        "storeCategoryIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Admin-assigned store category IDs."
+        }
       }
     },
     "Rating": {
@@ -167,7 +285,9 @@
       "properties": {
         "totalVisitors": { "type": "number" },
         "totalRegistered": { "type": "number" },
-        "onlineCount": { "type": "number" }
+        "onlineCount": { "type": "number" },
+        "dailyVisits": { "type": "object" },
+        "statsReset": { "type": ["object", "null"] }
       }
     },
     "Settings": {
@@ -190,7 +310,8 @@
         "seoDescription": { "type": "string" },
         "seoKeywords": { "type": "string" },
         "cleanupMonths": { "type": "number" },
-        "autoCleanupEnabled": { "type": "boolean" }
+        "autoCleanupEnabled": { "type": "boolean" },
+        "discoveryConfig": { "type": ["object", "null"] }
       }
     },
     "Deployment": {
@@ -256,6 +377,14 @@
     "storeProfiles/{userId}": {
       "schema": { "$ref": "#/entities/StoreProfile" },
       "description": "Store profiles."
+    },
+    "storeCategories/{categoryId}": {
+      "schema": { "$ref": "#/entities/StoreCategory" },
+      "description": "Admin-managed store directory categories."
+    },
+    "bannerAds/{adId}": {
+      "schema": { "$ref": "#/entities/BannerAd" },
+      "description": "Admin-managed hero advertising banner spaces (up to 5)."
     },
     "storeWallets/{storeId}": {
       "schema": { "$ref": "#/entities/StoreWallet" },

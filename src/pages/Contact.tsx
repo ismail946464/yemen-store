@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare, Send, ArrowRight, User, Clock, Check, CheckCheck,
   Loader2, Search, PenSquare, ChevronDown, Camera, BadgeCheck, Trash2,
-  X, Download, Bot, ShoppingBag
+  X, Download, Bot, ShoppingBag, Truck
 } from 'lucide-react';
 import { db, auth } from '../firebase';
 import {
@@ -26,12 +26,13 @@ import { useAppContext } from '../AppContext';
 import toast from 'react-hot-toast';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
+import { SYSTEM_DELIVERY_SENDER_ID } from '../lib/deliveryFeeUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { askStoreAssistant } from '../services/geminiService';
 import { runStandaloneStoreAi } from '../services/storeAiEngine';
 
 export default function Contact() {
-  const { userData, user, getThemeClasses, settings, markMessagesAsRead, openLoginModal } = useAppContext();
+  const { userData, user, isDelivery, getThemeClasses, settings, markMessagesAsRead, openLoginModal } = useAppContext();
   const currentStoreName = settings?.storeName || 'يمن ستور';
   const aiAssistantName = `مستشار ${currentStoreName}`;
   const navigate = useNavigate();
@@ -182,6 +183,8 @@ export default function Contact() {
 
     if (recipientId === 'admin') {
       setRecipientProfile({ name: 'إدارة المتجر', role: 'admin' });
+    } else if (recipientId === SYSTEM_DELIVERY_SENDER_ID) {
+      setRecipientProfile({ name: 'إدارة التوصيل - النظام', role: 'system' });
     } else {
       const fetchRecipient = async () => {
         try {
@@ -213,7 +216,7 @@ export default function Contact() {
     const fetchMissingProfiles = async () => {
       const missingIds = conversations
         .map(c => c.participants.find((p: string) => p !== user?.uid))
-        .filter((id): id is string => !!id && id !== 'admin' && !userProfilesCache[id]);
+        .filter((id): id is string => !!id && id !== 'admin' && id !== SYSTEM_DELIVERY_SENDER_ID && !userProfilesCache[id]);
 
       if (missingIds.length === 0) return;
 
@@ -935,7 +938,9 @@ export default function Contact() {
                   }`}
                 >
                   <div className="w-11 h-11 rounded-lg bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] flex items-center justify-center overflow-hidden shrink-0">
-                    {(userProfilesCache[otherId || '']?.photoURL || userProfilesCache[otherId || '']?.logoUrl) ? (
+                    {otherId === SYSTEM_DELIVERY_SENDER_ID ? (
+                      <Truck className="text-amber-600 dark:text-amber-400 w-5 h-5" />
+                    ) : (userProfilesCache[otherId || '']?.photoURL || userProfilesCache[otherId || '']?.logoUrl) ? (
                       <img
                         src={userProfilesCache[otherId || '']?.photoURL || userProfilesCache[otherId || '']?.logoUrl}
                         className="w-full h-full object-cover"
@@ -955,9 +960,13 @@ export default function Contact() {
                       }`}>
                         {otherId === 'admin'
                           ? 'إدارة المتجر'
-                          : (userProfilesCache[otherId || '']?.name || userProfilesCache[otherId || '']?.displayName || userProfilesCache[otherId || '']?.username || userProfilesCache[otherId || '']?.storeName || `مستخدم (${otherId?.slice(0, 5)})`)}
+                          : otherId === SYSTEM_DELIVERY_SENDER_ID
+                            ? 'إدارة التوصيل - النظام'
+                            : (userProfilesCache[otherId || '']?.name || userProfilesCache[otherId || '']?.displayName || userProfilesCache[otherId || '']?.username || userProfilesCache[otherId || '']?.storeName || `مستخدم (${otherId?.slice(0, 5)})`)}
                       </span>
-                      {otherId === 'admin' && <BadgeCheck className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />}
+                      {(otherId === 'admin' || otherId === SYSTEM_DELIVERY_SENDER_ID) && (
+                        <BadgeCheck className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                      )}
                     </div>
                     <p className={`text-xs truncate ${
                       isUnread
@@ -1083,6 +1092,10 @@ export default function Contact() {
                   <div className={`w-10 h-10 rounded-lg ${getThemeClasses('bg')} text-white flex items-center justify-center shrink-0`}>
                     <Bot className="w-5 h-5" />
                   </div>
+                ) : recipientId === SYSTEM_DELIVERY_SENDER_ID ? (
+                  <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 flex items-center justify-center shrink-0">
+                    <Truck className="w-5 h-5" />
+                  </div>
                 ) : (
                   <div className="w-10 h-10 rounded-lg bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] overflow-hidden flex items-center justify-center shrink-0">
                     {recipientProfile?.logoUrl || recipientProfile?.photoURL ? (
@@ -1096,18 +1109,28 @@ export default function Contact() {
                     <h3 className="font-display font-bold text-[#111214] dark:text-[#F4F4F2] text-sm sm:text-base leading-tight truncate">
                       {recipientId === 'ai_assistant'
                         ? aiAssistantName
-                        : (recipientProfile?.name || recipientProfile?.displayName || recipientProfile?.username || recipientProfile?.storeName || (recipientId ? `مستخدم (${recipientId.slice(0, 5)})` : 'جاري التحميل...'))}
+                        : recipientId === SYSTEM_DELIVERY_SENDER_ID
+                          ? 'إدارة التوصيل - النظام'
+                          : (recipientProfile?.name || recipientProfile?.displayName || recipientProfile?.username || recipientProfile?.storeName || (recipientId ? `مستخدم (${recipientId.slice(0, 5)})` : 'جاري التحميل...'))}
                     </h3>
                     {recipientId === 'ai_assistant' ? (
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-[#EFEDE6] dark:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] border border-[#E5E2DA] dark:border-[#232730] shrink-0">
                         مستشار المتجر
+                      </span>
+                    ) : recipientId === SYSTEM_DELIVERY_SENDER_ID ? (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 shrink-0">
+                        رسائل النظام
                       </span>
                     ) : recipientId === 'admin' ? (
                       <BadgeCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                     ) : null}
                   </div>
                   <p className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400 truncate">
-                    {recipientId === 'ai_assistant' ? 'الإجابة الفورية عن منتجات وأسعار المتجر' : 'محادثة مباشرة'}
+                    {recipientId === 'ai_assistant'
+                      ? 'الإجابة الفورية عن منتجات وأسعار المتجر'
+                      : recipientId === SYSTEM_DELIVERY_SENDER_ID
+                        ? 'إشعارات رسوم التوصيل وحالة الطلبات الآلية'
+                        : 'محادثة مباشرة'}
                   </p>
                 </div>
               </div>
@@ -1184,6 +1207,7 @@ export default function Contact() {
                   const currentUid = user?.uid || 'guest';
                   const isMine = m.senderId === currentUid;
                   const isAi = m.senderId === 'ai_assistant';
+                  const isSystemDelivery = m.senderId === SYSTEM_DELIVERY_SENDER_ID;
                   const showDate = i === 0 || new Date(activeMessages[i - 1].createdAt).toDateString() !== new Date(m.createdAt).toDateString();
 
                   return (
@@ -1205,7 +1229,7 @@ export default function Contact() {
                           className={`max-w-[92%] sm:max-w-[85%] md:max-w-[75%] px-4 py-3 rounded-lg relative ${
                             isMine
                               ? `${getThemeClasses('bg')} text-white`
-                              : isAi
+                              : isAi || isSystemDelivery
                                 ? 'bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] border border-[#E5E2DA] dark:border-[#232730]'
                                 : 'bg-[#EFEDE6] dark:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] border border-[#E5E2DA] dark:border-[#232730]'
                           }`}
@@ -1214,6 +1238,13 @@ export default function Contact() {
                             <div className="flex items-center gap-1.5 pb-2 mb-2 border-b border-[#E5E2DA] dark:border-[#232730] text-[11px] font-bold text-[#5C5B57] dark:text-zinc-400">
                               <Bot className="w-3.5 h-3.5" />
                               <span>{aiAssistantName}</span>
+                            </div>
+                          )}
+
+                          {isSystemDelivery && (
+                            <div className="flex items-center gap-1.5 pb-2 mb-2 border-b border-[#E5E2DA] dark:border-[#232730] text-[11px] font-bold text-amber-700 dark:text-amber-400">
+                              <Truck className="w-3.5 h-3.5" />
+                              <span>إدارة التوصيل - النظام الآلي</span>
                             </div>
                           )}
 
@@ -1232,6 +1263,18 @@ export default function Contact() {
                           )}
 
                           {m.text && <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">{m.text}</p>}
+
+                          {isSystemDelivery && (
+                            <div className="mt-3 pt-2.5 border-t border-[#E5E2DA] dark:border-[#232730]">
+                              <Link
+                                to={isDelivery ? '/delivery' : '/orders'}
+                                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white transition`}
+                              >
+                                <Truck className="w-3.5 h-3.5" />
+                                <span>{isDelivery ? 'الانتقال إلى بوابة التوصيل' : 'مراجعة الطلب وقبول / رفض الرسوم'}</span>
+                              </Link>
+                            </div>
+                          )}
 
                           {/* Product Cards from Store Consultant */}
                           {m.productCards && Array.isArray(m.productCards) && m.productCards.length > 0 && (
@@ -1337,6 +1380,20 @@ export default function Contact() {
             </div>
 
             {/* Composer Bar */}
+            {recipientId === SYSTEM_DELIVERY_SENDER_ID ? (
+              <div className="p-3 sm:p-4 border-t border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] shrink-0 z-10 flex flex-wrap items-center justify-between gap-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+                <p className="text-xs font-medium text-[#5C5B57] dark:text-zinc-400">
+                  هذه الرسائل تصلك تلقائياً من نظام التوصيل ولا تحتاج للرد كتابياً هنا.
+                </p>
+                <Link
+                  to={isDelivery ? '/delivery' : '/orders'}
+                  className={`min-h-[44px] px-4 py-2 rounded-lg text-xs font-bold ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white transition inline-flex items-center gap-1.5`}
+                >
+                  <Truck className="w-4 h-4" />
+                  <span>{isDelivery ? 'إدارة التوصيلات' : 'الانتقال لصفحة الطلبات'}</span>
+                </Link>
+              </div>
+            ) : (
             <div className="p-3 sm:p-4 border-t border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] shrink-0 z-10 space-y-2 pb-[max(12px,env(safe-area-inset-bottom))]">
               {recipientId === 'ai_assistant' && (
                 <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 text-xs">
@@ -1439,6 +1496,7 @@ export default function Contact() {
                 </button>
               </form>
             </div>
+            )}
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-10 text-center space-y-4 bg-[#FAF9F6]/50 dark:bg-[#0A0B0D]/30">

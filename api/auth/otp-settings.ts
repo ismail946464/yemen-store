@@ -1,4 +1,5 @@
 import { getSenderConfig } from "../_lib/otpService.js";
+import { requireAdminAuth } from "../_lib/authMiddleware.js";
 
 export default async function handler(req: any, res: any) {
   res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -13,6 +14,9 @@ export default async function handler(req: any, res: any) {
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
+
+  const admin = await requireAdminAuth(req, res);
+  if (!admin) return;
 
   try {
     const config = await getSenderConfig();

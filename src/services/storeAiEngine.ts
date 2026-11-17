@@ -317,8 +317,12 @@ export function runStandaloneStoreAi(
       let productContext = '';
       if (analysis.matchedProducts.length > 0) {
         const p = analysis.matchedProducts[0];
-        const deposit = p.depositAmount || Math.round(p.price * 0.2);
-        productContext = `\n\n📌 مثال على منتج "${p.title}":\n• السعر الإجمالي: ${p.price.toLocaleString()} ر.ي\n• العربون المطلوب: ${deposit.toLocaleString()} ر.ي فقط\n• المتبقي عند الاستلام: ${(p.price - deposit).toLocaleString()} ر.ي`;
+        const safePrice = Math.max(0, Math.round(Number(p.price || 0)));
+        const rawDep = Number(p.depositAmount || 0);
+        const deposit = safePrice > 0
+          ? Math.min(safePrice, rawDep > 0 ? Math.round(rawDep) : Math.max(1000, Math.round(safePrice * 0.2)))
+          : 0;
+        productContext = `\n\n📌 مثال على منتج "${p.title}":\n• السعر الإجمالي: ${safePrice.toLocaleString()} ر.ي\n• العربون المطلوب: ${deposit.toLocaleString()} ر.ي فقط\n• المتبقي عند الاستلام: ${Math.max(0, safePrice - deposit).toLocaleString()} ر.ي`;
       }
 
       return {
@@ -348,7 +352,7 @@ export function runStandaloneStoreAi(
 
     case 'shipping_delivery': {
       return {
-        reply: `خدمات الشحن والتوصيل في منصة ${storeName}: 🛵📦\n\n• تغطية جغرافية شاملة: نوفر التوصيل السريع داخل المدن الرئيسية (صنعاء، عدن، تعز، الحديدة، المكلا، إب، ذمار) ولكافة المحافظات اليمنية.\n• أجور التوصيل: محددة ورمزية وتبدأ غالباً من 1,500 ريال يمني داخل المدينة الواحدة، وتظهر محسوبة بدقة في سلة الشراء قبل التأكيد.\n• تتبع دقيق بالملاحة: يتم ربط الطلب بمندوب توصيل معتمد يتحرك بملاحة الـ GPS من موقع المتجر إلى موقعك الجغرافي مباشرة.\n• فحص وسلامة الشحنة: يلتزم المندوب بتسليمك الطرد مغلفاً ومحمياً وفق معايير سلامة البضائع.`,
+        reply: `خدمات الشحن والتوصيل في منصة ${storeName}: 🛵📦\n\n• تغطية جغرافية شاملة: نوفر التوصيل السريع داخل المدن الرئيسية (صنعاء، عدن، تعز، الحديدة، المكلا، إب، ذمار) ولكافة المحافظات اليمنية.\n• أجور التوصيل: يحددها كل متجر وتظهر بوضوح في بطاقة المنتج وسلة الشراء قبل تأكيد الطلب (وقد تكون مجانية ضمن العروض).\n• تتبع دقيق بالملاحة: يتم ربط الطلب بمندوب توصيل معتمد يتحرك بملاحة الـ GPS من موقع المتجر إلى موقعك الجغرافي مباشرة.\n• فحص وسلامة الشحنة: يلتزم المندوب بتسليمك الطرد مغلفاً ومحمياً وفق معايير سلامة البضائع.`,
         products: [],
         suggestedQuestions: [
           'كم المدة المستغرقة لوصول الطلب؟',
@@ -400,9 +404,10 @@ export function runStandaloneStoreAi(
 
     case 'contact_support': {
       const adminContacts = settings?.adminContacts || [];
-      const primaryPhone = adminContacts[0]?.phone || '777000000';
+      const primaryPhone = String(adminContacts[0]?.phone || '').trim();
+      const phoneLine = primaryPhone ? `\n• الهاتف والواتساب المعتمد: ${primaryPhone}` : '';
       return {
-        reply: `مركز الدعم والتواصل المباشر مع إدارة ${storeName}: 📞🤝\n\nنحن هنا لخدمتك ومساعدتك في أي استفسار أو شكوى:\n\n• المراسلة الفورية داخل التطبيق:\nيمكنك إرسال رسالة مباشرة لحساب "الإدارة" عبر صفحة الرسائل الحالية وسيقوم فريق الدعم بالرد عليك فوراً.\n• الهاتف والواتساب المعتمد: ${primaryPhone}\n• فريق خدمة العملاء متاح يومياً لمتابعة الشحنات والرد على استفسارات المتاجر والمشترين.`,
+        reply: `مركز الدعم والتواصل المباشر مع إدارة ${storeName}: 📞🤝\n\nنحن هنا لخدمتك ومساعدتك في أي استفسار أو شكوى:\n\n• المراسلة الفورية داخل التطبيق:\nيمكنك إرسال رسالة مباشرة لحساب "الإدارة" عبر صفحة الرسائل الحالية وسيقوم فريق الدعم بالرد عليك فوراً.${phoneLine}\n• فريق خدمة العملاء متاح يومياً لمتابعة الشحنات والرد على استفسارات المتاجر والمشترين.`,
         products: [],
         suggestedQuestions: [
           'مراسلة الإدارة الآن',

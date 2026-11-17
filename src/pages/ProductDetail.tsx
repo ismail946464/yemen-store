@@ -1,27 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc, collection, query, where, orderBy, onSnapshot, addDoc, updateDoc } from 'firebase/firestore';
 import { useAppContext } from '../AppContext';
 import {
   ShoppingCart, ArrowRight, Share2, ShieldCheck, Truck,
   CheckCircle, Store, MessageCircle, Star, Send, User,
-  Image as ImageIcon, PackageX, BookmarkCheck, ShoppingBag, Percent, Gift
+  Image as ImageIcon, PackageX, BookmarkCheck, ShoppingBag, Percent, Gift, Layers, ChevronDown, ChevronUp, Plus, Minus,
+  MapPin, Phone, ExternalLink
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PreOrderModal from '../components/PreOrderModal';
+import ProductVariantsModal from '../components/ProductVariantsModal';
+import ProductPublisherMiniCard from '../components/ProductPublisherMiniCard';
 import { ProductDetailSkeleton } from '../components/Skeletons';
 import { isProductOfferActive, getOfferTypeLabel, getProductDiscountPercent, getProductOfferBadgeText } from '../lib/offerUtils';
+import {
+  getAvailableProductVariants,
+  buildBaseProductForCart,
+} from '../lib/variantUtils';
+import { getStockLimit, isItemOutOfStock, calculateSafeDeposit } from '../lib/stockUtils';
 
 export default function ProductDetail() {
-  const { productId } = useParams<{ productId: string }>();
+  const { productId, slug } = useParams<{ productId: string; slug?: string }>();
+  const [searchParams] = useSearchParams();
+  const initialVariantId = searchParams.get('variant');
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeImage, setActiveImage] = useState<string>('');
   const [imgFailed, setImgFailed] = useState(false);
 
-  const { addToCart, getThemeClasses, user, login } = useAppContext();
+  const { addToCart, cart, getThemeClasses, user, isAdmin, login } = useAppContext();
   const navigate = useNavigate();
   const [storeProfile, setStoreProfile] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
@@ -29,6 +39,18 @@ export default function ProductDetail() {
   const [newComment, setNewComment] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
   const [showPreOrderModal, setShowPreOrderModal] = useState(false);
+  const [showVariantsDrawer, setShowVariantsDrawer] = useState(false);
+  const [showVariantsModal, setShowVariantsModal] = useState(false);
+  const [quantity, setQuantity] = useState(1);
+
+  useEffect(() => {
+    if (productId && initialVariantId) {
+      const target = slug
+        ? `/s/${slug}/variant/${productId}/${initialVariantId}`
+        : `/variant/${productId}/${initialVariantId}`;
+      navigate(target, { replace: true });
+    }
+  }, [productId, initialVariantId, slug, navigate]);
 
   useEffect(() => {
     if (!productId) return;
@@ -155,7 +177,10 @@ export default function ProductDetail() {
 
   if (loading) return <ProductDetailSkeleton />;
 
-  if (notFound || !product) {
+  const isPubliclyVisible = product?.status === 'active';
+  const canBypassVisibility = Boolean(product && (isAdmin || (user?.uid && user.uid === product.ownerId)));
+
+  if (notFound || !product || (!isPubliclyVisible && !canBypassVisibility)) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4 py-12" dir="rtl">
         <div className="w-16 h-16 rounded-lg bg-[#EFEDE6] dark:bg-[#1C1F26] text-[#5C5B57] dark:text-zinc-300 flex items-center justify-center mb-5 border border-[#E5E2DA] dark:border-[#232730]">
@@ -186,20 +211,39 @@ export default function ProductDetail() {
     );
   }
 
+  const availableVariants = getAvailableProductVariants(product);
+  const baseProductForPurchase = buildBaseProductForCart(product);
+  const effectivePrice = Number(product?.price || 0);
+  const effectiveOriginalPrice = Number(product?.originalPrice || 0);
+  const effectiveStockLimit = getStockLimit(product);
+  const activeCartKey = product.id;
+  const inCartQty = cart.find(
+    (item) => (item.product?._cartKey || (item.product?.selectedVariantId ? `${item.product.id}__variant__${item.product.selectedVariantId}` : item.product?.id)) === activeCartKey
+  )?.quantity || 0;
+  const remainingAddable = effectiveStockLimit !== null ? Math.max(0, effectiveStockLimit - inCartQty) : null;
+  const safeQuantity = remainingAddable !== null
+    ? Math.max(1, Math.min(quantity, Math.max(1, remainingAddable)))
+    : Math.max(1, quantity);
+
   const isStoreVerified = Boolean(
     product?.ownerVerified ||
     (storeProfile && Boolean(storeProfile.verified) && (!storeProfile.verifiedUntil || storeProfile.verifiedUntil === '' || new Date(storeProfile.verifiedUntil).getTime() >= Date.now()))
   );
-  const canPreOrder = isStoreVerified && (product?.isPreOrderEnabled ?? true);
-  const isOutOfStock = product.stock !== undefined && product.stock !== null && Number(product.stock) <= 0;
-  const depositAmount = (product.depositAmount && Number(product.depositAmount) > 0)
-    ? Number(product.depositAmount)
-    : Math.max(1000, Math.round(Number(product.price) * 0.2));
+  const isNoDelivery = Boolean(product?.noDelivery);
+  const canPreOrder = isNoDelivery || (isStoreVerified && (product?.isPreOrderEnabled ?? true));
+  const isOutOfStock = isItemOutOfStock(product);
+  const reachedCartMax = remainingAddable !== null && remainingAddable <= 0 && !isOutOfStock;
+  const depositAmount = calculateSafeDeposit(effectivePrice, product.depositAmount);
+  const remainingDepositAmount = Math.max(0, effectivePrice - depositAmount);
+  const reservationDays = Math.max(1, Number(product.reservationDurationDays) || 3);
   const hasOfferActive = isProductOfferActive(product);
-  const offerDiscountPct = getProductDiscountPercent(product);
-  const hasCrossedPrice = Number(product.originalPrice || 0) > Number(product.price || 0);
-  const savingsAmount = hasCrossedPrice ? Number(product.originalPrice) - Number(product.price) : 0;
+  const offerDiscountPct = effectiveOriginalPrice > effectivePrice
+    ? Math.round(((effectiveOriginalPrice - effectivePrice) / effectiveOriginalPrice) * 100)
+    : getProductDiscountPercent(product);
+  const hasCrossedPrice = effectiveOriginalPrice > effectivePrice;
+  const savingsAmount = hasCrossedPrice ? effectiveOriginalPrice - effectivePrice : 0;
   const offerBadge = hasOfferActive ? getProductOfferBadgeText(product) : '';
+  const variantRouteBase = slug ? `/s/${slug}/variant/${product.id}` : `/variant/${product.id}`;
 
   return (
     <div className="py-2 sm:py-4 space-y-12" dir="rtl">
@@ -212,6 +256,18 @@ export default function ProductDetail() {
           <ArrowRight className="w-4 h-4" />
           <span>رجوع</span>
         </button>
+
+        {!isPubliclyVisible && canBypassVisibility && (
+          <div className="mb-6 p-3.5 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center justify-between gap-3 flex-wrap">
+            <span>معاينة داخلية — هذا المنتج غير منشور للعامة حالياً (قائمة الانتظار / بانتظار المراجعة) ولا يمكن شراؤه.</span>
+            <Link
+              to="/admin?tab=products"
+              className="px-3 py-1.5 rounded-md bg-amber-900 text-white dark:bg-amber-400 dark:text-[#111214] text-[11px] font-bold hover:opacity-90 transition-opacity"
+            >
+              إدارة الحالة والمراجعة
+            </Link>
+          </div>
+        )}
 
         {/* Contiguous Two-Column Purchase Architecture */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
@@ -288,7 +344,7 @@ export default function ProductDetail() {
                 <span>{product.category || 'منتج'}</span>
                 <span aria-hidden="true">·</span>
                 <span className={isOutOfStock ? 'text-rose-600' : 'text-emerald-700 dark:text-emerald-400'}>
-                  {isOutOfStock ? 'نفدت الكمية' : `متوفر${product.stock !== undefined && product.stock !== null ? ` (${product.stock} وحدة)` : ''}`}
+                  {isOutOfStock ? 'نفدت الكمية' : `متوفر${effectiveStockLimit !== null ? ` (${effectiveStockLimit} وحدة)` : ''}`}
                 </span>
                 {product.ownerName && (
                   <>
@@ -306,15 +362,31 @@ export default function ProductDetail() {
               </h1>
 
               <div className="flex items-center gap-2 text-xs text-[#5C5B57] dark:text-zinc-400">
-                <div className="flex items-center gap-1 text-amber-500">
-                  <Star className="w-4 h-4 fill-current" />
-                  <span className="font-bold text-[#111214] dark:text-[#F4F4F2] tabular-nums">
-                    {product.averageRating ? Number(product.averageRating).toFixed(1) : '5.0'}
-                  </span>
-                </div>
-                <span aria-hidden="true">·</span>
-                <span className="tabular-nums">{product.ratingCount || 0} تقييم</span>
+                {Number(product.ratingCount) > 0 && Number(product.averageRating) > 0 ? (
+                  <>
+                    <div className="flex items-center gap-1 text-amber-500">
+                      <Star className="w-4 h-4 fill-current" />
+                      <span className="font-bold text-[#111214] dark:text-[#F4F4F2] tabular-nums">
+                        {Number(product.averageRating).toFixed(1)}
+                      </span>
+                    </div>
+                    <span aria-hidden="true">·</span>
+                    <span className="tabular-nums">{product.ratingCount} تقييم</span>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-1 text-[#5C5B57] dark:text-zinc-400">
+                    <Star className="w-4 h-4" />
+                    <span className="font-semibold">بدون تقييمات بعد</span>
+                  </div>
+                )}
               </div>
+
+              <ProductPublisherMiniCard
+                product={product}
+                storeProfile={storeProfile}
+                variant="detail"
+                storePathPrefix={slug ? `/s/${slug}/store` : '/store'}
+              />
             </div>
 
             {/* Price Ledger Line */}
@@ -326,13 +398,13 @@ export default function ProductDetail() {
                 <div className="flex items-baseline gap-2.5 flex-wrap">
                   <div className="flex items-baseline gap-1.5">
                     <span className={`text-3xl font-extrabold tabular-nums ${getThemeClasses('price')}`}>
-                      {Number(product.price || 0).toLocaleString()}
+                      {effectivePrice.toLocaleString()}
                     </span>
                     <span className="text-sm font-semibold text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
                   </div>
                   {hasCrossedPrice && (
                     <span className="text-base font-bold text-[#5C5B57] dark:text-zinc-500 line-through tabular-nums">
-                      {Number(product.originalPrice).toLocaleString()} ر.ي
+                      {effectiveOriginalPrice.toLocaleString()} ر.ي
                     </span>
                   )}
                   {offerDiscountPct > 0 && (
@@ -342,7 +414,12 @@ export default function ProductDetail() {
                   )}
                 </div>
               </div>
-              {hasOfferActive && product.offerType === 'free_delivery' ? (
+              {isNoDelivery ? (
+                <span className="text-xs font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                  <Store className="w-4 h-4" />
+                  <span>لا يوجد توصيل — الاستلام من المتجر فقط</span>
+                </span>
+              ) : hasOfferActive && product.offerType === 'free_delivery' ? (
                 <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                   <Truck className="w-4 h-4" />
                   توصيل مجاني ضمن العرض
@@ -354,6 +431,76 @@ export default function ProductDetail() {
                 </span>
               ) : null}
             </div>
+
+            {/* Independent Variants Directory Shortcut (أصناف مستقلة) */}
+            {availableVariants.length > 0 && (
+              <div className="p-4 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setShowVariantsDrawer((v) => !v)}
+                    className="flex items-center gap-2 text-xs sm:text-sm font-extrabold text-[#111214] dark:text-[#F4F4F2] hover:opacity-80 transition-opacity"
+                  >
+                    <span className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${getThemeClasses('bg')}`}>
+                      <Layers className="w-4 h-4" />
+                    </span>
+                    <div className="text-right">
+                      <span className="block">أصناف مستقلة متوفرة ({availableVariants.length})</span>
+                      <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400 block">
+                        اضغط على أي صنف للانتقال إلى قائمته الخاصة دون التأثير على هذا المنتج
+                      </span>
+                    </div>
+                    {showVariantsDrawer ? <ChevronUp className="w-4 h-4 mr-1" /> : <ChevronDown className="w-4 h-4 mr-1" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowVariantsModal(true)}
+                    className="min-h-[36px] px-3 py-1.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] text-xs font-bold flex items-center gap-1.5 transition-colors"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>أصناف ({availableVariants.length})</span>
+                  </button>
+                </div>
+
+                {showVariantsDrawer && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-[#E5E2DA] dark:border-[#232730]">
+                    {availableVariants.map((variant) => {
+                      const vImg = variant.image || product.image || product.images?.[0];
+                      return (
+                        <button
+                          key={variant.id}
+                          type="button"
+                          onClick={() => navigate(`${variantRouteBase}/${variant.id}`)}
+                          className="p-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#FAF9F6] dark:hover:bg-[#1C1F26] text-right flex items-center gap-2.5 transition-colors"
+                        >
+                          <div className="w-11 h-11 rounded-md overflow-hidden bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] shrink-0 flex items-center justify-center">
+                            {vImg ? (
+                              <img src={vImg} alt={variant.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <ImageIcon className="w-4 h-4 text-[#5C5B57] opacity-40" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-xs text-[#111214] dark:text-[#F4F4F2] line-clamp-1">
+                              {variant.name}
+                            </p>
+                            {variant.notes && (
+                              <p className="text-[10px] text-[#5C5B57] dark:text-zinc-400 line-clamp-1">
+                                {variant.notes}
+                              </p>
+                            )}
+                            <p className={`text-xs font-extrabold tabular-nums mt-0.5 ${getThemeClasses('price')}`}>
+                              {Number(variant.price).toLocaleString()} ر.ي
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Active Offer & Add-ons Ledger */}
             {hasOfferActive && (
@@ -395,35 +542,191 @@ export default function ProductDetail() {
                   <span>شراء عبر الرابط الخارجي</span>
                   <ArrowRight className="w-4 h-4 rotate-180" />
                 </a>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              ) : isNoDelivery ? (
+                <div className="rounded-lg p-5 border border-amber-300 dark:border-amber-800/60 bg-amber-50/70 dark:bg-amber-950/20 space-y-4">
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0">
+                        <Store className="w-4.5 h-4.5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-sm text-[#111214] dark:text-[#F4F4F2]">
+                          حجز للاستلام من المتجر فقط (لا يوجد توصيل)
+                        </h3>
+                        <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400">
+                          يُحجز المنتج بدفع العربون وتحضر للمتجر للاستلام ودفع الباقي خلال المهلة
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 text-center py-3 border-y border-amber-200 dark:border-amber-800/50 bg-white/70 dark:bg-[#131519]/70 rounded-md">
+                    <div className="border-e border-amber-200 dark:border-amber-800/50 px-2">
+                      <span className="text-[10px] text-[#5C5B57] dark:text-zinc-400 block">قيمة العربون</span>
+                      <span className="text-sm sm:text-base font-extrabold text-amber-700 dark:text-amber-400 tabular-nums">
+                        {depositAmount.toLocaleString()} ر.ي
+                      </span>
+                    </div>
+                    <div className="border-e border-amber-200 dark:border-amber-800/50 px-2">
+                      <span className="text-[10px] text-[#5C5B57] dark:text-zinc-400 block">الباقي بالمتجر</span>
+                      <span className="text-sm sm:text-base font-extrabold text-[#111214] dark:text-[#F4F4F2] tabular-nums">
+                        {remainingDepositAmount.toLocaleString()} ر.ي
+                      </span>
+                    </div>
+                    <div className="px-2">
+                      <span className="text-[10px] text-[#5C5B57] dark:text-zinc-400 block">مدة الحضور</span>
+                      <span className="text-sm sm:text-base font-extrabold text-[#111214] dark:text-[#F4F4F2] tabular-nums">
+                        {reservationDays} أيام
+                      </span>
+                    </div>
+                  </div>
+
+                  {(storeProfile?.address || storeProfile?.city || storeProfile?.whatsapp || storeProfile?.phone || storeProfile?.googleMapsUrl || storeProfile?.location || storeProfile?.coordinates) && (
+                    <div className="p-3 rounded-md bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[#111214] dark:text-zinc-200">
+                        {(storeProfile?.address || storeProfile?.city) && (
+                          <span className="inline-flex items-center gap-1 font-medium">
+                            <MapPin className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+                            <span>{[storeProfile?.city, storeProfile?.address].filter(Boolean).join(' — ')}</span>
+                          </span>
+                        )}
+                        {(storeProfile?.whatsapp || storeProfile?.phone) && (
+                          <span className="inline-flex items-center gap-1 font-mono font-bold tabular-nums" dir="ltr">
+                            <Phone className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <span>{storeProfile.whatsapp || storeProfile.phone}</span>
+                          </span>
+                        )}
+                      </div>
+                      {(storeProfile?.googleMapsUrl || storeProfile?.location || storeProfile?.coordinates) && (
+                        <a
+                          href={
+                            storeProfile.googleMapsUrl ||
+                            `https://www.google.com/maps?q=${(storeProfile.location || storeProfile.coordinates).lat},${(storeProfile.location || storeProfile.coordinates).lng}`
+                          }
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 font-bold text-sky-700 dark:text-sky-300 hover:underline"
+                        >
+                          <span>موقع المتجر بالخريطة</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-rose-700 dark:text-rose-300 leading-relaxed font-semibold">
+                    تنبيه: لا يتوفر توصيل لهذا المنتج. إذا لم تحضر للمتجر لاستلامه خلال ({reservationDays}) أيام، يُلغى الحجز تلقائياً ويذهب العربون للمتجر.
+                  </p>
+
                   <button
                     type="button"
                     onClick={() => {
+                      if (!isPubliclyVisible) {
+                        toast.error('هذا المنتج قيد المراجعة ولم يُنشر للعامة بعد');
+                        return;
+                      }
                       if (!user) { login(); return; }
-                      addToCart(product);
+                      setShowPreOrderModal(true);
                     }}
-                    disabled={isOutOfStock}
-                    className="w-full min-h-[46px] border border-[#111214] dark:border-[#F4F4F2] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] py-3 rounded-lg font-bold transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-40"
+                    disabled={isOutOfStock || !isPubliclyVisible}
+                    className={`w-full min-h-[48px] py-3 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
                   >
-                    <ShoppingCart className="w-4 h-4" />
-                    <span>{isOutOfStock ? 'نفدت الكمية' : (user ? 'أضف للسلة' : 'سجل دخولك للشراء')}</span>
+                    <BookmarkCheck className="w-4 h-4" />
+                    <span>
+                      {!isPubliclyVisible
+                        ? 'الحجز متاح بعد النشر للعامة'
+                        : isOutOfStock
+                          ? 'نفدت الكمية — الحجز غير متاح'
+                          : user
+                            ? `حجز للاستلام من المتجر الآن (${depositAmount.toLocaleString()} ر.ي)`
+                            : 'سجل دخولك لحجز المنتج من المتجر'}
+                    </span>
                   </button>
-
+                </div>
+              ) : (
+                <div className="space-y-2.5">
                   {!isOutOfStock && (
+                    <div className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519]">
+                      <div className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">
+                        <span>الكمية المطلوبة</span>
+                        {inCartQty > 0 && (
+                          <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 mr-2 tabular-nums">
+                            (بالسلة: {inCartQty})
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26]">
+                        <button
+                          type="button"
+                          onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                          disabled={safeQuantity <= 1 || reachedCartMax}
+                          aria-label="إنقاص الكمية"
+                          className="w-9 h-9 flex items-center justify-center text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] transition-colors rounded-r-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="w-10 text-center text-sm font-extrabold text-[#111214] dark:text-[#F4F4F2] tabular-nums">
+                          {reachedCartMax ? 0 : safeQuantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setQuantity((q) => {
+                            const next = q + 1;
+                            return remainingAddable !== null ? Math.min(next, remainingAddable) : next;
+                          })}
+                          disabled={reachedCartMax || (remainingAddable !== null && safeQuantity >= remainingAddable)}
+                          aria-label="زيادة الكمية"
+                          className="w-9 h-9 flex items-center justify-center text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] transition-colors rounded-l-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <button
                       type="button"
                       onClick={() => {
+                        if (!isPubliclyVisible) {
+                          toast.error('هذا المنتج قيد المراجعة ولم يُنشر للعامة بعد');
+                          return;
+                        }
                         if (!user) { login(); return; }
-                        addToCart(product);
-                        navigate('/cart');
+                        addToCart(baseProductForPurchase, safeQuantity);
                       }}
-                      className={`w-full min-h-[46px] py-3 rounded-lg font-bold transition-colors flex items-center justify-center gap-2 text-sm ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                      disabled={isOutOfStock || reachedCartMax || !isPubliclyVisible}
+                      className="w-full min-h-[46px] border border-[#111214] dark:border-[#F4F4F2] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] py-3 rounded-lg font-bold transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      <ShoppingBag className="w-4 h-4" />
-                      <span>شراء وإتمام الآن</span>
+                      <ShoppingCart className="w-4 h-4" />
+                      <span>
+                        {!isPubliclyVisible
+                          ? 'غير منشور للعامة بعد'
+                          : isOutOfStock
+                            ? 'نفدت الكمية'
+                            : reachedCartMax
+                              ? 'أضفت كامل المتاح للسلة'
+                              : (user ? 'أضف للسلة' : 'سجل دخولك للشراء')}
+                      </span>
                     </button>
-                  )}
+
+                    {!isOutOfStock && isPubliclyVisible && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!user) { login(); return; }
+                          if (!reachedCartMax) {
+                            addToCart(baseProductForPurchase, safeQuantity);
+                          }
+                          navigate(slug ? `/s/${slug}/cart` : '/cart');
+                        }}
+                        className={`w-full min-h-[46px] py-3 rounded-lg font-bold transition-colors flex items-center justify-center gap-2 text-sm ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                      >
+                        <ShoppingBag className="w-4 h-4" />
+                        <span>{reachedCartMax ? 'الانتقال للسلة وإتمام الطلب' : 'شراء وإتمام الآن'}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -449,10 +752,18 @@ export default function ProductDetail() {
 
               <div className="grid grid-cols-2 border border-[#E5E2DA] dark:border-[#232730] rounded-lg bg-white dark:bg-[#131519] overflow-hidden">
                 <div className="flex items-center gap-2.5 p-3.5 border-e border-[#E5E2DA] dark:border-[#232730]">
-                  <Truck className="w-4 h-4 text-[#5C5B57] dark:text-zinc-400 shrink-0" />
+                  {isNoDelivery ? (
+                    <Store className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  ) : (
+                    <Truck className="w-4 h-4 text-[#5C5B57] dark:text-zinc-400 shrink-0" />
+                  )}
                   <div>
-                    <span className="block font-bold text-[#111214] dark:text-[#F4F4F2] text-xs">توصيل مباشر</span>
-                    <span className="text-[#5C5B57] dark:text-zinc-400 text-[11px]">استلام حتى بابك</span>
+                    <span className="block font-bold text-[#111214] dark:text-[#F4F4F2] text-xs">
+                      {isNoDelivery ? 'حجز واستلام من المتجر' : 'توصيل مباشر'}
+                    </span>
+                    <span className="text-[#5C5B57] dark:text-zinc-400 text-[11px]">
+                      {isNoDelivery ? 'المدة محددة بالعربون' : 'استلام حتى بابك'}
+                    </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2.5 p-3.5">
@@ -465,8 +776,8 @@ export default function ProductDetail() {
               </div>
             </div>
 
-            {/* Pre-Order Ledger */}
-            {canPreOrder && (
+            {/* Pre-Order Ledger (for delivery-enabled verified products) */}
+            {canPreOrder && !isNoDelivery && (
               <div className="rounded-lg p-5 border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] space-y-4">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5">
@@ -501,13 +812,18 @@ export default function ProductDetail() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (!isPubliclyVisible) {
+                      toast.error('هذا المنتج قيد المراجعة ولم يُنشر للعامة بعد');
+                      return;
+                    }
                     if (!user) { login(); return; }
                     setShowPreOrderModal(true);
                   }}
-                  className={`w-full min-h-[44px] py-2.5 rounded-lg font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-2 ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                  disabled={isOutOfStock || !isPubliclyVisible}
+                  className={`w-full min-h-[44px] py-2.5 rounded-lg font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
                 >
                   <BookmarkCheck className="w-4 h-4" />
-                  <span>حجز مسبق للسلعة</span>
+                  <span>{!isPubliclyVisible ? 'الحجز متاح بعد النشر للعامة' : isOutOfStock ? 'نفدت الكمية — الحجز غير متاح' : 'حجز مسبق للسلعة'}</span>
                 </button>
               </div>
             )}
@@ -517,9 +833,21 @@ export default function ProductDetail() {
 
       {showPreOrderModal && (
         <PreOrderModal
-          product={product}
+          product={baseProductForPurchase}
           isOpen={showPreOrderModal}
           onClose={() => setShowPreOrderModal(false)}
+        />
+      )}
+
+      {showVariantsModal && (
+        <ProductVariantsModal
+          product={product}
+          isOpen={showVariantsModal}
+          onClose={() => setShowVariantsModal(false)}
+          onNavigateToVariant={(pid, vid) => {
+            const target = slug ? `/s/${slug}/variant/${pid}/${vid}` : `/variant/${pid}/${vid}`;
+            navigate(target);
+          }}
         />
       )}
 

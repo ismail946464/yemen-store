@@ -61,13 +61,13 @@ export async function testGeminiConnection(customApiKey?: string): Promise<{ suc
 
   try {
     const res = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-4-hydrogen',
       contents: 'مرحباً، أجب بكلمة واحدة: متصل'
     });
     return {
       success: true,
       message: 'تم الاتصال بنموذج Google Gemini بنجاح! الذكاء الاصطناعي جاهز للعمل.',
-      model: 'gemini-3.8-flash'
+      model: 'gemini-4-hydrogen'
     };
   } catch (err: any) {
     return {
@@ -162,7 +162,7 @@ ${catalogSnippet || 'لا توجد منتجات حالياً'}
     });
 
     const generatePromise = ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-4-hydrogen',
       contents: contents as any,
       config: {
         systemInstruction,

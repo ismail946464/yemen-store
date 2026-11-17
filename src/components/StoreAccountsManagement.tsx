@@ -40,7 +40,7 @@ export default function StoreAccountsManagement() {
   const [updatedRole, setUpdatedRole] = useState<'user' | 'store' | 'admin' | 'delivery'>('user');
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const [deletingEmail, setDeletingEmail] = useState<string | null>(null);
+  const [deletingTarget, setDeletingTarget] = useState<{ email: string; uid: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchAccounts = async () => {
@@ -175,7 +175,7 @@ export default function StoreAccountsManagement() {
   };
 
   const handleDeleteAccount = async () => {
-    if (!deletingEmail) return;
+    if (!deletingTarget) return;
 
     setIsDeleting(true);
     try {
@@ -188,13 +188,13 @@ export default function StoreAccountsManagement() {
         },
         body: JSON.stringify({
           action: 'delete',
-          payload: { email: deletingEmail }
+          payload: { email: deletingTarget.email, id: deletingTarget.uid }
         })
       });
       const data = await res.json();
       if (data.success) {
         toast.success('تم حذف الحساب بنجاح');
-        setDeletingEmail(null);
+        setDeletingTarget(null);
         fetchAccounts();
       } else {
         toast.error(data.message || 'فشل الحذف');
@@ -413,7 +413,7 @@ export default function StoreAccountsManagement() {
 
                           {!isMaster && (
                             <button
-                              onClick={() => setDeletingEmail(acc.email)}
+                              onClick={() => setDeletingTarget({ email: acc.email, uid: acc.uid })}
                               className="w-9 h-9 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-[#5C5B57] dark:text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-md transition flex items-center justify-center"
                               title="حذف الحساب"
                             >
@@ -562,7 +562,7 @@ export default function StoreAccountsManagement() {
                   type="text"
                   value={updatedPassword}
                   onChange={(e) => setUpdatedPassword(e.target.value)}
-                  placeholder={`الحالية: ${editingAccount.password}`}
+                  placeholder="أدخل كلمة مرور جديدة (4 أحرف+)"
                   className="w-full min-h-[44px] px-3.5 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] font-mono text-sm text-emerald-700 dark:text-emerald-400 outline-none focus:border-[#111214] dark:focus:border-zinc-400"
                   dir="ltr"
                 />
@@ -609,7 +609,7 @@ export default function StoreAccountsManagement() {
       )}
 
       {/* Delete Confirmation Modal */}
-      {deletingEmail && (
+      {deletingTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs" dir="rtl">
           <div className="w-full max-w-sm rounded-xl p-6 border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] shadow-xl text-center space-y-4">
             <div className="w-12 h-12 mx-auto bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/60 text-rose-600 dark:text-rose-400 rounded-lg flex items-center justify-center">
@@ -618,13 +618,13 @@ export default function StoreAccountsManagement() {
 
             <div>
               <h3 className="font-display text-base font-bold mb-1">هل أنت متأكد من حذف الحساب؟</h3>
-              <p className="text-xs text-[#5C5B57] dark:text-zinc-400 font-mono" dir="ltr">{deletingEmail}</p>
+              <p className="text-xs text-[#5C5B57] dark:text-zinc-400 font-mono" dir="ltr">{deletingTarget.email}</p>
             </div>
 
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setDeletingEmail(null)}
+                onClick={() => setDeletingTarget(null)}
                 className="flex-1 min-h-[44px] py-2.5 bg-[#FAF9F6] hover:bg-[#EFEDE6] dark:bg-[#101216] dark:hover:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] rounded-lg text-xs font-bold transition"
               >
                 إلغاء

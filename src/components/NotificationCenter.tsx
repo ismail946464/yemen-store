@@ -65,16 +65,10 @@ export default function NotificationCenter() {
       <button
         type="button"
         aria-label="التنبيهات"
-        onClick={() => {
-          const next = !isOpen;
-          setIsOpen(next);
-          if (next && unreadCount > 0) {
-            notifications.forEach(n => !n.read && markAsRead(n.id));
-          }
-        }}
+        onClick={() => setIsOpen((prev) => !prev)}
         className="relative w-10 h-10 flex items-center justify-center rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition-colors"
       >
-        <Bell className="w-4.5 h-4.5" />
+        <Bell className="w-[18px] h-[18px]" />
         {unreadCount > 0 && (
           <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-rose-600 text-white text-[10px] font-bold tabular-nums rounded-md flex items-center justify-center border border-white dark:border-[#0A0B0D]">
             {unreadCount > 9 ? '9+' : unreadCount}

@@ -21,11 +21,20 @@ import {
   BookmarkCheck,
   ShoppingBag,
   Loader2,
+  Layers,
+  MapPin,
+  Clock,
+  Navigation,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { isProductOfferActive, getProductOfferBadgeText } from '../lib/offerUtils';
+import { getAvailableProductVariants, buildBaseProductForCart } from '../lib/variantUtils';
+import { getStockLimit, isItemOutOfStock, calculateSafeDeposit } from '../lib/stockUtils';
 import PreOrderModal from '../components/PreOrderModal';
+import ProductVariantsModal from '../components/ProductVariantsModal';
+import ProductPublisherMiniCard from '../components/ProductPublisherMiniCard';
 import { ProductGridSkeleton } from '../components/Skeletons';
+import { StoreCategoryItem, sortStoreCategories, getAssignedStoreCategories } from '../lib/storeCategories';
 
 function StoreProductImage({ src, alt }: { src?: string; alt: string }) {
   const [failed, setFailed] = useState(false);
@@ -54,11 +63,12 @@ function StoreProductImage({ src, alt }: { src?: string; alt: string }) {
 export default function StoreProfile() {
   const userId = useParams().userId;
   const navigate = useNavigate();
-  const { getThemeClasses, addToCart, user, userData, isAdmin, login } = useAppContext();
+  const { getThemeClasses, addToCart, cart, user, userData, isAdmin, login } = useAppContext();
   const [profile, setProfile] = useState<any>(null);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPreOrderProduct, setSelectedPreOrderProduct] = useState<any | null>(null);
+  const [variantsModalProduct, setVariantsModalProduct] = useState<any | null>(null);
   const [showLinks, setShowLinks] = useState(false);
   const [showRatingModal, setShowRatingModal] = useState(false);
 
@@ -67,6 +77,7 @@ export default function StoreProfile() {
   const [userComment, setUserComment] = useState('');
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
   const [ratings, setRatings] = useState<any[]>([]);
+  const [storeCategories, setStoreCategories] = useState<StoreCategoryItem[]>([]);
 
   const isOnline = profile?.lastSeen && (new Date().getTime() - new Date(profile.lastSeen).getTime()) < 75000;
   const isVerified = Boolean(profile?.verified) && (!profile?.verifiedUntil || profile?.verifiedUntil === '' || new Date(profile.verifiedUntil).getTime() >= Date.now());
@@ -76,11 +87,15 @@ export default function StoreProfile() {
       if (!userId) return;
       setLoading(true);
       try {
-        const [profileSnap, pSnap, rSnap] = await Promise.all([
+        const [profileSnap, pSnap, rSnap, scSnap] = await Promise.all([
           getDoc(doc(db, 'storeProfiles', userId)),
           getDocs(query(collection(db, 'products'), where('ownerId', '==', userId))),
           getDocs(query(collection(db, 'ratings'), where('storeId', '==', userId))),
+          getDocs(collection(db, 'storeCategories')),
         ]);
+        setStoreCategories(
+          sortStoreCategories(scSnap.docs.map(d => ({ id: d.id, ...d.data() })) as StoreCategoryItem[])
+        );
 
         if (profileSnap.exists()) {
           setProfile(profileSnap.data());
@@ -100,7 +115,11 @@ export default function StoreProfile() {
           }
         }
 
-        setProducts(pSnap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() })));
+        setProducts(
+          pSnap.docs
+            .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
+            .filter((p: any) => p.status === 'active')
+        );
         setRatings(rSnap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() })));
       } catch (e) {
         console.error(e);
@@ -254,6 +273,23 @@ export default function StoreProfile() {
                     </>
                   )}
                 </div>
+
+                {(() => {
+                  const assignedCats = getAssignedStoreCategories(profile, storeCategories);
+                  if (assignedCats.length === 0) return null;
+                  return (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {assignedCats.map((cat) => (
+                        <span
+                          key={cat.id}
+                          className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded bg-[#FAF9F6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-zinc-200"
+                        >
+                          {cat.name}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -303,6 +339,77 @@ export default function StoreProfile() {
           <p className="mt-5 pt-4 border-t border-[#E5E2DA] dark:border-[#232730] text-sm text-[#5C5B57] dark:text-zinc-300 leading-relaxed max-w-3xl">
             {profile.description || 'متجر معتمد يقدم منتجات متنوعة مع خدمة التواصل المباشر والطلب السريع.'}
           </p>
+
+          {(() => {
+            const fullAddress = [profile.city, profile.district, profile.address]
+              .map((v: any) => String(v || '').trim())
+              .filter(Boolean)
+              .join(' — ');
+            const landmark = String(profile.landmark || '').trim();
+            const workingHours = String(profile.workingHours || '').trim();
+            const storePhone = String(profile.phone || '').trim();
+            const lat = profile.location?.lat ?? profile.coordinates?.lat;
+            const lng = profile.location?.lng ?? profile.coordinates?.lng;
+            const rawMapUrl = String(profile.googleMapsUrl || '').trim();
+            const safeMapUrl = rawMapUrl && /^https?:\/\//i.test(rawMapUrl) ? rawMapUrl : '';
+            const mapHref = safeMapUrl || (lat && lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : '');
+
+            if (!fullAddress && !landmark && !workingHours && !storePhone && !mapHref) return null;
+
+            return (
+              <div className="mt-4 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm font-extrabold text-[#111214] dark:text-[#F4F4F2]">
+                    <MapPin className={`w-4 h-4 shrink-0 ${getThemeClasses('text')}`} />
+                    <span>العنوان الفعلي للمتجر (في الواقع)</span>
+                  </div>
+                  {mapHref && (
+                    <a
+                      href={mapHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#111214] dark:bg-[#F4F4F2] text-white dark:text-[#111214] hover:opacity-90 text-xs font-bold transition-opacity"
+                    >
+                      <Navigation className="w-3.5 h-3.5" />
+                      <span>فتح الموقع على الخريطة</span>
+                      <ExternalLink className="w-3 h-3 opacity-80" />
+                    </a>
+                  )}
+                </div>
+
+                {fullAddress && (
+                  <p className="text-xs sm:text-sm font-bold text-[#111214] dark:text-[#F4F4F2] leading-relaxed">
+                    {fullAddress}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[#5C5B57] dark:text-zinc-300">
+                  {landmark && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 shrink-0 opacity-75" />
+                      <span>أقرب معلم: <strong className="text-[#111214] dark:text-[#F4F4F2]">{landmark}</strong></span>
+                    </span>
+                  )}
+                  {workingHours && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 shrink-0 opacity-75" />
+                      <span>أوقات الدوام: <strong className="text-[#111214] dark:text-[#F4F4F2]">{workingHours}</strong></span>
+                    </span>
+                  )}
+                  {storePhone && (
+                    <a
+                      href={`tel:${storePhone}`}
+                      className="inline-flex items-center gap-1.5 font-bold text-emerald-700 dark:text-emerald-400 hover:underline tabular-nums"
+                      dir="ltr"
+                    >
+                      <Phone className="w-3.5 h-3.5 shrink-0" />
+                      <span>{storePhone}</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Single Horizontal 4-Cell KPI Ledger Bar */}
@@ -422,6 +529,16 @@ export default function StoreProfile() {
               const hasOfferActive = isProductOfferActive(product);
               const offerBadge = hasOfferActive ? getProductOfferBadgeText(product) : '';
               const hasCrossedPrice = Number(product.originalPrice || 0) > Number(product.price || 0);
+              const availableVariants = getAvailableProductVariants(product);
+              const baseOutOfStock = isItemOutOfStock(product);
+              const fullyOutOfStock = baseOutOfStock && availableVariants.length === 0;
+              const stockLimit = getStockLimit(product);
+              const inCartQty = cart.find(
+                (c) => (c.product?._cartKey || (c.product?.selectedVariantId ? `${c.product.id}__variant__${c.product.selectedVariantId}` : c.product?.id)) === product.id
+              )?.quantity || 0;
+              const baseAtCartMax = baseOutOfStock || (stockLimit !== null && inCartQty >= stockLimit);
+              const isNoDelivery = Boolean(product.noDelivery);
+              const canPreOrder = isNoDelivery || (isVerified && (product.isPreOrderEnabled ?? true));
 
               return (
               <article
@@ -441,23 +558,29 @@ export default function StoreProfile() {
                     </span>
                   )}
 
-                  {!product.available && (
+                  {fullyOutOfStock && (
                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-2 text-center z-20">
-                      <span className="text-white font-bold text-[11px] bg-rose-600 px-2.5 py-1 rounded-md">نفذت الكمية</span>
+                      <span className="text-white font-bold text-[11px] bg-rose-600 px-2.5 py-1 rounded-md">نفدت الكمية</span>
                     </div>
                   )}
                 </div>
 
                 <div className="flex flex-col flex-1 justify-between gap-2">
-                  <div>
-                    {product.category && (
-                      <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400 block truncate">
-                        {product.category}
-                      </span>
-                    )}
-                    <h3 className="font-bold text-xs sm:text-sm text-[#111214] dark:text-[#F4F4F2] line-clamp-2 leading-snug mt-0.5">
+                  <div className="space-y-1">
+                    <ProductPublisherMiniCard
+                      product={product}
+                      storeProfile={{ ...profile, isVerified }}
+                      variant="compact"
+                    />
+                    <h3 className="font-bold text-xs sm:text-sm text-[#111214] dark:text-[#F4F4F2] line-clamp-2 leading-snug">
                       {product.title}
                     </h3>
+                    {isNoDelivery && (
+                      <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1 line-clamp-1 mt-0.5">
+                        <StoreIcon className="w-3 h-3 shrink-0" />
+                        <span>لا يوجد توصيل · استلام من المتجر فقط</span>
+                      </p>
+                    )}
                     {hasOfferActive && (product.offerExtras || product.offerTitle) && (
                       <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 line-clamp-1 mt-0.5">
                         {product.offerExtras || product.offerTitle}
@@ -478,23 +601,61 @@ export default function StoreProfile() {
                         )}
                       </div>
 
+                      {isNoDelivery ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!user) { login(); return; }
+                            setSelectedPreOrderProduct(product);
+                          }}
+                          disabled={baseOutOfStock}
+                          className="w-9 h-9 rounded-lg bg-amber-600 hover:bg-amber-700 text-white flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                          title={baseOutOfStock ? 'نفدت الكمية' : 'حجز للاستلام من المتجر (لا يوجد توصيل)'}
+                          aria-label="حجز للاستلام من المتجر"
+                        >
+                          <BookmarkCheck className="h-4 w-4" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            addToCart(buildBaseProductForCart(product));
+                          }}
+                          disabled={baseOutOfStock || baseAtCartMax}
+                          className={`w-9 h-9 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover')} flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed`}
+                          title={baseOutOfStock ? 'نفدت الكمية من المنتج الأساسي' : baseAtCartMax ? 'بلغت الحد الأقصى المتاح' : 'أضف للسلة'}
+                          aria-label="أضف للسلة"
+                        >
+                          <ShoppingCart className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    {availableVariants.length > 0 && (
                       <button
                         type="button"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          addToCart(product);
+                          setVariantsModalProduct(product);
                         }}
-                        disabled={!product.available}
-                        className={`w-9 h-9 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover')} flex items-center justify-center transition-colors shrink-0 disabled:opacity-30`}
-                        title="أضف للسلة"
-                        aria-label="أضف للسلة"
+                        className="w-full min-h-[34px] py-1.5 px-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] text-[11px] font-bold flex items-center justify-between transition-colors text-[#111214] dark:text-[#F4F4F2]"
                       >
-                        <ShoppingCart className="h-4 w-4" />
+                        <span className="flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5 shrink-0" />
+                          <span>أصناف</span>
+                        </span>
+                        <span className="tabular-nums text-[#5C5B57] dark:text-zinc-400">
+                          {availableVariants.length} متاح
+                        </span>
                       </button>
-                    </div>
+                    )}
 
-                    {isVerified && (product.isPreOrderEnabled ?? true) && (
+                    {canPreOrder && !baseOutOfStock && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -507,10 +668,10 @@ export default function StoreProfile() {
                       >
                         <span className="flex items-center gap-1 text-[#5C5B57] dark:text-zinc-300">
                           <BookmarkCheck className="w-3.5 h-3.5 shrink-0" />
-                          <span>حجز مسبق</span>
+                          <span>{isNoDelivery ? `حجز للمتجر (${product.reservationDurationDays || 3}أ)` : 'حجز مسبق'}</span>
                         </span>
                         <span className="tabular-nums">
-                          {((product.depositAmount && Number(product.depositAmount) > 0) ? Number(product.depositAmount) : Math.max(1000, Math.round(Number(product.price) * 0.2))).toLocaleString()} ر.ي
+                          {calculateSafeDeposit(Number(product.price || 0), product.depositAmount).toLocaleString()} ر.ي
                         </span>
                       </button>
                     )}
@@ -522,6 +683,15 @@ export default function StoreProfile() {
           </div>
         )}
       </section>
+
+      {variantsModalProduct && (
+        <ProductVariantsModal
+          product={variantsModalProduct}
+          isOpen={!!variantsModalProduct}
+          onClose={() => setVariantsModalProduct(null)}
+          onNavigateToVariant={(pid, vid) => navigate(`/variant/${pid}/${vid}`)}
+        />
+      )}
 
       {/* Rating Modal */}
       {showRatingModal && (
@@ -708,7 +878,7 @@ export default function StoreProfile() {
       {/* Pre-Order Reservation Modal */}
       {selectedPreOrderProduct && (
         <PreOrderModal
-          product={selectedPreOrderProduct}
+          product={buildBaseProductForCart(selectedPreOrderProduct)}
           isOpen={!!selectedPreOrderProduct}
           onClose={() => setSelectedPreOrderProduct(null)}
         />

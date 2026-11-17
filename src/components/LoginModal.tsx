@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mail, Lock, User, Phone, Eye, EyeOff, ArrowRight, X, Camera, Check, FileText, Store } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import toast from 'react-hot-toast';
@@ -28,6 +28,12 @@ export default function LoginModal({ isOpen, onClose, initialEmail = '' }: Login
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('login');
 
   const [loginEmail, setLoginEmail] = useState(initialEmail);
+
+  useEffect(() => {
+    if (initialEmail) {
+      setLoginEmail(initialEmail);
+    }
+  }, [initialEmail]);
   const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
