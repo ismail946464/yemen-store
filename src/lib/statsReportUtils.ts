@@ -1,3 +1,10 @@
+import {
+  formatArabicDateTime as formatSafeDateTime,
+  formatArabicLongDate,
+  formatArabicWeekdayDate,
+  formatArabicMonthYear,
+} from './deviceSafe';
+
 export type ReportPeriodMode = 'all' | 'daily' | 'monthly' | 'custom';
 
 export interface StatsResetConfig {
@@ -45,19 +52,8 @@ export function shiftLocalMonthKey(monthKey: string, deltaMonths: number): strin
 }
 
 export function formatArabicDateTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return iso;
-    return d.toLocaleString('ar-YE', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return iso;
-  }
+  const formatted = formatSafeDateTime(iso);
+  return formatted || iso;
 }
 
 export interface ComputeReportInput {
@@ -153,8 +149,8 @@ export function computeOverviewReport(input: ComputeReportInput): ComputedOvervi
     const todayKey = getLocalDateKey();
     periodLabel =
       startDayKey === todayKey
-        ? `تقرير اليوم (${startDate.toLocaleDateString('ar-YE', { year: 'numeric', month: 'long', day: 'numeric' })})`
-        : `تقرير يوم ${startDate.toLocaleDateString('ar-YE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
+        ? `تقرير اليوم (${formatArabicLongDate(startDate) || startDayKey})`
+        : `تقرير يوم ${formatArabicWeekdayDate(startDate) || startDayKey}`;
   } else if (mode === 'monthly') {
     const [y, m] = (reportMonth || getLocalMonthKey()).split('-').map(Number);
     const startDate = new Date(y, (m || 1) - 1, 1, 0, 0, 0, 0);
@@ -163,7 +159,7 @@ export function computeOverviewReport(input: ComputeReportInput): ComputedOvervi
     windowEndMs = endDate.getTime();
     startDayKey = getLocalDateKey(startDate);
     endDayKey = getLocalDateKey(endDate);
-    periodLabel = `تقرير شهر ${startDate.toLocaleDateString('ar-YE', { year: 'numeric', month: 'long' })}`;
+    periodLabel = `تقرير شهر ${formatArabicMonthYear(startDate) || reportMonth}`;
   } else if (mode === 'custom') {
     const s = reportCustomStart ? new Date(reportCustomStart).getTime() : NaN;
     const e = reportCustomEnd ? new Date(reportCustomEnd).getTime() : NaN;

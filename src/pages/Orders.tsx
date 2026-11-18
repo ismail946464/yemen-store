@@ -14,6 +14,7 @@ import {
   formatRemainingDuration
 } from '../lib/deliveryFeeUtils';
 import { expireReservationTransaction, isStorePickupOnlyOrder } from '../lib/reservationUtils';
+import { formatArabicDate, formatArabicTime } from '../lib/deviceSafe';
 
 type OrderFilter = 'all' | 'active' | 'delivered' | 'preorder';
 
@@ -359,7 +360,7 @@ export default function Orders() {
                         )}
                       </div>
                       <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400 font-medium tabular-nums mt-0.5">
-                        {order.createdAt ? `${new Date(order.createdAt).toLocaleDateString('ar-YE')} · ${new Date(order.createdAt).toLocaleTimeString('ar-YE', { hour: '2-digit', minute: '2-digit' })}` : '—'}
+                        {order.createdAt ? `${formatArabicDate(order.createdAt)} · ${formatArabicTime(order.createdAt)}` : '—'}
                       </p>
                     </div>
                   </div>

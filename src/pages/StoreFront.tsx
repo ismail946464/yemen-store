@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { Suspense, lazy, memo, useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  ShoppingCart, CheckCircle, Image as ImageIcon, ShieldAlert,
+  ShoppingCart, Image as ImageIcon, ShieldAlert,
   BookmarkCheck, ChevronRight, ChevronLeft, LayoutGrid,
   Laptop, Smartphone, Shirt, Sparkles, MapPin, Watch,
   ShoppingBag, Heart, Home, Gamepad2, Tag, Search,
@@ -10,13 +10,18 @@ import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
-import PreOrderModal from '../components/PreOrderModal';
-import ProductVariantsModal from '../components/ProductVariantsModal';
 import ProductPublisherMiniCard from '../components/ProductPublisherMiniCard';
+import HeroBannerAds from '../components/HeroBannerAds';
 import { ProductGridSkeleton } from '../components/Skeletons';
 import { isProductOfferActive, getProductOfferBadgeText } from '../lib/offerUtils';
 import { getAvailableProductVariants, buildBaseProductForCart } from '../lib/variantUtils';
 import { getStockLimit, isItemOutOfStock, calculateSafeDeposit } from '../lib/stockUtils';
+
+const PreOrderModal = lazy(() => import('../components/PreOrderModal'));
+const ProductVariantsModal = lazy(() => import('../components/ProductVariantsModal'));
+
+const INITIAL_VISIBLE_PRODUCTS = 24;
+const PRODUCTS_BATCH_SIZE = 24;
 
 const DEFAULT_CATEGORIES = [
   { id: 'cat-electronics', name: 'الإلكترونيات والأجهزة', slug: 'electronics', icon: 'laptop' },
@@ -68,11 +73,237 @@ const ProductCardImage = ({ src, alt }: { src?: string; alt: string }) => {
   );
 };
 
+const StoreFrontProductCard = memo(function StoreFrontProductCard({
+  product,
+  ownerProf,
+  inCartQty,
+  themeClasses,
+  hasUser,
+  onNavigate,
+  onLogin,
+  onAddToCart,
+  onOpenPreOrder,
+  onOpenVariants,
+}: {
+  product: any;
+  ownerProf: any;
+  inCartQty: number;
+  themeClasses: { price: string; bg: string; hover: string };
+  hasUser: boolean;
+  onNavigate: (path: string) => void;
+  onLogin: () => void;
+  onAddToCart: (p: any) => void;
+  onOpenPreOrder: (p: any) => void;
+  onOpenVariants: (p: any) => void;
+}) {
+  const isStoreVerified = Boolean(product.ownerVerified || ownerProf?.isVerified);
+  const isNoDelivery = Boolean(product.noDelivery);
+  const canPreOrder = isNoDelivery || (isStoreVerified && (product.isPreOrderEnabled ?? true));
+  const depositAmt = calculateSafeDeposit(Number(product.price || 0), product.depositAmount);
+  const hasOfferActive = isProductOfferActive(product);
+  const offerBadge = hasOfferActive ? getProductOfferBadgeText(product) : '';
+  const hasCrossedPrice = Number(product.originalPrice || 0) > Number(product.price || 0);
+  const availableVariants = getAvailableProductVariants(product);
+  const baseOutOfStock = isItemOutOfStock(product);
+  const fullyOutOfStock = baseOutOfStock && availableVariants.length === 0;
+  const stockLimit = getStockLimit(product);
+  const baseAtCartMax = baseOutOfStock || (stockLimit !== null && inCartQty >= stockLimit);
+
+  return (
+    <article
+      onClick={() => onNavigate(`/product/${product.id}`)}
+      className="group/card flex flex-col h-full cursor-pointer"
+    >
+      {/* Matte Product Media Frame */}
+      <div className="relative aspect-[4/5] rounded-lg overflow-hidden bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] mb-3">
+        <ProductCardImage src={product.image || product.images?.[0]} alt={product.title} />
+
+        {offerBadge ? (
+          <span className="absolute top-2.5 right-2.5 bg-[#111214] dark:bg-[#F4F4F2] text-white dark:text-[#111214] text-[10px] font-bold px-2 py-0.5 rounded-md">
+            {offerBadge}
+          </span>
+        ) : (product.category === 'local' || (product.category && String(product.category).includes('محلي'))) && (
+          <span className="absolute top-2.5 right-2.5 bg-[#111214]/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
+            منتج محلي
+          </span>
+        )}
+
+        {fullyOutOfStock && (
+          <div className="absolute inset-0 bg-black/55 flex items-center justify-center z-10">
+            <span className="text-white font-bold text-xs bg-[#111214] px-3 py-1 rounded-md">نفدت الكمية</span>
+          </div>
+        )}
+      </div>
+
+      {/* Unboxed Clean Product Typography */}
+      <div className="flex-1 flex flex-col justify-between gap-2">
+        <div className="space-y-1">
+          <ProductPublisherMiniCard
+            product={product}
+            storeProfile={ownerProf}
+            variant="compact"
+          />
+
+          <h3 className="font-bold text-xs sm:text-sm line-clamp-2 text-[#111214] dark:text-[#F4F4F2] leading-snug">
+            {product.title}
+          </h3>
+
+          {isNoDelivery && (
+            <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1 line-clamp-1">
+              <Store className="w-3 h-3 shrink-0" />
+              <span>لا يوجد توصيل · استلام من المتجر فقط</span>
+            </p>
+          )}
+
+          {hasOfferActive && (product.offerExtras || product.offerTitle) && (
+            <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 line-clamp-1">
+              {product.offerExtras || product.offerTitle}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2 pt-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-baseline gap-1.5 flex-wrap">
+              <span className={`text-sm sm:text-base font-extrabold tabular-nums ${themeClasses.price}`}>
+                {Number(product.price || 0).toLocaleString()} <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
+              </span>
+              {hasCrossedPrice && (
+                <span className="text-[11px] text-[#5C5B57] dark:text-zinc-500 line-through tabular-nums">
+                  {Number(product.originalPrice).toLocaleString()}
+                </span>
+              )}
+            </div>
+
+            {isNoDelivery ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!hasUser) {
+                    onLogin();
+                    return;
+                  }
+                  onOpenPreOrder(product);
+                }}
+                disabled={baseOutOfStock}
+                className="w-9 h-9 rounded-lg bg-amber-600 hover:bg-amber-700 text-white flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                title={baseOutOfStock ? 'نفدت الكمية' : 'حجز للاستلام من المتجر (لا يوجد توصيل)'}
+                aria-label="حجز للاستلام من المتجر"
+              >
+                <BookmarkCheck className="h-4 w-4" />
+              </button>
+            ) : hasUser ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onAddToCart(buildBaseProductForCart(product));
+                }}
+                disabled={baseOutOfStock || baseAtCartMax}
+                className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${themeClasses.bg} ${themeClasses.hover}`}
+                title={baseOutOfStock ? 'نفدت الكمية من المنتج الأساسي' : baseAtCartMax ? 'بلغت الحد الأقصى المتاح بالمخزون' : 'إضافة إلى السلة'}
+                aria-label="إضافة إلى السلة"
+              >
+                <ShoppingCart className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onLogin();
+                }}
+                className="min-h-[36px] px-3 py-1 rounded-lg text-xs font-bold border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition-colors"
+              >
+                شراء
+              </button>
+            )}
+          </div>
+
+          {availableVariants.length > 0 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onOpenVariants(product);
+              }}
+              className="w-full min-h-[34px] py-1.5 px-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] text-[11px] font-bold flex items-center justify-between transition-colors text-[#111214] dark:text-[#F4F4F2]"
+            >
+              <span className="flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 shrink-0" />
+                <span>أصناف</span>
+              </span>
+              <span className="tabular-nums text-[#5C5B57] dark:text-zinc-400">
+                {availableVariants.length} متاح
+              </span>
+            </button>
+          )}
+
+          {canPreOrder && !baseOutOfStock && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!hasUser) {
+                  onLogin();
+                  return;
+                }
+                onOpenPreOrder(product);
+              }}
+              className="w-full min-h-[34px] py-1.5 px-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-[11px] flex items-center justify-between transition-colors text-[#111214] dark:text-[#F4F4F2]"
+            >
+              <span className="flex items-center gap-1 font-semibold text-[#5C5B57] dark:text-zinc-300">
+                <BookmarkCheck className="w-3.5 h-3.5" />
+                <span>{isNoDelivery ? `حجز للمتجر (${product.reservationDurationDays || 3}أ)` : 'حجز مسبق'}</span>
+              </span>
+              <span className="font-bold tabular-nums">
+                {depositAmt.toLocaleString()} ر.ي
+              </span>
+            </button>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+});
+
+const isProductInCategory = (product: any, catSlug: string, catName?: string) => {
+  if (!product) return false;
+  if (catSlug === 'all') return true;
+  const pCat = String(product.category || '').toLowerCase().trim();
+  const pCatSlug = String(product.categorySlug || '').toLowerCase().trim();
+  const targetSlug = String(catSlug).toLowerCase().trim();
+  const targetName = String(catName || '').toLowerCase().trim();
+
+  if (targetSlug && (pCatSlug === targetSlug || pCat === targetSlug)) return true;
+  if (targetName && pCat === targetName) return true;
+
+  if (targetSlug === 'electronics' && (pCat.includes('الكترون') || pCat.includes('إلكترون') || pCat === '11')) return true;
+  if (targetSlug === 'phones' && (pCat.includes('هاتف') || pCat.includes('جوال') || pCat.includes('ايفون') || pCat.includes('سامسونج') || pCat.includes('تلفون'))) return true;
+  if (targetSlug === 'fashion' && (pCat.includes('ملابس') || pCat.includes('ازياء') || pCat.includes('أزياء') || pCat.includes('ثوب') || pCat.includes('قميص') || pCat.includes('فستان'))) return true;
+  if (targetSlug === 'perfumes' && (pCat.includes('عطر') || pCat.includes('بخور') || pCat.includes('عود') || pCat.includes('مخلط'))) return true;
+  if (targetSlug === 'local' && (pCat.includes('محلي') || pCat.includes('يمن') || pCat.includes('عسل') || pCat.includes('بن') || pCat.includes('جنبية'))) return true;
+  if (targetSlug === 'watches' && (pCat.includes('ساع') || pCat.includes('نظار') || pCat.includes('اكسسوار'))) return true;
+  if (targetSlug === 'shoes-bags' && (pCat.includes('حذاء') || pCat.includes('احذية') || pCat.includes('أحذية') || pCat.includes('شنط') || pCat.includes('حقائب'))) return true;
+  if (targetSlug === 'beauty' && (pCat.includes('عناية') || pCat.includes('مكياج') || pCat.includes('جمال') || pCat.includes('بشرة'))) return true;
+  if (targetSlug === 'home' && (pCat.includes('منزل') || pCat.includes('مطبخ') || pCat.includes('أواني') || pCat.includes('اثاث'))) return true;
+  if (targetSlug === 'gaming' && (pCat.includes('العاب') || pCat.includes('ألعاب') || pCat.includes('ترفيه') || pCat.includes('بلايستيشن') || pCat.includes('قيمنق'))) return true;
+
+  return false;
+};
+
 export default function StoreFront() {
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'price-asc' | 'price-desc' | 'rating-desc'>('newest');
   const [verifiedOnly, setVerifiedOnly] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_PRODUCTS);
 
   const { addToCart, cart, settings, getThemeClasses, user, login } = useAppContext();
   const navigate = useNavigate();
@@ -85,6 +316,8 @@ export default function StoreFront() {
   const [variantsModalProduct, setVariantsModalProduct] = useState<any | null>(null);
 
   const categoriesScrollRef = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const lastProfileSigRef = useRef<string>('');
 
   const scrollCategories = (direction: 'left' | 'right') => {
     if (categoriesScrollRef.current) {
@@ -98,12 +331,21 @@ export default function StoreFront() {
   useEffect(() => {
     const q = query(collection(db, 'products'), where('status', '==', 'active'));
     const unsubProducts = onSnapshot(q, (snap) => {
-      const productsData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
-      setProducts(
-        productsData.filter(
-          (p) => !isItemOutOfStock(p) || getAvailableProductVariants(p).length > 0
-        )
-      );
+      const productsData: any[] = [];
+      snap.docs.forEach((d) => {
+        const raw = d.data() as any;
+        const p = {
+          ...raw,
+          id: d.id,
+          // Keep only primary image in storefront grid state to avoid holding large multi-image base64 galleries in memory
+          image: raw.image || raw.images?.[0] || '',
+          images: undefined,
+        };
+        if (!isItemOutOfStock(p) || getAvailableProductVariants(p).length > 0) {
+          productsData.push(p);
+        }
+      });
+      setProducts(productsData);
       setIsLoading(false);
     }, (err) => {
       console.warn('StoreFront products listener notice (handled):', err.message);
@@ -120,12 +362,36 @@ export default function StoreFront() {
 
     const unsubProfiles = onSnapshot(collection(db, 'storeProfiles'), (snap) => {
       const pMap: Record<string, any> = {};
-      snap.docs.forEach(doc => {
-        const data = doc.data();
-        const isVer = Boolean(data.verified) && (!data.verifiedUntil || data.verifiedUntil === '' || new Date(data.verifiedUntil).getTime() >= Date.now());
-        pMap[doc.id] = { ...data, isVerified: isVer };
+      const sigParts: string[] = [];
+      const nowMs = Date.now();
+      snap.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        const isVer = Boolean(data.verified) && (!data.verifiedUntil || data.verifiedUntil === '' || new Date(data.verifiedUntil).getTime() >= nowMs);
+        // Project only fields needed by StoreFront cards (omits heavy bannerUrl & ignores lastSeen churn)
+        pMap[docSnap.id] = {
+          name: data.name || '',
+          logoUrl: data.logoUrl || '',
+          verified: Boolean(data.verified),
+          verifiedUntil: data.verifiedUntil || '',
+          isVerified: isVer,
+          averageRating: data.averageRating || 0,
+          averageCredibility: data.averageCredibility || 0,
+          city: data.city || '',
+          district: data.district || '',
+          address: data.address || '',
+          landmark: data.landmark || '',
+          workingHours: data.workingHours || '',
+          googleMapsUrl: data.googleMapsUrl || '',
+          location: data.location || null,
+          coordinates: data.coordinates || null,
+        };
+        sigParts.push(`${docSnap.id}:${data.name || ''}:${isVer}:${data.averageRating || 0}:${data.city || ''}:${(data.logoUrl || '').length}`);
       });
-      setStoreProfiles(pMap);
+      const sig = sigParts.join('|');
+      if (sig !== lastProfileSigRef.current) {
+        lastProfileSigRef.current = sig;
+        setStoreProfiles(pMap);
+      }
     }, (err) => {
       console.warn('StoreProfiles listener notice:', err.message);
     });
@@ -137,38 +403,40 @@ export default function StoreFront() {
     };
   }, []);
 
-  const allAvailableCategories = categories.length > 0 ? categories : DEFAULT_CATEGORIES;
-
-  const isProductInCategory = (product: any, catSlug: string, catName?: string) => {
-    if (!product) return false;
-    if (catSlug === 'all') return true;
-    const pCat = String(product.category || '').toLowerCase().trim();
-    const pCatSlug = String(product.categorySlug || '').toLowerCase().trim();
-    const targetSlug = String(catSlug).toLowerCase().trim();
-    const targetName = String(catName || '').toLowerCase().trim();
-
-    if (targetSlug && (pCatSlug === targetSlug || pCat === targetSlug)) return true;
-    if (targetName && pCat === targetName) return true;
-
-    if (targetSlug === 'electronics' && (pCat.includes('الكترون') || pCat.includes('إلكترون') || pCat === '11')) return true;
-    if (targetSlug === 'phones' && (pCat.includes('هاتف') || pCat.includes('جوال') || pCat.includes('ايفون') || pCat.includes('سامسونج') || pCat.includes('تلفون'))) return true;
-    if (targetSlug === 'fashion' && (pCat.includes('ملابس') || pCat.includes('ازياء') || pCat.includes('أزياء') || pCat.includes('ثوب') || pCat.includes('قميص') || pCat.includes('فستان'))) return true;
-    if (targetSlug === 'perfumes' && (pCat.includes('عطر') || pCat.includes('بخور') || pCat.includes('عود') || pCat.includes('مخلط'))) return true;
-    if (targetSlug === 'local' && (pCat.includes('محلي') || pCat.includes('يمن') || pCat.includes('عسل') || pCat.includes('بن') || pCat.includes('جنبية'))) return true;
-    if (targetSlug === 'watches' && (pCat.includes('ساع') || pCat.includes('نظار') || pCat.includes('اكسسوار'))) return true;
-    if (targetSlug === 'shoes-bags' && (pCat.includes('حذاء') || pCat.includes('احذية') || pCat.includes('أحذية') || pCat.includes('شنط') || pCat.includes('حقائب'))) return true;
-    if (targetSlug === 'beauty' && (pCat.includes('عناية') || pCat.includes('مكياج') || pCat.includes('جمال') || pCat.includes('بشرة'))) return true;
-    if (targetSlug === 'home' && (pCat.includes('منزل') || pCat.includes('مطبخ') || pCat.includes('أواني') || pCat.includes('اثاث'))) return true;
-    if (targetSlug === 'gaming' && (pCat.includes('العاب') || pCat.includes('ألعاب') || pCat.includes('ترفيه') || pCat.includes('بلايستيشن') || pCat.includes('قيمنق'))) return true;
-
-    return false;
-  };
+  const allAvailableCategories = useMemo(
+    () => (categories.length > 0 ? categories : DEFAULT_CATEGORIES),
+    [categories]
+  );
 
   const offerProducts = useMemo(() => {
     return products
       .filter(isProductOfferActive)
       .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
   }, [products]);
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const c of allAvailableCategories) {
+      counts[c.slug] = 0;
+    }
+    for (const p of products) {
+      for (const c of allAvailableCategories) {
+        if (isProductInCategory(p, c.slug, c.name)) {
+          counts[c.slug] = (counts[c.slug] || 0) + 1;
+        }
+      }
+    }
+    return counts;
+  }, [products, allAvailableCategories]);
+
+  const cartQtyMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const item of cart) {
+      const key = item.product?._cartKey || (item.product?.selectedVariantId ? `${item.product.id}__variant__${item.product.selectedVariantId}` : item.product?.id);
+      if (key) map[key] = item.quantity || 0;
+    }
+    return map;
+  }, [cart]);
 
   const filteredProducts = useMemo(() => {
     const activeCatObj = allAvailableCategories.find(c => c.slug === activeTab);
@@ -206,59 +474,52 @@ export default function StoreFront() {
     return [...list].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   }, [products, activeTab, allAvailableCategories, verifiedOnly, storeProfiles, searchQuery, sortBy]);
 
-  const getCategoryProductCount = (categorySlug: string, categoryName: string) => {
-    if (categorySlug === 'all') return products.length;
-    if (categorySlug === 'offers') return offerProducts.length;
-    return products.filter(p => isProductInCategory(p, categorySlug, categoryName)).length;
-  };
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE_PRODUCTS);
+  }, [activeTab, searchQuery, verifiedOnly, sortBy]);
+
+  const visibleProducts = useMemo(
+    () => filteredProducts.slice(0, visibleCount),
+    [filteredProducts, visibleCount]
+  );
+  const hasMoreProducts = visibleCount < filteredProducts.length;
+
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el || !hasMoreProducts || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + PRODUCTS_BATCH_SIZE, filteredProducts.length));
+        }
+      },
+      { rootMargin: '320px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMoreProducts, filteredProducts.length]);
+
+  const cardThemeClasses = useMemo(
+    () => ({
+      price: getThemeClasses('price'),
+      bg: getThemeClasses('bg'),
+      hover: getThemeClasses('hover'),
+    }),
+    [getThemeClasses]
+  );
+
+  const handleNavigate = useCallback((path: string) => navigate(path), [navigate]);
+  const handleOpenPreOrder = useCallback((p: any) => setSelectedPreOrderProduct(p), []);
+  const handleOpenVariants = useCallback((p: any) => setVariantsModalProduct(p), []);
 
   return (
     <div className="space-y-8">
-      {/* Optional Store Hero Banner */}
-      {settings?.showHeroBanner && settings?.heroBanner && (
-        <section className="w-full rounded-lg overflow-hidden border border-[#E5E2DA] dark:border-[#232730] relative group min-h-[240px] md:min-h-[340px]">
-          <img
-            src={settings.heroBanner}
-            alt={settings.heroTitle || settings.storeName || 'واجهات المتجر'}
-            referrerPolicy="no-referrer"
-            className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.02]"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/15 flex flex-col justify-end md:justify-center items-start p-6 sm:p-10 text-right">
-            <div className="max-w-xl space-y-3">
-              {(settings.heroTitle || settings.storeName) && (
-                <h2 className="font-display text-2xl sm:text-4xl md:text-5xl font-extrabold text-white tracking-tight text-balance">
-                  {settings.heroTitle || settings.storeName}
-                </h2>
-              )}
-              {settings.heroSubtitle && (
-                <p className="text-sm sm:text-base text-white/85 font-medium leading-relaxed">
-                  {settings.heroSubtitle}
-                </p>
-              )}
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (settings?.heroLink && settings.heroLink.trim() !== '' && settings.heroLink !== '#' && !settings.heroLink.startsWith('#')) {
-                      if (settings.heroLink.startsWith('http')) {
-                        window.location.href = settings.heroLink;
-                      } else {
-                        navigate(settings.heroLink);
-                      }
-                    } else {
-                      document.getElementById('products-section')?.scrollIntoView({ behavior: 'smooth' });
-                    }
-                  }}
-                  className="bg-white text-[#111214] hover:bg-[#F6F5F0] min-h-[44px] px-6 py-2.5 rounded-lg font-bold text-sm transition-colors inline-flex items-center gap-2 cursor-pointer"
-                >
-                  <span>{settings.heroButtonText || 'استكشف المنتجات'}</span>
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
+      {/* Admin-Managed 5-Slot Advertising Hero Banner */}
+      <HeroBannerAds
+        onFallbackScroll={() => {
+          document.getElementById('products-section')?.scrollIntoView({ behavior: 'smooth' });
+        }}
+      />
 
       {/* Storefront Header & Flush Underline Filter Rail */}
       <section id="products-section" className="space-y-5">
@@ -341,7 +602,7 @@ export default function StoreFront() {
 
               {allAvailableCategories.map((c: any) => {
                 const isActive = activeTab === c.slug || activeTab === c.name;
-                const count = getCategoryProductCount(c.slug, c.name);
+                const count = categoryCounts[c.slug] || 0;
                 return (
                   <button
                     type="button"
@@ -442,190 +703,37 @@ export default function StoreFront() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-8 sm:gap-x-6 sm:gap-y-10">
-          {filteredProducts.map((product) => {
-            const ownerProf = product.ownerId ? storeProfiles[product.ownerId] : null;
-            const isStoreVerified = Boolean(product.ownerVerified || ownerProf?.isVerified);
-            const isNoDelivery = Boolean(product.noDelivery);
-            const canPreOrder = isNoDelivery || (isStoreVerified && (product.isPreOrderEnabled ?? true));
-            const depositAmt = calculateSafeDeposit(Number(product.price || 0), product.depositAmount);
-            const hasOfferActive = isProductOfferActive(product);
-            const offerBadge = hasOfferActive ? getProductOfferBadgeText(product) : '';
-            const hasCrossedPrice = Number(product.originalPrice || 0) > Number(product.price || 0);
-            const availableVariants = getAvailableProductVariants(product);
-            const baseOutOfStock = isItemOutOfStock(product);
-            const fullyOutOfStock = baseOutOfStock && availableVariants.length === 0;
-            const stockLimit = getStockLimit(product);
-            const inCartQty = cart.find(
-              (c) => (c.product?._cartKey || (c.product?.selectedVariantId ? `${c.product.id}__variant__${c.product.selectedVariantId}` : c.product?.id)) === product.id
-            )?.quantity || 0;
-            const baseAtCartMax = baseOutOfStock || (stockLimit !== null && inCartQty >= stockLimit);
-
-            return (
-              <article
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-8 sm:gap-x-6 sm:gap-y-10">
+            {visibleProducts.map((product) => (
+              <StoreFrontProductCard
                 key={product.id}
-                onClick={() => navigate(`/product/${product.id}`)}
-                className="group/card flex flex-col h-full cursor-pointer"
+                product={product}
+                ownerProf={product.ownerId ? storeProfiles[product.ownerId] : null}
+                inCartQty={cartQtyMap[product.id] || 0}
+                themeClasses={cardThemeClasses}
+                hasUser={Boolean(user)}
+                onNavigate={handleNavigate}
+                onLogin={login}
+                onAddToCart={addToCart}
+                onOpenPreOrder={handleOpenPreOrder}
+                onOpenVariants={handleOpenVariants}
+              />
+            ))}
+          </div>
+
+          {hasMoreProducts && (
+            <div ref={loadMoreRef} className="pt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setVisibleCount((prev) => Math.min(prev + PRODUCTS_BATCH_SIZE, filteredProducts.length))}
+                className="min-h-[42px] px-6 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-xs font-bold text-[#111214] dark:text-[#F4F4F2] transition-colors"
               >
-                {/* Matte Product Media Frame */}
-                <div className="relative aspect-[4/5] rounded-lg overflow-hidden bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] mb-3">
-                  <ProductCardImage src={product.image || product.images?.[0]} alt={product.title} />
-
-                  {offerBadge ? (
-                    <span className="absolute top-2.5 right-2.5 bg-[#111214] dark:bg-[#F4F4F2] text-white dark:text-[#111214] text-[10px] font-bold px-2 py-0.5 rounded-md">
-                      {offerBadge}
-                    </span>
-                  ) : (product.category === 'local' || (product.category && String(product.category).includes('محلي'))) && (
-                    <span className="absolute top-2.5 right-2.5 bg-[#111214]/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
-                      منتج محلي
-                    </span>
-                  )}
-
-                  {fullyOutOfStock && (
-                    <div className="absolute inset-0 bg-black/55 flex items-center justify-center z-10">
-                      <span className="text-white font-bold text-xs bg-[#111214] px-3 py-1 rounded-md">نفدت الكمية</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Unboxed Clean Product Typography */}
-                <div className="flex-1 flex flex-col justify-between gap-2">
-                  <div className="space-y-1">
-                    <ProductPublisherMiniCard
-                      product={product}
-                      storeProfile={ownerProf}
-                      variant="compact"
-                    />
-
-                    <h3 className="font-bold text-xs sm:text-sm line-clamp-2 text-[#111214] dark:text-[#F4F4F2] leading-snug">
-                      {product.title}
-                    </h3>
-
-                    {isNoDelivery && (
-                      <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1 line-clamp-1">
-                        <Store className="w-3 h-3 shrink-0" />
-                        <span>لا يوجد توصيل · استلام من المتجر فقط</span>
-                      </p>
-                    )}
-
-                    {hasOfferActive && (product.offerExtras || product.offerTitle) && (
-                      <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 line-clamp-1">
-                        {product.offerExtras || product.offerTitle}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2 pt-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-baseline gap-1.5 flex-wrap">
-                        <span className={`text-sm sm:text-base font-extrabold tabular-nums ${getThemeClasses('price')}`}>
-                          {Number(product.price || 0).toLocaleString()} <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
-                        </span>
-                        {hasCrossedPrice && (
-                          <span className="text-[11px] text-[#5C5B57] dark:text-zinc-500 line-through tabular-nums">
-                            {Number(product.originalPrice).toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-
-                      {isNoDelivery ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            if (!user) {
-                              login();
-                              return;
-                            }
-                            setSelectedPreOrderProduct(product);
-                          }}
-                          disabled={baseOutOfStock}
-                          className="w-9 h-9 rounded-lg bg-amber-600 hover:bg-amber-700 text-white flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
-                          title={baseOutOfStock ? 'نفدت الكمية' : 'حجز للاستلام من المتجر (لا يوجد توصيل)'}
-                          aria-label="حجز للاستلام من المتجر"
-                        >
-                          <BookmarkCheck className="h-4 w-4" />
-                        </button>
-                      ) : user ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            addToCart(buildBaseProductForCart(product));
-                          }}
-                          disabled={baseOutOfStock || baseAtCartMax}
-                          className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
-                          title={baseOutOfStock ? 'نفدت الكمية من المنتج الأساسي' : baseAtCartMax ? 'بلغت الحد الأقصى المتاح بالمخزون' : 'إضافة إلى السلة'}
-                          aria-label="إضافة إلى السلة"
-                        >
-                          <ShoppingCart className="h-4 w-4" />
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            login();
-                          }}
-                          className="min-h-[36px] px-3 py-1 rounded-lg text-xs font-bold border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition-colors"
-                        >
-                          شراء
-                        </button>
-                      )}
-                    </div>
-
-                    {availableVariants.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setVariantsModalProduct(product);
-                        }}
-                        className="w-full min-h-[34px] py-1.5 px-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] text-[11px] font-bold flex items-center justify-between transition-colors text-[#111214] dark:text-[#F4F4F2]"
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <Layers className="w-3.5 h-3.5 shrink-0" />
-                          <span>أصناف</span>
-                        </span>
-                        <span className="tabular-nums text-[#5C5B57] dark:text-zinc-400">
-                          {availableVariants.length} متاح
-                        </span>
-                      </button>
-                    )}
-
-                    {canPreOrder && !baseOutOfStock && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (!user) {
-                            login();
-                            return;
-                          }
-                          setSelectedPreOrderProduct(product);
-                        }}
-                        className="w-full min-h-[34px] py-1.5 px-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-[11px] flex items-center justify-between transition-colors text-[#111214] dark:text-[#F4F4F2]"
-                      >
-                        <span className="flex items-center gap-1 font-semibold text-[#5C5B57] dark:text-zinc-300">
-                          <BookmarkCheck className="w-3.5 h-3.5" />
-                          <span>{isNoDelivery ? `حجز للمتجر (${product.reservationDurationDays || 3}أ)` : 'حجز مسبق'}</span>
-                        </span>
-                        <span className="font-bold tabular-nums">
-                          {depositAmt.toLocaleString()} ر.ي
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+                عرض المزيد ({filteredProducts.length - visibleProducts.length} منتج متبقٍ)
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Quiet Editorial Footer Link */}
@@ -643,20 +751,24 @@ export default function StoreFront() {
       </footer>
 
       {selectedPreOrderProduct && (
-        <PreOrderModal
-          product={buildBaseProductForCart(selectedPreOrderProduct)}
-          isOpen={!!selectedPreOrderProduct}
-          onClose={() => setSelectedPreOrderProduct(null)}
-        />
+        <Suspense fallback={null}>
+          <PreOrderModal
+            product={buildBaseProductForCart(selectedPreOrderProduct)}
+            isOpen={!!selectedPreOrderProduct}
+            onClose={() => setSelectedPreOrderProduct(null)}
+          />
+        </Suspense>
       )}
 
       {variantsModalProduct && (
-        <ProductVariantsModal
-          product={variantsModalProduct}
-          isOpen={!!variantsModalProduct}
-          onClose={() => setVariantsModalProduct(null)}
-          onNavigateToVariant={(pid, vid) => navigate(`/variant/${pid}/${vid}`)}
-        />
+        <Suspense fallback={null}>
+          <ProductVariantsModal
+            product={variantsModalProduct}
+            isOpen={!!variantsModalProduct}
+            onClose={() => setVariantsModalProduct(null)}
+            onNavigateToVariant={(pid, vid) => navigate(`/variant/${pid}/${vid}`)}
+          />
+        </Suspense>
       )}
     </div>
   );

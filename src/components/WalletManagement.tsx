@@ -4,6 +4,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { Wallet, Plus, Trash2, Edit, Copy, ShieldCheck, MapPin, Smartphone, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAppContext } from '../AppContext';
+import { safeCopyText } from '../lib/deviceSafe';
 
 export interface MerchantWallet {
   id: string;
@@ -252,9 +253,10 @@ export default function WalletManagement({ merchantId }: { merchantId: string })
                     <div className="flex items-center gap-1.5 font-mono font-bold text-sm text-[#111214] dark:text-[#F4F4F2] tabular-nums" dir="ltr">
                       <span>{wallet.accountNumber}</span>
                       <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(wallet.accountNumber);
-                          toast.success('تم نسخ الرقم');
+                        onClick={async () => {
+                          const ok = await safeCopyText(wallet.accountNumber);
+                          if (ok) toast.success('تم نسخ الرقم');
+                          else toast.error('تعذر النسخ تلقائياً');
                         }}
                         className="text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white p-1"
                         title="نسخ الرقم"

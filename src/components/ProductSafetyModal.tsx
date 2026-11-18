@@ -21,6 +21,7 @@ import {
 import { getProductVariants } from '../lib/variantUtils';
 import { getProductStatusMeta } from '../lib/productModerationUtils';
 import { isProductOfferActive, getOfferTypeLabel } from '../lib/offerUtils';
+import { formatArabicDate, formatArabicDateTime } from '../lib/deviceSafe';
 
 interface ProductSafetyModalProps {
   product: any | null;
@@ -198,9 +199,9 @@ export default function ProductSafetyModal({
             </div>
             <div className="text-[11px] text-[#5C5B57] dark:text-zinc-400 tabular-nums">
               {product.submittedForReviewAt
-                ? `أُرسل للمراجعة: ${new Date(product.submittedForReviewAt).toLocaleString('ar-YE', { dateStyle: 'short', timeStyle: 'short' })}`
+                ? `أُرسل للمراجعة: ${formatArabicDateTime(product.submittedForReviewAt)}`
                 : product.createdAt
-                  ? `أُنشئ: ${new Date(product.createdAt).toLocaleString('ar-YE', { dateStyle: 'short', timeStyle: 'short' })}`
+                  ? `أُنشئ: ${formatArabicDateTime(product.createdAt)}`
                   : ''}
             </div>
           </div>
@@ -313,7 +314,7 @@ export default function ProductSafetyModal({
                   {product.offerExtras && <p className="text-[#5C5B57] dark:text-zinc-300">إضافات العرض: {product.offerExtras}</p>}
                   {product.offerExpiresAt && (
                     <p className="text-[11px] tabular-nums">
-                      ينتهي في: {new Date(product.offerExpiresAt).toLocaleDateString('ar-YE')}
+                      ينتهي في: {formatArabicDate(product.offerExpiresAt)}
                     </p>
                   )}
                 </div>

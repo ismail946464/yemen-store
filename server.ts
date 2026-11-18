@@ -455,8 +455,18 @@ async function startServer() {
     });
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    app.use("/assets", express.static(path.join(distPath, "assets"), { maxAge: "1y", immutable: true }));
+    app.use(express.static(distPath, {
+      maxAge: "1h",
+      setHeaders: (res, filePath) => {
+        const lower = filePath.toLowerCase();
+        if (lower.endsWith(".html") || lower.endsWith("sw.js") || lower.endsWith("manifest.json")) {
+          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        }
+      },
+    }));
     app.get("*", (req, res) => {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

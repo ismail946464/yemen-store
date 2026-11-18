@@ -56,6 +56,17 @@ import {
   sortStoreCategories,
   doesStoreMatchCategory
 } from '../lib/storeCategories';
+import {
+  BannerAdItem,
+  MAX_BANNER_ADS,
+  sortBannerAds
+} from '../lib/bannerAds';
+import {
+  formatArabicDate,
+  formatArabicTime,
+  formatArabicLongDate,
+  safeCopyText
+} from '../lib/deviceSafe';
 
 const renderStoreCategoryIcon = (iconOrName?: string, className = 'w-4 h-4 shrink-0') => {
   const s = String(iconOrName || '').toLowerCase();
@@ -114,17 +125,7 @@ type AdminTab =
 
 const formatArabicVerificationDate = (isoDate?: string) => {
   if (!isoDate) return '';
-  try {
-    const d = new Date(isoDate);
-    if (isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('ar-EG', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  } catch {
-    return isoDate;
-  }
+  return formatArabicLongDate(isoDate) || isoDate;
 };
 
 const AdminInput = ({ label, value, onChange, type = 'text', placeholder, icon, extra, dir, required }: any) => (
@@ -284,6 +285,7 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [storeCategories, setStoreCategories] = useState<StoreCategoryItem[]>([]);
+  const [bannerAds, setBannerAds] = useState<BannerAdItem[]>([]);
   const [storeProfile, setStoreProfile] = useState<StoreProfile | null>(null);
   const [serverLogs, setServerLogs] = useState<any[]>([]);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
@@ -453,6 +455,7 @@ export default function AdminDashboard() {
   const [reviewQueueFilter, setReviewQueueFilter] = useState<'pending_review' | 'queued' | 'rejected' | 'active' | 'all'>('pending_review');
   const [categoryForm, setCategoryForm] = useState<any>(null);
   const [storeCategoryForm, setStoreCategoryForm] = useState<any>(null);
+  const [bannerAdForm, setBannerAdForm] = useState<any>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: string; title: string; email?: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [localSettings, setLocalSettings] = useState<any>({});
@@ -624,6 +627,11 @@ export default function AdminDashboard() {
           }
         }, (err) => console.warn('Global settings listener notice:', err.message));
         unsubscribers.push(unsubSettings);
+
+        const unsubBannerAds = onSnapshot(collection(db, 'bannerAds'), (snap) => {
+          setBannerAds(sortBannerAds(snap.docs.map(d => ({ id: d.id, ...d.data() })) as BannerAdItem[]));
+        }, (err) => console.warn('BannerAds listener notice:', err.message));
+        unsubscribers.push(unsubBannerAds);
       }
     };
 
@@ -948,16 +956,131 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleSaveBannerAd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAdmin || !bannerAdForm) return;
+    const imageVal = String(bannerAdForm.image || '').trim();
+    if (!imageVal) {
+      toast.error('يرجى رفع صورة للمساحة الإعلانية');
+      return;
+    }
+    if (!bannerAdForm.id && bannerAds.length >= MAX_BANNER_ADS) {
+      toast.error(`الحد الأقصى للمساحات الإعلانية هو ${MAX_BANNER_ADS} إعلانات`);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const nowIso = new Date().toISOString();
+      const targetStoreId = String(bannerAdForm.targetStoreId || '').trim() || null;
+      const selectedStore = targetStoreId ? allStoresList.find((s) => s.id === targetStoreId) : null;
+      const cleanOrder = Math.max(1, Math.min(MAX_BANNER_ADS, Math.floor(Number(bannerAdForm.order) || (bannerAds.length + 1))));
+
+      const payload: any = {
+        title: String(bannerAdForm.title || '').trim(),
+        subtitle: String(bannerAdForm.subtitle || '').trim() || null,
+        badgeText: String(bannerAdForm.badgeText || '').trim() || null,
+        image: imageVal,
+        buttonText: String(bannerAdForm.buttonText || '').trim() || null,
+        targetStoreId,
+        targetStoreName: targetStoreId ? (selectedStore?.name || String(bannerAdForm.targetStoreName || '').trim() || null) : null,
+        customLink: !targetStoreId ? (String(bannerAdForm.customLink || '').trim() || null) : null,
+        order: cleanOrder,
+        active: bannerAdForm.active !== false,
+        updatedAt: nowIso
+      };
+
+      const estimatedSize = JSON.stringify(payload).length;
+      if (estimatedSize > 920000) {
+        toast.error('حجم الصورة كبير جداً. يرجى اختيار صورة أصغر.');
+        setIsSaving(false);
+        return;
+      }
+
+      if (bannerAdForm.id) {
+        await updateDoc(doc(db, 'bannerAds', bannerAdForm.id), payload);
+        toast.success('تم تحديث المساحة الإعلانية بنجاح');
+      } else {
+        await addDoc(collection(db, 'bannerAds'), { ...payload, createdAt: nowIso });
+        toast.success('تمت إضافة المساحة الإعلانية بنجاح');
+      }
+      setBannerAdForm(null);
+    } catch (err: any) {
+      console.error('Save banner ad error:', err);
+      toast.error('فشل حفظ الإعلان: ' + (err?.message || 'حدث خطأ'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggleBannerAdActive = async (ad: BannerAdItem) => {
+    if (!isAdmin) return;
+    try {
+      await updateDoc(doc(db, 'bannerAds', ad.id), {
+        active: ad.active === false,
+        updatedAt: new Date().toISOString()
+      });
+      toast.success(ad.active === false ? 'تم تفعيل الإعلان' : 'تم إيقاف الإعلان مؤقتاً');
+    } catch (err: any) {
+      toast.error('تعذر تحديث حالة الإعلان');
+    }
+  };
+
+  const handleImportLegacyBannerAsAd = async () => {
+    if (!isAdmin || !localSettings?.heroBanner || bannerAds.length >= MAX_BANNER_ADS) return;
+    setIsSaving(true);
+    try {
+      const nowIso = new Date().toISOString();
+      await addDoc(collection(db, 'bannerAds'), {
+        title: String(localSettings.heroTitle || localSettings.storeName || 'إعلان مميز').trim(),
+        subtitle: String(localSettings.heroSubtitle || '').trim() || null,
+        badgeText: 'عرض مميز',
+        image: localSettings.heroBanner,
+        buttonText: String(localSettings.heroButtonText || 'استكشف الآن').trim() || null,
+        targetStoreId: null,
+        targetStoreName: null,
+        customLink: String(localSettings.heroLink || '').trim() || null,
+        order: bannerAds.length + 1,
+        active: true,
+        createdAt: nowIso,
+        updatedAt: nowIso
+      });
+      toast.success('تم تحويل البانر الحالي إلى المساحة الإعلانية رقم 1');
+    } catch (err: any) {
+      toast.error('تعذر استيراد البانر الحالي');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleUpdateStoreProfile = async () => {
     if (!storeProfile || !user || !currentTargetStoreId) return;
     setIsSaving(true);
     try {
-      await setDoc(doc(db, 'storeProfiles', currentTargetStoreId), {
+      const cleanStr = (val: unknown, fallback = '') => (typeof val === 'string' ? val : fallback);
+      const payload: Record<string, any> = {
         ...storeProfile,
-        city: storeProfile.city || 'صنعاء',
         userId: currentTargetStoreId,
+        name: cleanStr(storeProfile.name),
+        description: cleanStr(storeProfile.description),
+        bannerUrl: cleanStr(storeProfile.bannerUrl),
+        logoUrl: cleanStr(storeProfile.logoUrl),
+        city: cleanStr(storeProfile.city, 'صنعاء') || 'صنعاء',
+        district: cleanStr(storeProfile.district),
+        address: cleanStr(storeProfile.address),
+        landmark: cleanStr(storeProfile.landmark),
+        workingHours: cleanStr(storeProfile.workingHours),
+        googleMapsUrl: cleanStr(storeProfile.googleMapsUrl),
+        phone: cleanStr(storeProfile.phone),
+        whatsapp: cleanStr(storeProfile.whatsapp),
+        telegram: cleanStr(storeProfile.telegram),
+        instagram: cleanStr(storeProfile.instagram),
+        tiktok: cleanStr(storeProfile.tiktok),
+        seoTitle: cleanStr(storeProfile.seoTitle),
+        seoDescription: cleanStr(storeProfile.seoDescription),
         updatedAt: new Date().toISOString()
-      }, { merge: true });
+      };
+      await setDoc(doc(db, 'storeProfiles', currentTargetStoreId), payload, { merge: true });
       try { sessionStorage.removeItem('yemen_store_directory_v1'); } catch {}
       toast.success(
         currentTargetStoreId === user.uid
@@ -2581,7 +2704,7 @@ export default function AdminDashboard() {
                                         )}
                                       </div>
                                       <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400 tabular-nums">
-                                        {product.createdAt ? new Date(product.createdAt).toLocaleDateString('ar-YE') : '—'}
+                                        {product.createdAt ? (formatArabicDate(product.createdAt) || '—') : '—'}
                                       </p>
                                       {product.status === 'rejected' && product.rejectionReason && (
                                         <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400 mt-0.5">
@@ -2922,8 +3045,8 @@ export default function AdminDashboard() {
                                 <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400 font-mono tabular-nums" dir="ltr">{order.customerPhone}</p>
                               </td>
                               <td className="py-3.5 px-4 whitespace-nowrap text-center tabular-nums">
-                                <p className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">{new Date(order.createdAt).toLocaleDateString('ar-YE')}</p>
-                                <p className="text-[10px] text-[#5C5B57] dark:text-zinc-400">{new Date(order.createdAt).toLocaleTimeString('ar-YE')}</p>
+                                <p className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">{formatArabicDate(order.createdAt) || '—'}</p>
+                                <p className="text-[10px] text-[#5C5B57] dark:text-zinc-400">{formatArabicTime(order.createdAt) || ''}</p>
                               </td>
                               <td className="py-3.5 px-4 whitespace-nowrap text-center tabular-nums">
                                 <span className="font-bold text-emerald-700 dark:text-emerald-400">{Number(order.total || 0).toLocaleString()} ر.ي</span>
@@ -3268,7 +3391,7 @@ export default function AdminDashboard() {
                                     )}
                                   </td>
                                   <td className="py-3.5 px-4 text-center text-[11px] text-[#5C5B57] dark:text-zinc-400 tabular-nums">
-                                    {u.createdAt ? new Date(u.createdAt).toLocaleDateString('ar-YE') : '—'}
+                                    {u.createdAt ? (formatArabicDate(u.createdAt) || '—') : '—'}
                                   </td>
                                   <td className="py-3.5 px-4 text-left">
                                     <div className="flex items-center justify-end gap-1.5">
@@ -3600,46 +3723,190 @@ export default function AdminDashboard() {
                     </form>
                   </div>
 
-                  {/* Hero Visual Identity */}
-                  <div className="pt-6 border-t border-[#E5E2DA] dark:border-[#232730]">
-                    <h4 className="font-display text-lg font-bold text-[#111214] dark:text-[#F4F4F2] mb-5 flex items-center gap-2">
-                      <ImageIcon className="w-5 h-5 text-[#5C5B57] dark:text-zinc-400" />
-                      <span>الهوية المرئية للهيرو</span>
-                    </h4>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <ImageEditor
-                        label="البانر الرئيسي (Hero Banner)"
-                        value={localSettings.heroBanner}
-                        onChange={(v: string) => setLocalSettings({ ...localSettings, heroBanner: v })}
-                      />
-                      <div className="space-y-4">
-                        <AdminInput label="عنوان الهيرو" value={localSettings.heroTitle || ''} onChange={(v: any) => setLocalSettings({ ...localSettings, heroTitle: v })} />
-                        <AdminTextarea label="العنوان الفرعي" value={localSettings.heroSubtitle || ''} onChange={(v: any) => setLocalSettings({ ...localSettings, heroSubtitle: v })} />
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <AdminInput
-                            label="نص زر الهيرو"
-                            value={localSettings.heroButtonText || ''}
-                            onChange={(v: any) => setLocalSettings({ ...localSettings, heroButtonText: v })}
-                            placeholder="مثال: استكشف المجموعة"
-                          />
-                          <AdminInput
-                            label="رابط زر الهيرو"
-                            value={localSettings.heroLink || ''}
-                            onChange={(v: any) => setLocalSettings({ ...localSettings, heroLink: v })}
-                            placeholder="اتركه فارغاً للتمرير للمنتجات"
-                          />
+                  {/* Admin-Only 5-Slot Banner Advertising Space */}
+                  <div className="pt-6 border-t border-[#E5E2DA] dark:border-[#232730] space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-display text-lg font-bold text-[#111214] dark:text-[#F4F4F2] flex items-center gap-2">
+                            <ImageIcon className="w-5 h-5 text-[#5C5B57] dark:text-zinc-400" />
+                            <span>المساحة الإعلانية للبانر (حتى {MAX_BANNER_ADS} إعلانات)</span>
+                          </h4>
+                          <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold">
+                            للإدارة فقط
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] text-[11px] font-bold tabular-nums text-[#111214] dark:text-[#F4F4F2]">
+                            {bannerAds.length} / {MAX_BANNER_ADS}
+                          </span>
                         </div>
-                        <label className="flex items-center gap-3 bg-[#FAF9F6] dark:bg-[#101216] p-3.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={localSettings.showHeroBanner}
-                            onChange={e => setLocalSettings({ ...localSettings, showHeroBanner: e.target.checked })}
-                            className="w-5 h-5 rounded text-emerald-600 cursor-pointer"
-                          />
-                          <span className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">تفعيل قسم الهيرو في الصفحة الرئيسية</span>
-                        </label>
+                        <p className="text-xs text-[#5C5B57] dark:text-zinc-400 font-medium mt-1">
+                          أضف حتى {MAX_BANNER_ADS} مساحات إعلانية (خصومات أو إعلانات متاجر). عند فتح المتجر يبدأ الزبون بإعلان عشوائي ثم يتنقل البانر بالترتيب كل 30 ثانية، وعند الضغط عليه ينتقل مباشرة للمتجر المحدد.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {bannerAds.length === 0 && localSettings.heroBanner && (
+                          <button
+                            type="button"
+                            onClick={handleImportLegacyBannerAsAd}
+                            disabled={isSaving}
+                            className="min-h-[42px] px-4 py-2 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 text-xs font-bold transition"
+                          >
+                            استيراد البانر الحالي كأول إعلان
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={bannerAds.length >= MAX_BANNER_ADS}
+                          onClick={() => {
+                            const usedOrders = new Set(bannerAds.map((a) => Number(a.order)));
+                            let nextOrder = 1;
+                            while (usedOrders.has(nextOrder) && nextOrder < MAX_BANNER_ADS) nextOrder++;
+                            setBannerAdForm({
+                              title: '',
+                              subtitle: '',
+                              badgeText: 'خصم خاص',
+                              image: '',
+                              buttonText: '',
+                              targetStoreId: '',
+                              customLink: '',
+                              order: nextOrder,
+                              active: true
+                            });
+                          }}
+                          className={`min-h-[42px] px-5 py-2 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white text-xs font-bold transition inline-flex items-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed`}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>{bannerAds.length >= MAX_BANNER_ADS ? `اكتمل الحد (${MAX_BANNER_ADS}/${MAX_BANNER_ADS})` : 'إضافة مساحة إعلانية'}</span>
+                        </button>
                       </div>
                     </div>
+
+                    <label className="flex items-center justify-between gap-3 bg-[#FAF9F6] dark:bg-[#101216] p-3.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={localSettings.showHeroBanner !== false}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setLocalSettings({ ...localSettings, showHeroBanner: checked });
+                            setDoc(doc(db, 'settings', 'global'), { showHeroBanner: checked }, { merge: true }).catch(() => {});
+                          }}
+                          className="w-5 h-5 rounded text-emerald-600 cursor-pointer"
+                        />
+                        <span className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">
+                          تفعيل ظهور المساحة الإعلانية (البانر) في الصفحة الرئيسية
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-bold text-[#5C5B57] dark:text-zinc-400">
+                        تبديل تلقائي كل 30 ثانية
+                      </span>
+                    </label>
+
+                    {bannerAds.length === 0 ? (
+                      <div className="text-center py-10 rounded-lg border border-dashed border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] p-6 space-y-2">
+                        <ImageIcon className="w-8 h-8 mx-auto text-[#5C5B57] dark:text-zinc-500 opacity-50" />
+                        <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2]">لا توجد مساحات إعلانية مضافة بعد</p>
+                        <p className="text-xs text-[#5C5B57] dark:text-zinc-400">
+                          أضف من 1 إلى 5 مساحات إعلانية بصورها وربطها مباشرة بالمتاجر أو العروض.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {bannerAds.map((ad, idx) => (
+                          <div
+                            key={ad.id}
+                            className={`rounded-lg border overflow-hidden bg-[#FAF9F6] dark:bg-[#101216] flex flex-col justify-between transition ${
+                              ad.active === false
+                                ? 'border-dashed border-[#E5E2DA] dark:border-[#232730] opacity-70'
+                                : 'border-[#E5E2DA] dark:border-[#232730]'
+                            }`}
+                          >
+                            <div className="relative h-36 bg-[#EFEDE6] dark:bg-[#1C1F26] overflow-hidden">
+                              <img src={ad.image} alt={ad.title || 'إعلان'} className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-3 flex flex-col justify-between">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="px-2 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold tabular-nums border border-white/15">
+                                    المساحة #{ad.order || idx + 1}
+                                  </span>
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                      ad.active !== false
+                                        ? 'bg-emerald-600 text-white border-emerald-400/50'
+                                        : 'bg-zinc-800 text-zinc-300 border-zinc-600'
+                                    }`}
+                                  >
+                                    {ad.active !== false ? 'نشط' : 'متوقف'}
+                                  </span>
+                                </div>
+                                <div className="text-right">
+                                  {ad.title && (
+                                    <p className="text-sm font-extrabold text-white line-clamp-1">{ad.title}</p>
+                                  )}
+                                  {ad.subtitle && (
+                                    <p className="text-[11px] text-white/80 line-clamp-1">{ad.subtitle}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="p-3.5 space-y-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                <div className="flex items-center gap-1.5 font-bold text-[#111214] dark:text-[#F4F4F2] min-w-0">
+                                  <Store className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                  <span className="truncate">
+                                    {ad.targetStoreName
+                                      ? `يفتح متجر: ${ad.targetStoreName}`
+                                      : ad.customLink
+                                        ? `رابط: ${ad.customLink}`
+                                        : 'التمرير للمنتجات'}
+                                  </span>
+                                </div>
+                                {ad.badgeText && (
+                                  <span className="px-2 py-0.5 rounded bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] text-[10px] font-bold text-[#5C5B57] dark:text-zinc-300">
+                                    {ad.badgeText}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E5E2DA] dark:border-[#232730]">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleBannerAdActive(ad)}
+                                  className="min-h-[36px] px-3 py-1.5 rounded-md bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] text-[11px] font-bold text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition"
+                                >
+                                  {ad.active !== false ? 'إيقاف مؤقت' : 'تفعيل العرض'}
+                                </button>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setBannerAdForm({ ...ad })}
+                                    className="w-9 h-9 rounded-md bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] flex items-center justify-center transition"
+                                    title="تعديل الإعلان"
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setDeleteConfirm({
+                                        id: ad.id,
+                                        type: 'bannerAds',
+                                        title: ad.title || ad.targetStoreName || `المساحة الإعلانية #${ad.order}`
+                                      })
+                                    }
+                                    className="w-9 h-9 rounded-md bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center transition"
+                                    title="حذف الإعلان"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Site Icon & Primary Logo Customization */}
@@ -4256,7 +4523,7 @@ export default function AdminDashboard() {
                           </div>
                           <div className="flex justify-between items-center py-2.5">
                             <span className="text-zinc-400">الوقت الحالي</span>
-                            <span className="font-bold tabular-nums">{new Date().toLocaleString('ar-YE')}</span>
+                            <span className="font-bold tabular-nums">{formatArabicDateTime(new Date().toISOString())}</span>
                           </div>
                           <div className="flex justify-between items-center py-2.5">
                             <span className="text-zinc-400">المستخدمون المتصلون</span>
@@ -4278,7 +4545,7 @@ export default function AdminDashboard() {
                           ) : (
                             serverLogs.map(log => (
                               <div key={log.id} className="border-b border-zinc-800/80 pb-1.5 flex gap-3">
-                                <span className="text-zinc-500 shrink-0 tabular-nums">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                                <span className="text-zinc-500 shrink-0 tabular-nums">[{formatArabicTime(log.timestamp) || '—'}]</span>
                                 <span className={
                                   log.type === 'error' ? 'text-rose-400' :
                                   log.type === 'success' ? 'text-emerald-400' : 'text-sky-400'
@@ -4536,6 +4803,247 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* Store Category Modal (Add / Edit - Admin Only) */}
+      {storeCategoryForm && isAdmin && (
+        <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4" dir="rtl">
+          <motion.div
+            initial={{ scale: 0.96, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white dark:bg-[#131519] rounded-xl p-6 max-w-lg w-full shadow-xl space-y-5 relative border border-[#E5E2DA] dark:border-[#232730] text-right"
+          >
+            <div className="flex justify-between items-center pb-3.5 border-b border-[#E5E2DA] dark:border-[#232730]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  {renderStoreCategoryIcon(storeCategoryForm.icon || storeCategoryForm.name, 'w-4 h-4')}
+                </div>
+                <h3 className="font-display text-base font-bold text-[#111214] dark:text-[#F4F4F2]">
+                  {storeCategoryForm.id ? 'تعديل قائمة المتاجر' : 'إضافة قائمة متاجر جديدة'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStoreCategoryForm(null)}
+                className="w-10 h-10 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-[#5C5B57] dark:text-zinc-400 flex items-center justify-center transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveStoreCategory} className="space-y-4">
+              <AdminInput
+                label="اسم القائمة (مثال: صيدليات، مولات، محلات ميكانيكية)"
+                value={storeCategoryForm.name || ''}
+                onChange={(v: string) => setStoreCategoryForm({ ...storeCategoryForm, name: v })}
+                placeholder="مثال: صيدليات"
+                required
+              />
+
+              <AdminInput
+                label="المعرّف بالإنجليزية (Slug)"
+                value={storeCategoryForm.slug || ''}
+                onChange={(v: string) => setStoreCategoryForm({ ...storeCategoryForm, slug: v })}
+                placeholder="مثال: pharmacies"
+                extra="يُستخدم لتمييز القائمة (اختياري - يُولد تلقائياً إن تُرك فارغاً)"
+                dir="ltr"
+              />
+
+              <div>
+                <label className="block text-xs font-bold text-[#111214] dark:text-[#F4F4F2] mb-1.5">
+                  أيقونة القائمة
+                </label>
+                <select
+                  value={storeCategoryForm.icon || 'store'}
+                  onChange={(e) => setStoreCategoryForm({ ...storeCategoryForm, icon: e.target.value })}
+                  className="w-full min-h-[44px] px-3.5 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] text-[#111214] dark:text-[#F4F4F2] text-xs font-bold outline-none cursor-pointer"
+                >
+                  {STORE_CATEGORY_ICON_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <AdminInput
+                label="ترتيب الظهور"
+                type="number"
+                value={(storeCategoryForm.order || 1).toString()}
+                onChange={(v: string) => setStoreCategoryForm({ ...storeCategoryForm, order: Number(v) })}
+                placeholder="1"
+              />
+
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setStoreCategoryForm(null)}
+                  className="min-h-[44px] px-5 py-2.5 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-[#F4F4F2] font-bold text-xs hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className={`min-h-[44px] px-6 py-2.5 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white font-bold text-xs transition`}
+                >
+                  {isSaving ? 'جاري الحفظ...' : (storeCategoryForm.id ? 'حفظ التعديلات' : 'إضافة القائمة')}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Banner Ad Modal (Add / Edit - Admin Only) */}
+      {bannerAdForm && isAdmin && (
+        <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto" dir="rtl">
+          <motion.div
+            initial={{ scale: 0.96, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white dark:bg-[#131519] rounded-xl p-5 sm:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl space-y-5 relative border border-[#E5E2DA] dark:border-[#232730] text-right"
+          >
+            <div className="flex justify-between items-center pb-3.5 border-b border-[#E5E2DA] dark:border-[#232730]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <ImageIcon className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-display text-base font-bold text-[#111214] dark:text-[#F4F4F2]">
+                    {bannerAdForm.id ? 'تعديل المساحة الإعلانية' : 'إضافة مساحة إعلانية جديدة للبانر'}
+                  </h3>
+                  <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400">
+                    متاح للإدارة فقط (الحد الأقصى {MAX_BANNER_ADS} مساحات إعلانية متتالية كل 30 ثانية)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBannerAdForm(null)}
+                className="w-10 h-10 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-[#5C5B57] dark:text-zinc-400 flex items-center justify-center transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBannerAd} className="space-y-4">
+              <ImageEditor
+                label="صورة الإعلان / البانر (مطلوبة)"
+                value={bannerAdForm.image || ''}
+                onChange={(v: string) => setBannerAdForm({ ...bannerAdForm, image: v })}
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-[#111214] dark:text-[#F4F4F2] mb-1.5">
+                    المتجر المستهدف عند الضغط على الإعلان
+                  </label>
+                  <select
+                    value={bannerAdForm.targetStoreId || ''}
+                    onChange={(e) => {
+                      const nextId = e.target.value;
+                      const storeObj = allStoresList.find((s) => s.id === nextId);
+                      setBannerAdForm({
+                        ...bannerAdForm,
+                        targetStoreId: nextId,
+                        targetStoreName: storeObj?.name || '',
+                        buttonText: !bannerAdForm.buttonText && storeObj ? `زيارة ${storeObj.name}` : bannerAdForm.buttonText
+                      });
+                    }}
+                    className="w-full min-h-[44px] px-3.5 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] text-[#111214] dark:text-[#F4F4F2] text-xs font-bold outline-none cursor-pointer"
+                  >
+                    <option value="">— بدون ربط متجر محدد (أو استخدم رابطاً مخصصاً) —</option>
+                    {allStoresList.map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.name} {st.verified ? '✓' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <AdminInput
+                  label="ترتيب الإعلان في البانر (1 إلى 5)"
+                  type="number"
+                  value={(bannerAdForm.order || 1).toString()}
+                  onChange={(v: string) =>
+                    setBannerAdForm({
+                      ...bannerAdForm,
+                      order: Math.max(1, Math.min(MAX_BANNER_ADS, Number(v) || 1))
+                    })
+                  }
+                  placeholder="1"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <AdminInput
+                  label="عنوان الإعلان / الخصم"
+                  value={bannerAdForm.title || ''}
+                  onChange={(v: string) => setBannerAdForm({ ...bannerAdForm, title: v })}
+                  placeholder="مثال: خصم 30% في متجر محيط"
+                />
+                <AdminInput
+                  label="شارة صغيرة (اختياري)"
+                  value={bannerAdForm.badgeText || ''}
+                  onChange={(v: string) => setBannerAdForm({ ...bannerAdForm, badgeText: v })}
+                  placeholder="مثال: خصم خاص / إعلان متجر"
+                />
+              </div>
+
+              <AdminTextarea
+                label="وصف الإعلان المختصر (اختياري)"
+                value={bannerAdForm.subtitle || ''}
+                onChange={(v: string) => setBannerAdForm({ ...bannerAdForm, subtitle: v })}
+                placeholder="مثال: عروض لفترة محدودة على كافة المنتجات..."
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <AdminInput
+                  label="نص الزر داخل البانر"
+                  value={bannerAdForm.buttonText || ''}
+                  onChange={(v: string) => setBannerAdForm({ ...bannerAdForm, buttonText: v })}
+                  placeholder="مثال: زيارة المتجر / تسوق العرض"
+                />
+                {!bannerAdForm.targetStoreId && (
+                  <AdminInput
+                    label="رابط مخصص (اختياري عند عدم اختيار متجر)"
+                    value={bannerAdForm.customLink || ''}
+                    onChange={(v: string) => setBannerAdForm({ ...bannerAdForm, customLink: v })}
+                    placeholder="مثال: /search-stores"
+                    dir="ltr"
+                  />
+                )}
+              </div>
+
+              <label className="flex items-center gap-3 bg-[#FAF9F6] dark:bg-[#101216] p-3.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={bannerAdForm.active !== false}
+                  onChange={(e) => setBannerAdForm({ ...bannerAdForm, active: e.target.checked })}
+                  className="w-5 h-5 rounded text-emerald-600 cursor-pointer"
+                />
+                <span className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">
+                  إعلان نشط (يظهر ضمن التناوب التلقائي للعملاء)
+                </span>
+              </label>
+
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setBannerAdForm(null)}
+                  className="min-h-[44px] px-5 py-2.5 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-[#F4F4F2] font-bold text-xs hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className={`min-h-[44px] px-6 py-2.5 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white font-bold text-xs transition`}
+                >
+                  {isSaving ? 'جاري الحفظ...' : (bannerAdForm.id ? 'حفظ التعديلات' : 'نشر المساحة الإعلانية')}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
       {/* Order Details & Payment Modal */}
       {viewingOrder && (
         <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto" dir="rtl">
@@ -4554,7 +5062,7 @@ export default function AdminDashboard() {
                     تفاصيل الطلب <span className="font-mono text-emerald-600 dark:text-emerald-400">#{viewingOrder.id.slice(-6).toUpperCase()}</span>
                   </h3>
                   <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400 font-medium tabular-nums">
-                    {new Date(viewingOrder.createdAt).toLocaleDateString('ar-YE')} — {new Date(viewingOrder.createdAt).toLocaleTimeString('ar-YE')}
+                    {formatArabicDate(viewingOrder.createdAt) || '—'} — {formatArabicTime(viewingOrder.createdAt) || ''}
                   </p>
                 </div>
               </div>
@@ -4630,7 +5138,7 @@ export default function AdminDashboard() {
                   <div className="bg-white dark:bg-[#131519] p-2.5 rounded-md border border-amber-200 dark:border-amber-800/50 col-span-2 sm:col-span-1">
                     <span className="text-[10px] text-[#5C5B57] dark:text-zinc-400 font-bold block">انتهاء المهلة:</span>
                     <span className="font-bold text-[11px] tabular-nums">
-                      {viewingOrder.reservationExpiresAt ? new Date(viewingOrder.reservationExpiresAt).toLocaleString('ar-YE') : 'غير محدد'}
+                      {viewingOrder.reservationExpiresAt ? (formatArabicDateTime(viewingOrder.reservationExpiresAt) || 'غير محدد') : 'غير محدد'}
                     </span>
                   </div>
                 </div>
@@ -4842,7 +5350,7 @@ export default function AdminDashboard() {
               <p className="text-[#5C5B57] dark:text-zinc-400 text-xs font-medium px-2">شارك هذا الكود مع عملائك للوصول السريع لمتجرك</p>
             </div>
 
-            <div className="bg-white p-4 rounded-lg border border-[#E5E2DA] flex justify-center">
+            <div id="store-qr-canvas-wrap" className="bg-white p-4 rounded-lg border border-[#E5E2DA] flex justify-center">
               <QRCodeCanvas
                 value={settings?.storePublicUrl || window.location.origin}
                 size={190}
@@ -4862,7 +5370,7 @@ export default function AdminDashboard() {
             <div className="space-y-2">
               <button
                 onClick={() => {
-                  const canvas = document.querySelector('canvas');
+                  const canvas = document.querySelector('#store-qr-canvas-wrap canvas') as HTMLCanvasElement | null;
                   if (canvas) {
                     const url = canvas.toDataURL('image/png');
                     const link = document.createElement('a');
@@ -4878,9 +5386,10 @@ export default function AdminDashboard() {
                 <span>تحميل الكود كصورة</span>
               </button>
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(settings?.storePublicUrl || window.location.origin);
-                  toast.success('تم نسخ رابط المتجر');
+                onClick={async () => {
+                  const ok = await safeCopyText(settings?.storePublicUrl || window.location.origin);
+                  if (ok) toast.success('تم نسخ رابط المتجر');
+                  else toast.error('تعذر نسخ الرابط تلقائياً');
                 }}
                 className="w-full min-h-[44px] bg-[#FAF9F6] dark:bg-[#101216] text-[#111214] dark:text-[#F4F4F2] font-bold text-xs py-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition"
               >

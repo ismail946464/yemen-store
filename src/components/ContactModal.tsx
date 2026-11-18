@@ -1,6 +1,5 @@
 import React from 'react';
 import { X, MessageCircle, Phone, Mail, Facebook, Send, ExternalLink, MessageSquare, Globe } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 
 interface Contact {
@@ -77,24 +76,15 @@ export default function ContactModal({ isOpen, onClose, title, contacts, getThem
     }
   };
 
+  if (!isOpen) return null;
+
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" dir="rtl">
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="absolute inset-0 bg-black/60 backdrop-blur-xs"
-          />
-          <motion.div
-            initial={{ scale: 0.96, opacity: 0, y: 12 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.96, opacity: 0, y: 12 }}
-            transition={{ duration: 0.18 }}
-            className="relative bg-white dark:bg-[#131519] rounded-xl border border-[#E5E2DA] dark:border-[#232730] shadow-xl w-full max-w-sm overflow-hidden"
-          >
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" dir="rtl">
+      <div
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60 backdrop-blur-xs"
+      />
+      <div className="relative bg-white dark:bg-[#131519] rounded-xl border border-[#E5E2DA] dark:border-[#232730] shadow-xl w-full max-w-sm overflow-hidden transition-all duration-150">
             <div className="px-5 py-4 bg-[#FAF9F6] dark:bg-[#101216] border-b border-[#E5E2DA] dark:border-[#232730] flex justify-between items-center">
               <h3 className="font-display text-base font-bold text-[#111214] dark:text-[#F4F4F2] truncate">{title}</h3>
               <button
@@ -141,9 +131,7 @@ export default function ContactModal({ isOpen, onClose, title, contacts, getThem
             <div className="px-5 py-3 bg-[#FAF9F6] dark:bg-[#101216] border-t border-[#E5E2DA] dark:border-[#232730] text-xs text-[#5C5B57] dark:text-zinc-400 text-center font-medium">
               نشكركم على تواصلكم معنا دائماً
             </div>
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
+      </div>
+    </div>
   );
 }

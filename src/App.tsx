@@ -8,14 +8,15 @@ import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation 
 import { Store, ShoppingBag, User as UserIcon, Bot, MessageSquare, Bike } from 'lucide-react';
 import { AppProvider, useAppContext } from './AppContext';
 import { Toaster } from 'react-hot-toast';
-import ContactModal from './components/ContactModal';
 import DisclaimerModal from './components/DisclaimerModal';
 import InstallPrompt from './components/InstallPrompt';
 import NotificationCenter from './components/NotificationCenter';
 import BottomNav from './components/BottomNav';
-import LoginModal from './components/LoginModal';
 import { PageLoadingSkeleton } from './components/Skeletons';
 import StoreFront from './pages/StoreFront';
+
+const ContactModal = lazy(() => import('./components/ContactModal'));
+const LoginModal = lazy(() => import('./components/LoginModal'));
 
 const StoreSite = lazy(() => import('./pages/StoreSite'));
 const Cart = lazy(() => import('./pages/Cart'));
@@ -50,9 +51,9 @@ function Header() {
   return (
     <header className={isIndependentStore ? 'hidden' : isContactPage ? 'hidden md:block sticky top-0 z-50 transition-colors duration-200' : 'sticky top-0 z-50 transition-colors duration-200'}>
       <div className={`border-b relative z-10 h-16 flex items-center transition-colors duration-200 backdrop-blur-md ${getThemeClasses('headerBg')}`}>
-        <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center gap-4 md:gap-8">
+        <div className="max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 flex justify-between items-center gap-2 sm:gap-4 md:gap-8">
           {/* Zone 1: Single-line Brand Wordmark */}
-          <Link to="/" className="flex items-center gap-2.5 shrink-0 min-w-0">
+          <Link to="/" className="flex items-center gap-2 sm:gap-2.5 shrink-0 min-w-0">
             {(() => {
               const logoUrl = settings?.siteIcon || settings?.storeLogo;
               const shape = settings?.siteIconShape || 'rounded';
@@ -101,7 +102,7 @@ function Header() {
               );
             })()}
 
-            <span className="font-display text-base sm:text-lg font-extrabold tracking-tight whitespace-nowrap text-[#111214] dark:text-[#F4F4F2]">
+            <span className="font-display text-sm sm:text-lg font-extrabold tracking-tight truncate max-w-[115px] sm:max-w-none text-[#111214] dark:text-[#F4F4F2]">
               {settings?.storeName || 'يمن ستور'}
             </span>
           </Link>
@@ -166,7 +167,7 @@ function Header() {
           </nav>
 
           {/* Zone 3: Action Controls */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Mobile AI Assistant shortcut */}
             <Link
               to="/contact?to=ai_assistant"
@@ -239,7 +240,7 @@ function Header() {
               <button
                 type="button"
                 onClick={handleLogin}
-                className={`min-h-[40px] px-4 py-2 rounded-lg font-bold text-xs whitespace-nowrap shrink-0 transition active:scale-[0.98] ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                className={`min-h-[40px] px-3 sm:px-4 py-2 rounded-lg font-bold text-xs whitespace-nowrap shrink-0 transition active:scale-[0.98] ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
               >
                 دخول المنصة
               </button>
@@ -248,31 +249,57 @@ function Header() {
         </div>
       </div>
 
-      <ContactModal
-        isOpen={showContactModal}
-        onClose={() => setShowContactModal(false)}
-        title="تواصل مع الإدارة"
-        contacts={settings?.adminContacts || []}
-        getThemeClasses={getThemeClasses}
-      />
+      {showContactModal && (
+        <Suspense fallback={null}>
+          <ContactModal
+            isOpen={showContactModal}
+            onClose={() => setShowContactModal(false)}
+            title="تواصل مع الإدارة"
+            contacts={settings?.adminContacts || []}
+            getThemeClasses={getThemeClasses}
+          />
+        </Suspense>
+      )}
     </header>
   );
 }
 
 function MainLayout() {
-  const { settings, settingsLoading, getThemeClasses, isDarkMode, isLoginModalOpen, closeLoginModal, loginModalInitialEmail, effectiveTheme } = useAppContext();
+  const { settings, getThemeClasses, isDarkMode, isLoginModalOpen, closeLoginModal, loginModalInitialEmail, effectiveTheme } = useAppContext();
   const location = useLocation();
   const isIndependentStore = location.pathname.startsWith('/s/') || location.pathname.startsWith('/store-site/');
 
+  // Load optional extra Google Font only if admin configured a non-default font
   useEffect(() => {
-    if (settings?.storeLogo) {
+    const fontKey = settings?.storeFont || 'tajawal';
+    const fontUrlMap: Record<string, string> = {
+      almarai: 'https://fonts.googleapis.com/css2?family=Almarai:wght@400;700&display=swap',
+      messiri: 'https://fonts.googleapis.com/css2?family=El+Messiri:wght@500;600;700&display=swap',
+      changa: 'https://fonts.googleapis.com/css2?family=Changa:wght@500;600;700&display=swap',
+      amiri: 'https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap',
+    };
+    const href = fontUrlMap[fontKey];
+    if (!href) return;
+    const id = `dynamic-font-${fontKey}`;
+    if (!document.getElementById(id)) {
+      const linkEl = document.createElement('link');
+      linkEl.id = id;
+      linkEl.rel = 'stylesheet';
+      linkEl.href = href;
+      document.head.appendChild(linkEl);
+    }
+  }, [settings?.storeFont]);
+
+  useEffect(() => {
+    const iconUrl = settings?.siteIcon || settings?.storeLogo;
+    if (iconUrl) {
       let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
       if (!link) {
         link = document.createElement('link');
         link.rel = 'icon';
         document.getElementsByTagName('head')[0].appendChild(link);
       }
-      link.href = settings.storeLogo;
+      if (link.href !== iconUrl) link.href = iconUrl;
 
       let appleIcon = document.querySelector("link[rel~='apple-touch-icon']") as HTMLLinkElement;
       if (!appleIcon) {
@@ -280,8 +307,10 @@ function MainLayout() {
         appleIcon.rel = 'apple-touch-icon';
         document.getElementsByTagName('head')[0].appendChild(appleIcon);
       }
-      appleIcon.href = settings.storeLogo;
+      if (appleIcon.href !== iconUrl) appleIcon.href = iconUrl;
+    }
 
+    if (settings?.storeLogo) {
       const rootOrigin = window.location.origin;
       const manifest = {
         short_name: settings.shortName || settings.storeName || 'المتجر',
@@ -306,7 +335,7 @@ function MainLayout() {
       }
       return () => URL.revokeObjectURL(manifestURL);
     }
-  }, [settings?.storeLogo, settings?.storeName, settings?.shortName, settings?.storeDescription]);
+  }, [settings?.siteIcon, settings?.storeLogo, settings?.storeName, settings?.shortName, settings?.storeDescription]);
 
   useEffect(() => {
     if (!settings) return;
@@ -315,15 +344,15 @@ function MainLayout() {
 
     const currentUrl = settings?.storePublicUrl || window.location.origin;
     const dynamicDescription = settings?.storeDescription || `منصة ${currentStoreName} للتجارة والمتاجر الموثوقة`;
+    const ogImage = settings?.storeLogo && !String(settings.storeLogo).startsWith('data:') ? settings.storeLogo : '';
     const metaTags = [
       { property: 'og:title', content: currentStoreName },
       { property: 'og:description', content: dynamicDescription },
-      { property: 'og:image', content: settings?.storeLogo || '' },
+      ...(ogImage ? [{ property: 'og:image', content: ogImage }, { name: 'twitter:image', content: ogImage }] : []),
       { property: 'og:url', content: currentUrl },
       { name: 'description', content: dynamicDescription },
       { name: 'twitter:title', content: currentStoreName },
       { name: 'twitter:description', content: dynamicDescription },
-      { name: 'twitter:image', content: settings?.storeLogo || '' },
       { name: 'twitter:card', content: 'summary_large_image' },
     ];
 
@@ -338,19 +367,7 @@ function MainLayout() {
       }
       element.setAttribute('content', tag.content);
     });
-  }, [settings]);
-
-  if (settingsLoading) {
-    return (
-      <div className={`min-h-screen ${isDarkMode ? 'dark bg-[#0A0B0D] text-[#F4F4F2]' : 'bg-[#F6F5F0] text-[#111214]'}`} dir="rtl">
-        <div className="h-16 border-b border-[#E5E2DA] dark:border-[#232730] px-6 flex items-center justify-between">
-          <div className="w-32 h-5 rounded-md skeleton-shimmer" />
-          <div className="w-24 h-8 rounded-lg skeleton-shimmer" />
-        </div>
-        <PageLoadingSkeleton />
-      </div>
-    );
-  }
+  }, [settings?.storeName, settings?.storeDescription, settings?.storePublicUrl, settings?.storeLogo]);
 
   const storeFont = settings?.storeFont || 'tajawal';
   const fontClass = `font-${storeFont}`;
@@ -362,7 +379,7 @@ function MainLayout() {
     <div
       id="app-root"
       data-theme={effectiveTheme}
-      className={`${isContactPage ? 'h-[100dvh] max-h-[100dvh] overflow-hidden' : 'min-h-screen'} flex flex-col transition-colors duration-200 ${getThemeClasses('pageBg')} ${isDarkMode ? 'dark text-[#F4F4F2]' : 'text-[#111214]'} ${fontClass}`}
+      className={`${isContactPage ? 'h-screen supports-[height:100dvh]:h-[100dvh] max-h-screen supports-[height:100dvh]:max-h-[100dvh] overflow-hidden' : 'min-h-screen'} flex flex-col transition-colors duration-200 ${getThemeClasses('pageBg')} ${isDarkMode ? 'dark text-[#F4F4F2]' : 'text-[#111214]'} ${fontClass}`}
       dir="rtl"
     >
       {settings?.customCss && (
@@ -372,11 +389,15 @@ function MainLayout() {
       <Header />
       <DisclaimerModal />
       <InstallPrompt />
-      <LoginModal
-        isOpen={isLoginModalOpen}
-        onClose={closeLoginModal}
-        initialEmail={loginModalInitialEmail}
-      />
+      {isLoginModalOpen && (
+        <Suspense fallback={null}>
+          <LoginModal
+            isOpen={isLoginModalOpen}
+            onClose={closeLoginModal}
+            initialEmail={loginModalInitialEmail}
+          />
+        </Suspense>
+      )}
       <main className={`flex-1 w-full ${
         isIndependentStore
           ? ''

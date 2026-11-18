@@ -32,6 +32,7 @@ import {
   StockLineItem,
 } from '../lib/stockUtils';
 import { getProductVariants } from '../lib/variantUtils';
+import { safeCopyText } from '../lib/deviceSafe';
 
 const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800, quality = 0.65): Promise<string> => {
   return new Promise((resolve) => {
@@ -277,11 +278,15 @@ export default function Cart() {
     }
   }, [cart.length]);
 
-  const handleCopyAccount = (wallet: MerchantWallet) => {
-    navigator.clipboard.writeText(wallet.accountNumber);
-    setCopiedWalletId(wallet.id);
-    toast.success(`تم نسخ رقم حساب ${wallet.name}: ${wallet.accountNumber}`);
-    setTimeout(() => setCopiedWalletId(null), 3000);
+  const handleCopyAccount = async (wallet: MerchantWallet) => {
+    const ok = await safeCopyText(wallet.accountNumber);
+    if (ok) {
+      setCopiedWalletId(wallet.id);
+      toast.success(`تم نسخ رقم حساب ${wallet.name}: ${wallet.accountNumber}`);
+      setTimeout(() => setCopiedWalletId(null), 3000);
+    } else {
+      toast.error('تعذر النسخ تلقائياً، يرجى نسخ الرقم يدوياً');
+    }
   };
 
   const handleProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

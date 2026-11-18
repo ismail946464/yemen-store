@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import toast from 'react-hot-toast';
+import { safeCopyText, formatArabicDate } from '../lib/deviceSafe';
 
 interface StoreAccountItem {
   uid: string;
@@ -74,11 +75,15 @@ export default function StoreAccountsManagement() {
     }));
   };
 
-  const handleCopy = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedEmail(id);
-    toast.success('تم النسخ بنجاح');
-    setTimeout(() => setCopiedEmail(null), 2000);
+  const handleCopy = async (text: string, id: string) => {
+    const ok = await safeCopyText(text);
+    if (ok) {
+      setCopiedEmail(id);
+      toast.success('تم النسخ بنجاح');
+      setTimeout(() => setCopiedEmail(null), 2000);
+    } else {
+      toast.error('تعذر النسخ تلقائياً');
+    }
   };
 
   const handleGenerateRandomPass = () => {
@@ -394,7 +399,7 @@ export default function StoreAccountsManagement() {
                       </td>
 
                       <td className="py-3.5 px-4 text-[#5C5B57] dark:text-zinc-400 text-[11px] tabular-nums">
-                        {acc.createdAt ? new Date(acc.createdAt).toLocaleDateString('ar-EG') : '—'}
+                        {acc.createdAt ? (formatArabicDate(acc.createdAt) || '—') : '—'}
                       </td>
 
                       <td className="py-3.5 px-4 text-center">

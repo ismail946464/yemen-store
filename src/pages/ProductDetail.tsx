@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc, collection, query, where, orderBy, onSnapshot, addDoc, updateDoc } from 'firebase/firestore';
@@ -10,10 +10,12 @@ import {
   MapPin, Phone, ExternalLink
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import PreOrderModal from '../components/PreOrderModal';
-import ProductVariantsModal from '../components/ProductVariantsModal';
 import ProductPublisherMiniCard from '../components/ProductPublisherMiniCard';
 import { ProductDetailSkeleton } from '../components/Skeletons';
+import { formatArabicDate, safeCopyText } from '../lib/deviceSafe';
+
+const PreOrderModal = lazy(() => import('../components/PreOrderModal'));
+const ProductVariantsModal = lazy(() => import('../components/ProductVariantsModal'));
 import { isProductOfferActive, getOfferTypeLabel, getProductDiscountPercent, getProductOfferBadgeText } from '../lib/offerUtils';
 import {
   getAvailableProductVariants,
@@ -170,8 +172,9 @@ export default function ProductDetail() {
         }
       }
     } else {
-      navigator.clipboard.writeText(window.location.href);
-      toast.success('تم نسخ رابط المنتج');
+      const ok = await safeCopyText(window.location.href);
+      if (ok) toast.success('تم نسخ رابط المنتج');
+      else toast.error('تعذر نسخ الرابط تلقائياً');
     }
   };
 
@@ -518,7 +521,7 @@ export default function ProductDetail() {
                   </div>
                   {product.offerExpiresAt && (
                     <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400 tabular-nums">
-                      ساري حتى {new Date(product.offerExpiresAt).toLocaleDateString('ar-YE')}
+                      ساري حتى {formatArabicDate(product.offerExpiresAt)}
                     </span>
                   )}
                 </div>
@@ -832,23 +835,27 @@ export default function ProductDetail() {
       </div>
 
       {showPreOrderModal && (
-        <PreOrderModal
-          product={baseProductForPurchase}
-          isOpen={showPreOrderModal}
-          onClose={() => setShowPreOrderModal(false)}
-        />
+        <Suspense fallback={null}>
+          <PreOrderModal
+            product={baseProductForPurchase}
+            isOpen={showPreOrderModal}
+            onClose={() => setShowPreOrderModal(false)}
+          />
+        </Suspense>
       )}
 
       {showVariantsModal && (
-        <ProductVariantsModal
-          product={product}
-          isOpen={showVariantsModal}
-          onClose={() => setShowVariantsModal(false)}
-          onNavigateToVariant={(pid, vid) => {
-            const target = slug ? `/s/${slug}/variant/${pid}/${vid}` : `/variant/${pid}/${vid}`;
-            navigate(target);
-          }}
-        />
+        <Suspense fallback={null}>
+          <ProductVariantsModal
+            product={product}
+            isOpen={showVariantsModal}
+            onClose={() => setShowVariantsModal(false)}
+            onNavigateToVariant={(pid, vid) => {
+              const target = slug ? `/s/${slug}/variant/${pid}/${vid}` : `/variant/${pid}/${vid}`;
+              navigate(target);
+            }}
+          />
+        </Suspense>
       )}
 
       {/* Customer Reviews Section */}
@@ -940,7 +947,7 @@ export default function ProductDetail() {
                       <div>
                         <h4 className="font-bold text-[#111214] dark:text-[#F4F4F2] text-sm">{review.userName}</h4>
                         <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400 tabular-nums">
-                          {new Date(review.createdAt).toLocaleDateString('ar-YE')}
+                          {formatArabicDate(review.createdAt)}
                         </span>
                       </div>
                     </div>

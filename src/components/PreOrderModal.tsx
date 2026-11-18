@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import { MerchantWallet } from './WalletManagement';
 import { isProductOfferActive } from '../lib/offerUtils';
 import { calculateSafeDeposit, isItemOutOfStock, reserveStockTransaction, restoreStockTransaction } from '../lib/stockUtils';
+import { safeCopyText, formatArabicDate } from '../lib/deviceSafe';
 
 const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800, quality = 0.65): Promise<string> => {
   return new Promise((resolve) => {
@@ -127,11 +128,15 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
     loadWalletsAndStore();
   }, [isOpen, product]);
 
-  const handleCopy = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedWalletId(id);
-    toast.success("تم نسخ رقم الحساب");
-    setTimeout(() => setCopiedWalletId(null), 2500);
+  const handleCopy = async (id: string, text: string) => {
+    const ok = await safeCopyText(text);
+    if (ok) {
+      setCopiedWalletId(id);
+      toast.success("تم نسخ رقم الحساب");
+      setTimeout(() => setCopiedWalletId(null), 2500);
+    } else {
+      toast.error("تعذر النسخ تلقائياً، يرجى نسخ الرقم يدوياً");
+    }
   };
 
   const handleProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -289,8 +294,8 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
         userId: user.uid,
         title: isPickupOnly ? 'تم حجز المنتج للاستلام من المتجر' : 'تم تأكيد طلب الحجز المسبق بنجاح',
         message: isPickupOnly
-          ? `تم حجز "${product.title}" بعربون ${depositAmount.toLocaleString()} ر.ي للاستلام من المتجر نفسه خلال ${reservationDurationDays} أيام (حتى ${new Date(reservationExpiresAt).toLocaleDateString('ar-YE')}). يرجى الحضور قبل انتهاء المدة حتى لا يذهب العربون للمتجر.`
-          : `تم تسجيل حجز منتج "${product.title}" بدفع عربون ${depositAmount.toLocaleString()} ريال. مدة الحجز ${reservationDurationDays} أيام حتى ${new Date(reservationExpiresAt).toLocaleDateString('ar-YE')}.`,
+          ? `تم حجز "${product.title}" بعربون ${depositAmount.toLocaleString()} ر.ي للاستلام من المتجر نفسه خلال ${reservationDurationDays} أيام (حتى ${formatArabicDate(reservationExpiresAt)}). يرجى الحضور قبل انتهاء المدة حتى لا يذهب العربون للمتجر.`
+          : `تم تسجيل حجز منتج "${product.title}" بدفع عربون ${depositAmount.toLocaleString()} ريال. مدة الحجز ${reservationDurationDays} أيام حتى ${formatArabicDate(reservationExpiresAt)}.`,
         type: 'order',
         createdAt: new Date().toISOString(),
         read: false,

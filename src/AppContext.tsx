@@ -1,13 +1,23 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useRef, useMemo, useCallback } from 'react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, increment, updateDoc, addDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, getCountFromServer, increment, updateDoc, addDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import { getStockLimit, isItemOutOfStock } from './lib/stockUtils';
 import { expireDeliveryFeeProposalTransaction } from './lib/deliveryFeeUtils';
 import { expireReservationTransaction, isStorePickupOnlyProduct } from './lib/reservationUtils';
 import { StatsResetConfig, getLocalDateKey } from './lib/statsReportUtils';
+import {
+  safeLocalGet,
+  safeLocalSet,
+  safeLocalRemove,
+  safeSessionGet,
+  safeSessionSet,
+  requestNotificationPermissionSafely,
+  showBrowserNotificationSafely,
+  formatArabicDate
+} from './lib/deviceSafe';
 
 export interface AppUser {
   uid: string;
@@ -80,13 +90,13 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | AppUser | null>(() => {
     try {
-      const saved = localStorage.getItem('yemen_store_session');
+      const saved = safeLocalGet('yemen_store_session');
       if (!saved) return null;
       const parsed = JSON.parse(saved);
       if (parsed && (parsed.email?.toLowerCase() === '1ismaai0lll@gmail.com' || parsed.uid === 'u_32cd7332ee7ec2e0c1121512')) {
         parsed.uid = 'MQAwCYqFztd2PZbV1fRMxKRqoYX2';
         parsed.role = 'admin';
-        localStorage.setItem('yemen_store_session', JSON.stringify(parsed));
+        safeLocalSet('yemen_store_session', JSON.stringify(parsed));
       }
       return parsed;
     } catch {
@@ -99,7 +109,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
-      const savedCart = localStorage.getItem('yemen_store_cart_v1');
+      const savedCart = safeLocalGet('yemen_store_cart_v1');
       if (savedCart) {
         const parsed = JSON.parse(savedCart);
         return Array.isArray(parsed) ? parsed : [];
@@ -111,23 +121,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     cartRef.current = cart;
-    try {
-      localStorage.setItem('yemen_store_cart_v1', JSON.stringify(cart));
-    } catch {}
+    safeLocalSet('yemen_store_cart_v1', JSON.stringify(cart));
   }, [cart]);
 
-  const [settings, setSettings] = useState<any | null>(null);
+  const [settings, setSettings] = useState<any | null>(() => {
+    try {
+      const cached = safeLocalGet('yemen_store_settings_cache_v1');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [unreadCount, setUnreadCount] = useState(0);
   const [userTheme, setUserThemeState] = useState<ThemeColor | null>(() => {
     try {
-      const resetDone = localStorage.getItem('default_white_theme_v1');
+      const resetDone = safeLocalGet('default_white_theme_v1');
       if (!resetDone) {
-        localStorage.setItem('user_preferred_theme', 'white');
-        localStorage.setItem('isDarkMode', JSON.stringify(false));
-        localStorage.setItem('default_white_theme_v1', 'true');
+        safeLocalSet('user_preferred_theme', 'white');
+        safeLocalSet('isDarkMode', JSON.stringify(false));
+        safeLocalSet('default_white_theme_v1', 'true');
         return 'white';
       }
-      const saved = localStorage.getItem('user_preferred_theme');
+      const saved = safeLocalGet('user_preferred_theme');
       if (saved && ['green', 'blue', 'red', 'black', 'white'].includes(saved)) {
         return saved as ThemeColor;
       }
@@ -137,18 +152,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
     try {
-      const resetDone = localStorage.getItem('default_white_theme_v1');
+      const resetDone = safeLocalGet('default_white_theme_v1');
       if (!resetDone) return false;
-      const savedTheme = localStorage.getItem('user_preferred_theme');
+      const savedTheme = safeLocalGet('user_preferred_theme');
       if (savedTheme === 'white') return false;
-      const saved = localStorage.getItem('isDarkMode');
+      const saved = safeLocalGet('isDarkMode');
       return saved ? JSON.parse(saved) : false;
     } catch {
       return false;
     }
   });
   const prevUnreadCount = useRef(0);
-  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(() => !safeLocalGet('yemen_store_settings_cache_v1'));
   const [globalStats, setGlobalStats] = useState<{
     totalVisitors: number;
     totalRegistered: number;
@@ -165,13 +180,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     statsReset: null
   });
 
-  const toggleDarkMode = () => {
-    if (effectiveTheme === 'white') {
+  const toggleDarkMode = useCallback(() => {
+    const canOverride = settings?.allowUserThemeOverride !== false;
+    const rawTheme = settings?.storeTheme || 'white';
+    const currentAdminTheme = ['green', 'blue', 'red', 'black', 'white'].includes(rawTheme) ? rawTheme : 'white';
+    const currentEffective = canOverride && userTheme ? userTheme : currentAdminTheme;
+    if (currentEffective === 'white') {
       toast('الستايل الأبيض النقي مفعل افتراضياً', { icon: '⚪' });
       return;
     }
     setIsDarkMode((prev: boolean) => !prev);
-  };
+  }, [settings?.allowUserThemeOverride, settings?.storeTheme, userTheme]);
 
   const allowUserThemeOverride = settings?.allowUserThemeOverride !== false;
   const rawAdminTheme = settings?.storeTheme || 'white';
@@ -190,12 +209,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUserThemeState(theme);
     if (theme === 'white') {
       setIsDarkMode(false);
-      try {
-        localStorage.setItem('isDarkMode', JSON.stringify(false));
-      } catch {}
+      safeLocalSet('isDarkMode', JSON.stringify(false));
     }
     try {
-      localStorage.setItem('user_preferred_theme', theme);
+      safeLocalSet('user_preferred_theme', theme);
       if (user) {
         const targetUid = (user.email?.toLowerCase() === '1ismaai0lll@gmail.com' || user.uid === 'u_32cd7332ee7ec2e0c1121512')
           ? 'MQAwCYqFztd2PZbV1fRMxKRqoYX2'
@@ -210,9 +227,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (userData?.preferredTheme && ['green', 'blue', 'red', 'black', 'white'].includes(userData.preferredTheme)) {
       if (!userTheme) {
         setUserThemeState(userData.preferredTheme as ThemeColor);
-        try {
-          localStorage.setItem('user_preferred_theme', userData.preferredTheme);
-        } catch {}
+        safeLocalSet('user_preferred_theme', userData.preferredTheme);
       }
     }
   }, [userData?.preferredTheme]);
@@ -231,14 +246,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       document.documentElement.classList.remove('dark');
       document.body.classList.remove('dark');
     }
-    try {
-      localStorage.setItem('isDarkMode', JSON.stringify(isDarkMode));
-    } catch {}
+    safeLocalSet('isDarkMode', JSON.stringify(isDarkMode));
   }, [effectiveIsDarkMode, isDarkMode]);
 
   // Visitor increment
     useEffect(() => {
-        const hasVisited = sessionStorage.getItem('visited_v2');
+        const hasVisited = safeSessionGet('visited_v2');
         if (!hasVisited) {
             const statsRef = doc(db, 'stats', 'global');
             const todayKey = getLocalDateKey();
@@ -248,23 +261,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
                      totalVisitors: increment(1),
                      [`dailyVisits.${todayKey}`]: increment(1)
                    })
-                     .then(() => sessionStorage.setItem('visited_v2', 'true'))
+                     .then(() => safeSessionSet('visited_v2', 'true'))
                      .catch(e => {
-                       if (e.code === 'resource-exhausted') sessionStorage.setItem('visited_v2', 'true');
+                       if (e.code === 'resource-exhausted') safeSessionSet('visited_v2', 'true');
                      });
                 } else {
                    setDoc(statsRef, {
                      totalVisitors: 1,
                      dailyVisits: { [todayKey]: 1 }
                    })
-                     .then(() => sessionStorage.setItem('visited_v2', 'true'))
+                     .then(() => safeSessionSet('visited_v2', 'true'))
                      .catch(() => {});
                 }
             }).catch(() => {});
         }
     }, []);
 
-  const lastPresenceUpdateRef = useRef<number>(Number(sessionStorage.getItem('lastPresenceTime')) || 0);
+  const lastPresenceUpdateRef = useRef<number>(Number(safeSessionGet('lastPresenceTime')) || 0);
   const initialMessageIds = useRef<Set<string>>(new Set());
   const isInitialMessagesLoaded = useRef(false);
 
@@ -281,7 +294,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       
       const nowISO = new Date(now).toISOString();
       lastPresenceUpdateRef.current = now;
-      sessionStorage.setItem('lastPresenceTime', now.toString());
+      safeSessionSet('lastPresenceTime', now.toString());
 
       const activeUid = (user.email?.toLowerCase() === '1ismaai0lll@gmail.com' || user.uid === 'u_32cd7332ee7ec2e0c1121512')
         ? 'MQAwCYqFztd2PZbV1fRMxKRqoYX2'
@@ -294,18 +307,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }, { merge: true });
 
         // Store/Admin profile update - throttled to 45 mins
-        if ((userData?.role === 'store' || user.email?.toLowerCase() === '1ismaai0lll@gmail.com') && (now - (Number(sessionStorage.getItem('lastProfilePresence')) || 0) > 2700000)) {
+        if ((userData?.role === 'store' || user.email?.toLowerCase() === '1ismaai0lll@gmail.com') && (now - (Number(safeSessionGet('lastProfilePresence')) || 0) > 2700000)) {
           setDoc(doc(db, 'storeProfiles', activeUid), {
             lastSeen: nowISO
-          }, { merge: true }).then(() => sessionStorage.setItem('lastProfilePresence', now.toString())).catch(() => {});
+          }, { merge: true }).then(() => safeSessionSet('lastProfilePresence', now.toString())).catch(() => {});
         }
         
         // Master admin global stats - throttled to 30 mins
-        if (user.email?.toLowerCase() === '1ismaai0lll@gmail.com' && (now - (Number(sessionStorage.getItem('lastGlobalPresence')) || 0) > 1800000)) {
+        if (user.email?.toLowerCase() === '1ismaai0lll@gmail.com' && (now - (Number(safeSessionGet('lastGlobalPresence')) || 0) > 1800000)) {
            setDoc(doc(db, 'stats', 'global'), { 
              mainStoreLastSeen: nowISO 
            }, { merge: true })
-           .then(() => sessionStorage.setItem('lastGlobalPresence', now.toString()))
+           .then(() => safeSessionSet('lastGlobalPresence', now.toString()))
            .catch(() => {});
         }
       } catch (err: any) {
@@ -371,14 +384,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     
     if (!isMasterAdminUser || !auth.currentUser) return () => statsUnsubscribe();
 
-    // Calculate Online Count (Admin only sync) - throttled & skips hidden tabs
+    // Calculate Online Count (Admin only sync) - uses getCountFromServer to avoid downloading user docs/avatars
     const updateOnlineCount = async () => {
       if (!auth.currentUser || document.hidden) return;
       try {
         const tenMinutesAgo = new Date(Date.now() - 10 * 60000).toISOString();
         const qOnline = query(collection(db, 'users'), where('lastSeen', '>=', tenMinutesAgo));
-        const snap = await getDocs(qOnline);
-        const count = snap.size;
+        const countSnap = await getCountFromServer(qOnline);
+        const count = countSnap.data().count;
         
         updateDoc(doc(db, 'stats', 'global'), { onlineCount: count }).catch(() => {});
         setGlobalStats(prev => (prev.onlineCount !== count ? { ...prev, onlineCount: count } : prev));
@@ -390,11 +403,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateOnlineCount();
     const onlineInterval = setInterval(updateOnlineCount, 180000); // 3 minutes
 
-    // Sync total registered count at most once per session to avoid redundant full-collection scans
-    if (auth.currentUser && !sessionStorage.getItem('synced_user_count_v1')) {
-      sessionStorage.setItem('synced_user_count_v1', '1');
-      getDocs(collection(db, 'users')).then(snap => {
-        const count = snap.size;
+    // Sync total registered count via server aggregation (no document payload transfer)
+    if (auth.currentUser && !safeSessionGet('synced_user_count_v1')) {
+      safeSessionSet('synced_user_count_v1', '1');
+      getCountFromServer(collection(db, 'users')).then(countSnap => {
+        const count = countSnap.data().count;
         updateDoc(doc(db, 'stats', 'global'), { totalRegistered: count }).catch(() => {});
         setGlobalStats(prev => (prev.totalRegistered !== count ? { ...prev, totalRegistered: count } : prev));
       }).catch(() => {});
@@ -451,8 +464,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             });
           }, 0);
 
-          if (document.hidden && "Notification" in window && Notification.permission === "granted") {
-            new Notification("متجر يمن", {
+          if (document.hidden) {
+            showBrowserNotificationSafely("متجر يمن", {
               body: "لديك رسائل جديدة!",
               icon: "/pwa-192x192.png"
             });
@@ -469,9 +482,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.warn('Unread messages listener fail (silent):', error.message);
     });
 
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
+    requestNotificationPermissionSafely();
 
     return () => unsubscribe();
   }, [user?.uid]);
@@ -607,7 +618,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const unsubSettings = onSnapshot(doc(db, 'settings', 'global'), (snap) => {
-      if (snap.exists()) setSettings(snap.data());
+      if (snap.exists()) {
+        const data = snap.data();
+        setSettings(data);
+        try {
+          const lightCache = {
+            storeName: data.storeName,
+            shortName: data.shortName,
+            storeDescription: data.storeDescription,
+            storeLogo: data.storeLogo && String(data.storeLogo).length < 180000 ? data.storeLogo : undefined,
+            siteIcon: data.siteIcon && String(data.siteIcon).length < 180000 ? data.siteIcon : undefined,
+            siteIconShape: data.siteIconShape,
+            siteIconBg: data.siteIconBg,
+            siteIconSize: data.siteIconSize,
+            siteIconBorder: data.siteIconBorder,
+            storeTheme: data.storeTheme,
+            storeFont: data.storeFont,
+            allowUserThemeOverride: data.allowUserThemeOverride,
+            showHeroBanner: data.showHeroBanner,
+            storePublicUrl: data.storePublicUrl,
+            bannerMessage: data.bannerMessage
+          };
+          safeLocalSet('yemen_store_settings_cache_v1', JSON.stringify(lightCache));
+        } catch {}
+      }
       setSettingsLoading(false);
     }, (error) => {
       console.warn("Settings sync failed:", error);
@@ -626,14 +660,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         setUser(authUser);
       } else {
-        const saved = localStorage.getItem('yemen_store_session');
+        const saved = safeLocalGet('yemen_store_session');
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
             if (parsed && (parsed.email?.toLowerCase() === '1ismaai0lll@gmail.com' || parsed.uid === 'u_32cd7332ee7ec2e0c1121512')) {
               parsed.uid = 'MQAwCYqFztd2PZbV1fRMxKRqoYX2';
               parsed.role = 'admin';
-              localStorage.setItem('yemen_store_session', JSON.stringify(parsed));
+              safeLocalSet('yemen_store_session', JSON.stringify(parsed));
             }
             setUser(parsed);
           } catch {
@@ -655,32 +689,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Sync Favicon and Document Title dynamically with settings
-  useEffect(() => {
-    if (!settings) return;
-    if (settings.storeName) {
-      document.title = settings.storeName;
-    }
-    const iconUrl = settings.siteIcon || settings.storeLogo;
-    if (iconUrl) {
-      let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
-      if (!link) {
-        link = document.createElement('link');
-        link.type = 'image/x-icon';
-        link.rel = 'shortcut icon';
-        document.getElementsByTagName('head')[0].appendChild(link);
-      }
-      link.href = iconUrl;
-
-      let appleLink: HTMLLinkElement | null = document.querySelector("link[rel='apple-touch-icon']");
-      if (!appleLink) {
-        appleLink = document.createElement('link');
-        appleLink.rel = 'apple-touch-icon';
-        document.getElementsByTagName('head')[0].appendChild(appleLink);
-      }
-      appleLink.href = iconUrl;
-    }
-  }, [settings?.storeName, settings?.storeLogo, settings?.siteIcon]);
+  // Head title, favicon, and meta synchronization is handled centrally in App.tsx MainLayout
 
   useEffect(() => {
     if (!user) return;
@@ -735,7 +744,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                                     await addDoc(collection(db, 'notifications'), {
                                         userId: effectiveUid,
                                         title: 'تنبيه: توثيق المتجر يقترب من الانتهاء',
-                                        message: `سينتهي توثيق متجرك خلال ${diffDays} أيام (${expiryDate.toLocaleDateString('ar-YE')}). يرجى تجديد التوثيق لضمان استمرار ظهور علامتك الموثقة.`,
+                                        message: `سينتهي توثيق متجرك خلال ${diffDays} أيام (${formatArabicDate(expiryDate)}). يرجى تجديد التوثيق لضمان استمرار ظهور علامتك الموثقة.`,
                                         type: 'verification_expiry',
                                         read: false,
                                         actionUrl: '/admin?tab=store-profile',
@@ -802,11 +811,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) return;
-    try {
-      if (localStorage.getItem('yemen_store_session')) {
-        localStorage.setItem('yemen_store_session', JSON.stringify(user));
-      }
-    } catch {}
+    if (safeLocalGet('yemen_store_session')) {
+      safeLocalSet('yemen_store_session', JSON.stringify(user));
+    }
   }, [user]);
 
   const openLoginModal = (initialEmail?: string) => {
@@ -830,7 +837,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const res = await signInWithPopup(auth, provider);
       if (res.user) {
-        localStorage.removeItem('yemen_store_session');
+        safeLocalRemove('yemen_store_session');
       }
     } catch (error: any) {
       if (error.code === 'auth/popup-closed-by-user') {
@@ -863,7 +870,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false;
       }
       if (data.sessionToken) {
-        localStorage.setItem('yemen_store_session_token', data.sessionToken);
+        safeLocalSet('yemen_store_session_token', data.sessionToken);
       }
       const isMaster = data.user.email?.toLowerCase() === '1ismaai0lll@gmail.com';
       const sessionUser: AppUser = {
@@ -873,7 +880,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         photoURL: data.user.photoURL || '',
         role: isMaster ? 'admin' : data.user.role
       };
-      localStorage.setItem('yemen_store_session', JSON.stringify(sessionUser));
+      safeLocalSet('yemen_store_session', JSON.stringify(sessionUser));
       setUser(sessionUser);
       setUserData(data.user);
       return true;
@@ -896,7 +903,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false;
       }
       if (data.sessionToken) {
-        localStorage.setItem('yemen_store_session_token', data.sessionToken);
+        safeLocalSet('yemen_store_session_token', data.sessionToken);
       }
       const isMaster = data.user.email?.toLowerCase() === '1ismaai0lll@gmail.com';
       const sessionUser: AppUser = {
@@ -906,7 +913,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         photoURL: data.user.photoURL || '',
         role: isMaster ? 'admin' : data.user.role
       };
-      localStorage.setItem('yemen_store_session', JSON.stringify(sessionUser));
+      safeLocalSet('yemen_store_session', JSON.stringify(sessionUser));
       setUser(sessionUser);
       setUserData(data.user);
       toast.success(data.message || 'تم تسجيل الدخول بنجاح');
@@ -936,7 +943,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { success: false, message: data.message || 'فشل إنشاء الحساب' };
       }
       if (data.sessionToken) {
-        localStorage.setItem('yemen_store_session_token', data.sessionToken);
+        safeLocalSet('yemen_store_session_token', data.sessionToken);
       }
       if (data.user) {
         const isMaster = data.user.email?.toLowerCase() === '1ismaai0lll@gmail.com';
@@ -947,7 +954,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           photoURL: data.user.photoURL || '',
           role: isMaster ? 'admin' : data.user.role
         };
-        localStorage.setItem('yemen_store_session', JSON.stringify(sessionUser));
+        safeLocalSet('yemen_store_session', JSON.stringify(sessionUser));
         setUser(sessionUser);
         setUserData(data.user);
       }
@@ -988,7 +995,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           displayName: data.user.displayName || data.user.name || user.displayName,
           photoURL: data.user.photoURL || user.photoURL
         };
-        localStorage.setItem('yemen_store_session', JSON.stringify(updatedSession));
+        safeLocalSet('yemen_store_session', JSON.stringify(updatedSession));
         return true;
       }
       return false;
@@ -1004,7 +1011,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (idToken) return { Authorization: `Bearer ${idToken}` };
       } catch {}
     }
-    const sessionToken = localStorage.getItem('yemen_store_session_token');
+    const sessionToken = safeLocalGet('yemen_store_session_token');
     if (sessionToken) {
       return { Authorization: `Bearer ${sessionToken}` };
     }
@@ -1047,8 +1054,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    localStorage.removeItem('yemen_store_session');
-    localStorage.removeItem('yemen_store_session_token');
+    safeLocalRemove('yemen_store_session');
+    safeLocalRemove('yemen_store_session_token');
     setUser(null);
     setUserData(null);
     try {

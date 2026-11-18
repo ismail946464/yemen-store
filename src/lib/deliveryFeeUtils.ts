@@ -7,6 +7,7 @@ import {
   increment
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { formatArabicTime } from './deviceSafe';
 
 export type DeliveryFeeApprovalStatus =
   | 'pending_customer'
@@ -183,10 +184,7 @@ export async function proposeDeliveryFeeTransaction(params: {
     cleanMinutes >= 60 && cleanMinutes % 60 === 0
       ? `${cleanMinutes / 60} ${cleanMinutes / 60 === 1 ? 'ساعة' : 'ساعات'}`
       : `${cleanMinutes} دقيقة`;
-  const deadlineText = new Date(expiresAtIso).toLocaleTimeString('ar-YE', {
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  const deadlineText = formatArabicTime(expiresAtIso);
 
   if (txResult.customerId) {
     const notifTitle = `عرض رسوم توصيل للطلب #${orderId.slice(0, 8)}`;

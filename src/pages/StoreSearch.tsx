@@ -17,9 +17,12 @@ import {
   doesStoreMatchCategory,
   getAssignedStoreCategories
 } from '../lib/storeCategories';
+import { safeSessionGet, safeSessionSet } from '../lib/deviceSafe';
 
 const STORE_CACHE_KEY = 'yemen_store_directory_v1';
 const CACHE_TTL_MS = 60000;
+const INITIAL_VISIBLE_STORES = 12;
+const STORES_BATCH_SIZE = 12;
 
 export const getStoreCategoryIcon = (iconOrName: string, className = 'w-3.5 h-3.5 shrink-0') => {
   const s = String(iconOrName || '').toLowerCase();
@@ -59,8 +62,10 @@ export default function StoreSearch() {
   const [stores, setStores] = useState<any[]>([]);
   const [storeCategories, setStoreCategories] = useState<StoreCategoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_STORES);
 
   const categoriesScrollRef = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   const scrollCategories = (direction: 'left' | 'right') => {
     if (categoriesScrollRef.current) {
@@ -90,7 +95,7 @@ export default function StoreSearch() {
     let mounted = true;
     const fetchAllStores = async () => {
       try {
-        const cachedRaw = sessionStorage.getItem(STORE_CACHE_KEY);
+        const cachedRaw = safeSessionGet(STORE_CACHE_KEY);
         if (cachedRaw) {
           const cached = JSON.parse(cachedRaw);
           if (cached?.ts && Date.now() - cached.ts < CACHE_TTL_MS && Array.isArray(cached.data)) {
@@ -138,9 +143,7 @@ export default function StoreSearch() {
           return (b.productCount || 0) - (a.productCount || 0);
         });
 
-        try {
-          sessionStorage.setItem(STORE_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: combined }));
-        } catch {}
+        safeSessionSet(STORE_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: combined }));
 
         if (mounted) {
           setStores(combined);
@@ -203,6 +206,46 @@ export default function StoreSearch() {
       return (b.productCount || 0) - (a.productCount || 0);
     });
   }, [searchTerm, stores, verifiedOnly, activeCategoryObj, storeCategories, sortBy]);
+
+  const categoryStoreCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const cat of storeCategories) {
+      counts[cat.id] = 0;
+    }
+    for (const s of stores) {
+      for (const cat of storeCategories) {
+        if (doesStoreMatchCategory(s.profile, cat)) {
+          counts[cat.id] = (counts[cat.id] || 0) + 1;
+        }
+      }
+    }
+    return counts;
+  }, [stores, storeCategories]);
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE_STORES);
+  }, [searchTerm, verifiedOnly, activeCategoryId, sortBy]);
+
+  const visibleResults = useMemo(
+    () => results.slice(0, visibleCount),
+    [results, visibleCount]
+  );
+  const hasMoreStores = visibleCount < results.length;
+
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el || !hasMoreStores || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + STORES_BATCH_SIZE, results.length));
+        }
+      },
+      { rootMargin: '320px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMoreStores, results.length]);
 
   return (
     <div className="space-y-6">
@@ -278,7 +321,7 @@ export default function StoreSearch() {
 
               {storeCategories.map((cat) => {
                 const isActive = activeCategoryId === cat.id;
-                const count = stores.filter((s) => doesStoreMatchCategory(s.profile, cat)).length;
+                const count = categoryStoreCounts[cat.id] || 0;
                 return (
                   <button
                     type="button"
@@ -362,10 +405,11 @@ export default function StoreSearch() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {results.map((store) => {
-            const assignedCats = getAssignedStoreCategories(store.profile, storeCategories);
-            return (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {visibleResults.map((store) => {
+              const assignedCats = getAssignedStoreCategories(store.profile, storeCategories);
+              return (
               <article
                 key={store.id}
                 className="rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] overflow-hidden hover:border-[#111214]/40 dark:hover:border-zinc-500 transition-colors group flex flex-col h-full"
@@ -476,7 +520,20 @@ export default function StoreSearch() {
               </article>
             );
           })}
-        </div>
+          </div>
+
+          {hasMoreStores && (
+            <div ref={loadMoreRef} className="pt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setVisibleCount((prev) => Math.min(prev + STORES_BATCH_SIZE, results.length))}
+                className="min-h-[42px] px-6 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-xs font-bold text-[#111214] dark:text-[#F4F4F2] transition-colors"
+              >
+                عرض المزيد ({results.length - visibleResults.length} متجر متبقٍ)
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

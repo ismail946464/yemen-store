@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar, CheckCircle, MapPin, ShieldCheck, Star, Store, ArrowLeft, Clock, ExternalLink } from 'lucide-react';
 import { useAppContext } from '../AppContext';
+import { createSafeDateFormatter } from '../lib/deviceSafe';
 
 export interface ProductPublisherMiniCardProps {
   product: any;
@@ -10,32 +11,33 @@ export interface ProductPublisherMiniCardProps {
   storePathPrefix?: string;
 }
 
+const SHORT_DATE_FMT = createSafeDateFormatter({
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+});
+
+const FULL_DATE_FMT = createSafeDateFormatter({
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
 export function formatProductPublishDate(product: any, style: 'short' | 'full' = 'short'): string {
   const rawDate = product?.reviewedAt || product?.createdAt || product?.updatedAt;
   if (!rawDate) return '';
   try {
     const d = new Date(rawDate);
     if (isNaN(d.getTime())) return '';
-    if (style === 'short') {
-      return d.toLocaleDateString('ar-YE', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      });
-    }
-    return d.toLocaleString('ar-YE', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return style === 'short' ? SHORT_DATE_FMT.format(d) : FULL_DATE_FMT.format(d);
   } catch {
     return '';
   }
 }
 
-export default function ProductPublisherMiniCard({
+function ProductPublisherMiniCard({
   product,
   storeProfile,
   variant = 'compact',
@@ -94,6 +96,8 @@ export default function ProductPublisherMiniCard({
               <img
                 src={storeLogo}
                 alt={storeName}
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
                 onError={() => setLogoFailed(true)}
@@ -284,3 +288,5 @@ export default function ProductPublisherMiniCard({
     </div>
   );
 }
+
+export default memo(ProductPublisherMiniCard);

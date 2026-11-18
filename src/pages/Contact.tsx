@@ -23,6 +23,9 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { useAppContext } from '../AppContext';
+import { createSafeDateFormatter, formatArabicDate, formatArabicTime } from '../lib/deviceSafe';
+
+const CHAT_DAY_FMT = createSafeDateFormatter({ weekday: 'long', day: 'numeric', month: 'long' });
 import toast from 'react-hot-toast';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
@@ -979,7 +982,7 @@ export default function Contact() {
 
                   <div className="flex flex-col items-end gap-1.5 shrink-0">
                     <span className="text-[10px] font-medium text-[#5C5B57] dark:text-zinc-400 tabular-nums">
-                      {conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      {conv.lastMessageAt ? formatArabicTime(conv.lastMessageAt) : ''}
                     </span>
                     {isUnread && (
                       <span className={`min-w-[20px] h-5 px-1.5 rounded-md ${getThemeClasses('bg')} flex items-center justify-center text-[10px] font-bold text-white tabular-nums`}>
@@ -1216,7 +1219,7 @@ export default function Contact() {
                         <div className="flex justify-center my-6 relative">
                           <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-px bg-[#E5E2DA] dark:bg-[#232730]"></div>
                           <span className="relative text-[10px] font-bold px-3 py-1 rounded-md border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#5C5B57] dark:text-zinc-400">
-                            {new Date(m.createdAt).toLocaleDateString('ar-YE', { weekday: 'long', day: 'numeric', month: 'long' })}
+                            {formatArabicDate(m.createdAt, CHAT_DAY_FMT)}
                           </span>
                         </div>
                       )}
@@ -1350,7 +1353,7 @@ export default function Contact() {
                             isMine ? 'text-white/75' : 'text-[#5C5B57] dark:text-zinc-400'
                           }`}>
                             <span className="text-[10px] font-medium tabular-nums">
-                              {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {formatArabicTime(m.createdAt)}
                             </span>
                             {isMine && (
                               m.isRead ? <CheckCheck className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />

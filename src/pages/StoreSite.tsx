@@ -1,17 +1,20 @@
-import { useState, useEffect } from 'react';
+import { Suspense, lazy, useState, useEffect, useMemo } from 'react';
 import { ShoppingCart, Home, ShoppingBag, User as UserIcon, MessageSquare, Share2, Image as ImageIcon, Layers, BookmarkCheck, Store } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { PageLoadingSkeleton } from '../components/Skeletons';
-import PreOrderModal from '../components/PreOrderModal';
-import ProductVariantsModal from '../components/ProductVariantsModal';
 import ProductPublisherMiniCard from '../components/ProductPublisherMiniCard';
+import HeroBannerAds from '../components/HeroBannerAds';
 import { isProductOfferActive, getProductOfferBadgeText } from '../lib/offerUtils';
 import { getAvailableProductVariants, buildBaseProductForCart } from '../lib/variantUtils';
 import { getStockLimit, isItemOutOfStock, calculateSafeDeposit } from '../lib/stockUtils';
+import { safeCopyText } from '../lib/deviceSafe';
+
+const PreOrderModal = lazy(() => import('../components/PreOrderModal'));
+const ProductVariantsModal = lazy(() => import('../components/ProductVariantsModal'));
 
 export default function StoreSite() {
   const { slug } = useParams();
@@ -30,22 +33,45 @@ export default function StoreSite() {
     async function loadData() {
       try {
         const [prodSnap, catSnap, profSnap] = await Promise.all([
-          getDocs(collection(db, 'products')),
+          getDocs(query(collection(db, 'products'), where('status', '==', 'active'))),
           getDocs(collection(db, 'categories')),
           getDocs(collection(db, 'storeProfiles'))
         ]);
 
         setProducts(
-          prodSnap.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter((p: any) => p.status === 'active')
+          prodSnap.docs.map(doc => {
+            const raw = doc.data() as any;
+            return {
+              ...raw,
+              id: doc.id,
+              image: raw.image || raw.images?.[0] || '',
+              images: undefined,
+            };
+          })
         );
         setCategories(catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         const pMap: Record<string, any> = {};
+        const nowMs = Date.now();
         profSnap.docs.forEach(d => {
           const data = d.data();
-          const isVer = Boolean(data.verified) && (!data.verifiedUntil || data.verifiedUntil === '' || new Date(data.verifiedUntil).getTime() >= Date.now());
-          pMap[d.id] = { ...data, isVerified: isVer };
+          const isVer = Boolean(data.verified) && (!data.verifiedUntil || data.verifiedUntil === '' || new Date(data.verifiedUntil).getTime() >= nowMs);
+          pMap[d.id] = {
+            name: data.name || '',
+            logoUrl: data.logoUrl || '',
+            verified: Boolean(data.verified),
+            verifiedUntil: data.verifiedUntil || '',
+            isVerified: isVer,
+            averageRating: data.averageRating || 0,
+            averageCredibility: data.averageCredibility || 0,
+            city: data.city || '',
+            district: data.district || '',
+            address: data.address || '',
+            landmark: data.landmark || '',
+            workingHours: data.workingHours || '',
+            googleMapsUrl: data.googleMapsUrl || '',
+            location: data.location || null,
+            coordinates: data.coordinates || null,
+          };
         });
         setStoreProfiles(pMap);
       } catch (e) {
@@ -80,19 +106,19 @@ export default function StoreSite() {
     }
   }, [settings]);
 
-  const offerProducts = products.filter(isProductOfferActive);
+  const offerProducts = useMemo(() => products.filter(isProductOfferActive), [products]);
 
-  const filteredProducts = activeTab === 'all'
-    ? products
-    : activeTab === 'offers'
-      ? offerProducts
-      : products.filter(p => {
-          if (!p.category) return false;
-          const target = activeTab.toLowerCase().trim();
-          const pCat = String(p.category).toLowerCase().trim();
-          const pSlug = String(p.categorySlug || '').toLowerCase().trim();
-          return pCat === target || pSlug === target || (target === 'الكترونيات' && pCat.includes('الكترون')) || (pCat.includes(target) || target.includes(pCat));
-        });
+  const filteredProducts = useMemo(() => {
+    if (activeTab === 'all') return products;
+    if (activeTab === 'offers') return offerProducts;
+    const target = activeTab.toLowerCase().trim();
+    return products.filter(p => {
+      if (!p.category) return false;
+      const pCat = String(p.category).toLowerCase().trim();
+      const pSlug = String(p.categorySlug || '').toLowerCase().trim();
+      return pCat === target || pSlug === target || (target === 'الكترونيات' && pCat.includes('الكترون')) || (pCat.includes(target) || target.includes(pCat));
+    });
+  }, [products, offerProducts, activeTab]);
 
   if (isLoading) {
     return (
@@ -102,7 +128,7 @@ export default function StoreSite() {
     );
   }
 
-  const handleShare = () => {
+  const handleShare = async () => {
     if (navigator.share) {
       navigator.share({
         title: settings?.storeName || 'متجري',
@@ -110,8 +136,9 @@ export default function StoreSite() {
         url: window.location.href,
       }).catch(() => {});
     } else {
-      navigator.clipboard.writeText(window.location.href);
-      toast.success('تم نسخ الرابط لمشاركته');
+      const ok = await safeCopyText(window.location.href);
+      if (ok) toast.success('تم نسخ الرابط لمشاركته');
+      else toast.error('تعذر نسخ الرابط تلقائياً');
     }
   };
 
@@ -165,42 +192,11 @@ export default function StoreSite() {
       </header>
 
       {/* Hero Section */}
-      {settings?.showHeroBanner && settings?.heroBanner && (
-        <section className="relative h-64 md:h-[26rem] w-full overflow-hidden border-b border-[#E5E2DA] dark:border-[#232730]">
-          <img
-            src={settings.heroBanner}
-            referrerPolicy="no-referrer"
-            className="w-full h-full object-cover"
-            alt={settings.heroTitle || 'واجهة المتجر'}
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/15 flex flex-col justify-end md:justify-center items-start">
-            <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-              <div className="max-w-xl space-y-3">
-                <p className="text-xs font-semibold text-white/80">تشكيلة مختارة بعناية</p>
-                {settings.heroTitle && (
-                  <h2 className="font-display text-2xl sm:text-4xl md:text-5xl font-extrabold text-white text-balance">
-                    {settings.heroTitle}
-                  </h2>
-                )}
-                {settings.heroSubtitle && (
-                  <p className="text-white/85 text-sm md:text-base font-medium leading-relaxed">
-                    {settings.heroSubtitle}
-                  </p>
-                )}
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById('products-gallery')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="min-h-[44px] bg-white text-[#111214] hover:bg-[#F6F5F0] px-6 py-2.5 rounded-lg font-bold text-sm transition-colors"
-                  >
-                    ابدأ التسوق الآن
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <HeroBannerAds
+          onFallbackScroll={() => document.getElementById('products-gallery')?.scrollIntoView({ behavior: 'smooth' })}
+        />
+      </div>
 
       {/* Main Catalog */}
       <main id="products-gallery" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -418,20 +414,24 @@ export default function StoreSite() {
       </main>
 
       {selectedPreOrderProduct && (
-        <PreOrderModal
-          product={buildBaseProductForCart(selectedPreOrderProduct)}
-          isOpen={!!selectedPreOrderProduct}
-          onClose={() => setSelectedPreOrderProduct(null)}
-        />
+        <Suspense fallback={null}>
+          <PreOrderModal
+            product={buildBaseProductForCart(selectedPreOrderProduct)}
+            isOpen={!!selectedPreOrderProduct}
+            onClose={() => setSelectedPreOrderProduct(null)}
+          />
+        </Suspense>
       )}
 
       {variantsModalProduct && (
-        <ProductVariantsModal
-          product={variantsModalProduct}
-          isOpen={!!variantsModalProduct}
-          onClose={() => setVariantsModalProduct(null)}
-          onNavigateToVariant={(pid, vid) => navigate(`/s/${slug}/variant/${pid}/${vid}`)}
-        />
+        <Suspense fallback={null}>
+          <ProductVariantsModal
+            product={variantsModalProduct}
+            isOpen={!!variantsModalProduct}
+            onClose={() => setVariantsModalProduct(null)}
+            onNavigateToVariant={(pid, vid) => navigate(`/s/${slug}/variant/${pid}/${vid}`)}
+          />
+        </Suspense>
       )}
 
       {/* Mobile Nav Bar */}

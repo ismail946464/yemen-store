@@ -29,6 +29,7 @@ import {
   DeliveryFeeApprovalStatus
 } from '../lib/deliveryFeeUtils';
 import { isStorePickupOnlyOrder } from '../lib/reservationUtils';
+import { formatArabicDateTime } from '../lib/deviceSafe';
 
 interface OrderItem {
   productId: string;
@@ -633,7 +634,7 @@ export default function DeliveryPortal() {
                         )}
                       </div>
                       <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400 tabular-nums">
-                        {order.createdAt ? new Date(order.createdAt).toLocaleString('ar-YE', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                        {order.createdAt ? (formatArabicDateTime(order.createdAt) || '—') : '—'}
                       </span>
                     </div>
                   </div>

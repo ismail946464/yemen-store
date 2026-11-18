@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Download, Smartphone, X } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { useAppContext } from '../AppContext';
+import { requestNotificationPermissionSafely } from '../lib/deviceSafe';
 
 export default function InstallPrompt() {
   const { settings, getThemeClasses } = useAppContext();
@@ -11,28 +11,36 @@ export default function InstallPrompt() {
 
   useEffect(() => {
     const checkStandalone = () => {
-      const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches
-        || (window.navigator as any).standalone
-        || document.referrer.includes('android-app://');
-      setIsStandalone(isStandaloneMode);
-      return isStandaloneMode;
+      try {
+        const isStandaloneMode = (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches)
+          || Boolean((window.navigator as any).standalone)
+          || document.referrer.includes('android-app://');
+        setIsStandalone(isStandaloneMode);
+        return isStandaloneMode;
+      } catch {
+        return false;
+      }
     };
 
     const standalone = checkStandalone();
 
     const sendSystemNotification = () => {
-      if ('Notification' in window && Notification.permission === 'granted' && !standalone && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.ready.then(registration => {
-          registration.showNotification(settings?.storeName || 'يمن ستور', {
-            body: 'قم بتثبيت التطبيق للوصول السريع وإدارة الطلبات.',
-            icon: settings?.storeLogo || '/pwa-192x192.png',
-            badge: settings?.storeLogo || '/pwa-192x192.png',
-            tag: 'install-yemen-store',
-            requireInteraction: true,
-            dir: 'rtl'
-          } as any);
-        }).catch(() => {});
-      }
+      try {
+        if ('Notification' in window && Notification.permission === 'granted' && !standalone && 'serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then(registration => {
+            if (registration && typeof registration.showNotification === 'function') {
+              registration.showNotification(settings?.storeName || 'يمن ستور', {
+                body: 'قم بتثبيت التطبيق للوصول السريع وإدارة الطلبات.',
+                icon: settings?.storeLogo || '/pwa-192x192.png',
+                badge: settings?.storeLogo || '/pwa-192x192.png',
+                tag: 'install-yemen-store',
+                requireInteraction: true,
+                dir: 'rtl'
+              } as any);
+            }
+          }).catch(() => {});
+        }
+      } catch {}
     };
 
     const handler = (e: any) => {
@@ -40,13 +48,9 @@ export default function InstallPrompt() {
       setDeferredPrompt(e);
       if (!standalone) {
         setShowPrompt(true);
-        if ('Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission().then(permission => {
-            if (permission === 'granted') sendSystemNotification();
-          }).catch(() => {});
-        } else if ('Notification' in window && Notification.permission === 'granted') {
-          sendSystemNotification();
-        }
+        requestNotificationPermissionSafely((permission) => {
+          if (permission === 'granted') sendSystemNotification();
+        });
       }
     };
 
@@ -54,13 +58,17 @@ export default function InstallPrompt() {
     const installedHandler = () => {
       setShowPrompt(false);
       setDeferredPrompt(null);
-      if ('Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.ready.then(reg => {
-          reg.getNotifications({ tag: 'install-yemen-store' }).then(notifications => {
-            notifications.forEach(n => n.close());
-          });
-        }).catch(() => {});
-      }
+      try {
+        if ('Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then(reg => {
+            if (reg && typeof reg.getNotifications === 'function') {
+              reg.getNotifications({ tag: 'install-yemen-store' }).then(notifications => {
+                notifications.forEach(n => n.close());
+              }).catch(() => {});
+            }
+          }).catch(() => {});
+        }
+      } catch {}
     };
     window.addEventListener('appinstalled', installedHandler);
 
@@ -83,48 +91,41 @@ export default function InstallPrompt() {
   if (isStandalone || !showPrompt) return null;
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -12 }}
-        className="bg-[#111214] dark:bg-[#131519] text-[#F4F4F2] px-4 py-2.5 border-b border-[#232730] relative z-[100]"
-      >
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-[#1C1F26] border border-[#2C313C] flex items-center justify-center shrink-0">
-              <Smartphone className="w-4 h-4 text-[#F4F4F2]" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs sm:text-sm font-bold truncate">
-                تثبيت تطبيق {settings?.storeName || 'يمن ستور'}
-              </p>
-              <p className="text-[11px] text-zinc-400 hidden sm:block truncate">
-                وصول مباشر وسريع من الشاشة الرئيسية لجهازك
-              </p>
-            </div>
+    <div className="bg-[#111214] dark:bg-[#131519] text-[#F4F4F2] px-4 py-2.5 border-b border-[#232730] relative z-[100] transition-all duration-150">
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-[#1C1F26] border border-[#2C313C] flex items-center justify-center shrink-0">
+            <Smartphone className="w-4 h-4 text-[#F4F4F2]" />
           </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={handleInstallClick}
-              className={`min-h-[36px] px-4 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 whitespace-nowrap ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>تثبيت</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowPrompt(false)}
-              aria-label="إغلاق"
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white hover:bg-[#1C1F26] transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+          <div className="min-w-0">
+            <p className="text-xs sm:text-sm font-bold truncate">
+              تثبيت تطبيق {settings?.storeName || 'يمن ستور'}
+            </p>
+            <p className="text-[11px] text-zinc-400 hidden sm:block truncate">
+              وصول مباشر وسريع من الشاشة الرئيسية لجهازك
+            </p>
           </div>
         </div>
-      </motion.div>
-    </AnimatePresence>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleInstallClick}
+            className={`min-h-[36px] px-4 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 whitespace-nowrap ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>تثبيت</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowPrompt(false)}
+            aria-label="إغلاق"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white hover:bg-[#1C1F26] transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

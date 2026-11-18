@@ -23,7 +23,8 @@ export default defineConfig(({mode}) => {
       hmr: process.env.DISABLE_HMR !== 'true',
     },
     build: {
-      target: 'es2020',
+      target: ['es2018', 'chrome75', 'safari12', 'firefox70', 'edge79'],
+      cssTarget: ['chrome79', 'safari13'],
       cssCodeSplit: true,
       rollupOptions: {
         output: {

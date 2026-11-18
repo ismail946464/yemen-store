@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import { Bell, X, CheckCircle, AlertTriangle, Info, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, onSnapshot, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { useAppContext } from '../AppContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
+import { createSafeDateFormatter } from '../lib/deviceSafe';
+
+const NOTIF_DATE_FMT = createSafeDateFormatter({ day: 'numeric', month: 'short' });
 
 export default function NotificationCenter() {
   const { user, getThemeClasses } = useAppContext();
@@ -76,17 +78,10 @@ export default function NotificationCenter() {
         )}
       </button>
 
-      <AnimatePresence>
-        {isOpen && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-            <motion.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 6 }}
-              transition={{ duration: 0.15 }}
-              className="absolute left-0 mt-2 w-80 max-w-[90vw] rounded-xl shadow-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] z-50 overflow-hidden"
-            >
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="absolute left-0 mt-2 w-80 max-w-[90vw] rounded-xl shadow-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] z-50 overflow-hidden">
               <div className="px-4 py-3 border-b border-[#E5E2DA] dark:border-[#232730] flex items-center justify-between">
                 <h3 className="font-bold text-sm">التنبيهات</h3>
                 {notifications.length > 0 && (
@@ -133,7 +128,7 @@ export default function NotificationCenter() {
                             </span>
                           )}
                           <p className="text-[10px] text-[#5C5B57] dark:text-zinc-500 mt-1.5 tabular-nums">
-                            {new Date(n.createdAt).toLocaleDateString('ar-YE', { day: 'numeric', month: 'short' })}
+                            {n.createdAt ? NOTIF_DATE_FMT.format(new Date(n.createdAt)) : ''}
                           </p>
                         </div>
                         <button
@@ -152,10 +147,9 @@ export default function NotificationCenter() {
                   ))
                 )}
               </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+          </div>
+        </>
+      )}
     </div>
   );
 }

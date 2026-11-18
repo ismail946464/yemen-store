@@ -1,5 +1,4 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import { AlertTriangle, CheckCircle2, X, Check } from 'lucide-react';
 import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
@@ -41,22 +40,18 @@ export default function DisclaimerModal() {
     }
   };
 
+  if (!show) return null;
+
   return (
-    <AnimatePresence>
-      {show && (
-        <div
-          className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
-          onClick={() => setShow(false)}
-          dir="rtl"
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 12 }}
-            transition={{ duration: 0.18 }}
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-[#131519] rounded-xl w-full max-w-lg overflow-hidden border border-[#E5E2DA] dark:border-[#232730] shadow-xl relative"
-          >
+    <div
+      className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+      onClick={() => setShow(false)}
+      dir="rtl"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white dark:bg-[#131519] rounded-xl w-full max-w-lg overflow-hidden border border-[#E5E2DA] dark:border-[#232730] shadow-xl relative transition-all duration-150"
+      >
             {/* Header */}
             <div className="px-6 py-5 bg-[#FAF9F6] dark:bg-[#101216] border-b border-[#E5E2DA] dark:border-[#232730] flex items-start justify-between gap-4">
               <div className="flex items-start gap-3">
@@ -131,9 +126,7 @@ export default function DisclaimerModal() {
                 {submitting ? 'جاري الحفظ...' : 'أوافق والمتابعة'}
               </button>
             </div>
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
+      </div>
+    </div>
   );
 }

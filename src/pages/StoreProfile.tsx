@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { Suspense, lazy, useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
-import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { useAppContext } from '../AppContext';
+import { formatArabicDate, formatArabicTime } from '../lib/deviceSafe';
 import {
   CheckCircle,
   ShoppingCart,
@@ -30,11 +31,12 @@ import { toast } from 'react-hot-toast';
 import { isProductOfferActive, getProductOfferBadgeText } from '../lib/offerUtils';
 import { getAvailableProductVariants, buildBaseProductForCart } from '../lib/variantUtils';
 import { getStockLimit, isItemOutOfStock, calculateSafeDeposit } from '../lib/stockUtils';
-import PreOrderModal from '../components/PreOrderModal';
-import ProductVariantsModal from '../components/ProductVariantsModal';
 import ProductPublisherMiniCard from '../components/ProductPublisherMiniCard';
 import { ProductGridSkeleton } from '../components/Skeletons';
 import { StoreCategoryItem, sortStoreCategories, getAssignedStoreCategories } from '../lib/storeCategories';
+
+const PreOrderModal = lazy(() => import('../components/PreOrderModal'));
+const ProductVariantsModal = lazy(() => import('../components/ProductVariantsModal'));
 
 function StoreProductImage({ src, alt }: { src?: string; alt: string }) {
   const [failed, setFailed] = useState(false);
@@ -152,19 +154,27 @@ export default function StoreProfile() {
 
       await addDoc(collection(db, 'ratings'), ratingData);
 
-      const newRatingCount = (profile.ratingCount || 0) + 1;
-      const newAverageRating = ((profile.averageRating || 0) * (profile.ratingCount || 0) + userRating) / newRatingCount;
-      const newAverageCredibility = ((profile.averageCredibility || 0) * (profile.ratingCount || 0) + userCredibility) / newRatingCount;
+      const prevCount = profile?.ratingCount || 0;
+      const prevRating = profile?.averageRating || 0;
+      const prevCred = profile?.averageCredibility || 0;
+      const newRatingCount = prevCount + 1;
+      const newAverageRating = (prevRating * prevCount + userRating) / newRatingCount;
+      const newAverageCredibility = (prevCred * prevCount + userCredibility) / newRatingCount;
 
-      await updateDoc(doc(db, 'storeProfiles', userId), {
+      await setDoc(doc(db, 'storeProfiles', userId), {
+        userId,
+        name: String(profile?.name || 'متجر'),
+        logoUrl: String(profile?.logoUrl || ''),
+        verified: Boolean(profile?.verified),
         ratingCount: newRatingCount,
         averageRating: newAverageRating,
         averageCredibility: newAverageCredibility,
         updatedAt: new Date().toISOString()
-      });
+      }, { merge: true });
 
       setProfile({
-        ...profile,
+        ...(profile || {}),
+        userId,
         ratingCount: newRatingCount,
         averageRating: newAverageRating,
         averageCredibility: newAverageCredibility
@@ -268,7 +278,7 @@ export default function StoreProfile() {
                     <>
                       <span aria-hidden="true">·</span>
                       <span className="tabular-nums">
-                        آخر تواجد {new Date(profile.lastSeen).toLocaleTimeString('ar-YE', { hour: '2-digit', minute: '2-digit' })}
+                        آخر تواجد {formatArabicTime(profile.lastSeen)}
                       </span>
                     </>
                   )}
@@ -464,7 +474,7 @@ export default function StoreProfile() {
                     <div>
                       <h4 className="font-bold text-sm text-[#111214] dark:text-[#F4F4F2]">{r.userName}</h4>
                       <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400 tabular-nums">
-                        {new Date(r.createdAt).toLocaleDateString('ar-YE')}
+                        {formatArabicDate(r.createdAt)}
                       </p>
                     </div>
                   </div>
@@ -685,12 +695,14 @@ export default function StoreProfile() {
       </section>
 
       {variantsModalProduct && (
-        <ProductVariantsModal
-          product={variantsModalProduct}
-          isOpen={!!variantsModalProduct}
-          onClose={() => setVariantsModalProduct(null)}
-          onNavigateToVariant={(pid, vid) => navigate(`/variant/${pid}/${vid}`)}
-        />
+        <Suspense fallback={null}>
+          <ProductVariantsModal
+            product={variantsModalProduct}
+            isOpen={!!variantsModalProduct}
+            onClose={() => setVariantsModalProduct(null)}
+            onNavigateToVariant={(pid, vid) => navigate(`/variant/${pid}/${vid}`)}
+          />
+        </Suspense>
       )}
 
       {/* Rating Modal */}
@@ -877,11 +889,13 @@ export default function StoreProfile() {
 
       {/* Pre-Order Reservation Modal */}
       {selectedPreOrderProduct && (
-        <PreOrderModal
-          product={buildBaseProductForCart(selectedPreOrderProduct)}
-          isOpen={!!selectedPreOrderProduct}
-          onClose={() => setSelectedPreOrderProduct(null)}
-        />
+        <Suspense fallback={null}>
+          <PreOrderModal
+            product={buildBaseProductForCart(selectedPreOrderProduct)}
+            isOpen={!!selectedPreOrderProduct}
+            onClose={() => setSelectedPreOrderProduct(null)}
+          />
+        </Suspense>
       )}
     </div>
   );
