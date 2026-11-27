@@ -7,13 +7,21 @@ import {
   ShoppingCart, ArrowRight, Share2, ShieldCheck, Truck,
   CheckCircle, Store, MessageCircle, Star, Send, User,
   Image as ImageIcon, PackageX, BookmarkCheck, ShoppingBag, Percent, Gift, Layers, ChevronDown, ChevronUp, Plus, Minus,
-  MapPin, Phone, ExternalLink, Heart, Maximize2, X, ChevronLeft, ChevronRight
+  MapPin, Phone, ExternalLink, Heart, Maximize2, X, ChevronLeft, ChevronRight,
+  Handshake, HelpCircle, Trash2, CheckCircle2, Bot
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ProductPublisherMiniCard from '../components/ProductPublisherMiniCard';
 import PriceRadarButton from '../components/PriceRadarButton';
 import { ProductDetailSkeleton } from '../components/Skeletons';
 import { formatArabicDate, safeCopyText } from '../lib/deviceSafe';
+import { submitPriceOffer } from '../lib/priceOffers';
+import {
+  ProductQuestionItem,
+  askProductQuestion,
+  answerProductQuestion,
+  deleteProductQuestion,
+} from '../lib/productQuestions';
 
 const PreOrderModal = lazy(() => import('../components/PreOrderModal'));
 const ProductVariantsModal = lazy(() => import('../components/ProductVariantsModal'));
@@ -34,7 +42,7 @@ export default function ProductDetail() {
   const [activeImage, setActiveImage] = useState<string>('');
   const [imgFailed, setImgFailed] = useState(false);
 
-  const { addToCart, cart, getThemeClasses, user, isAdmin, login, isFavorite, toggleFavorite, recordRecentlyViewed } = useAppContext();
+  const { addToCart, cart, getThemeClasses, user, isAdmin, login, isFavorite, toggleFavorite, recordRecentlyViewed, openAiDrawer } = useAppContext();
   const navigate = useNavigate();
   const [storeProfile, setStoreProfile] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
@@ -47,6 +55,21 @@ export default function ProductDetail() {
   const [showVariantsModal, setShowVariantsModal] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [zoomPos, setZoomPos] = useState<{ x: number; y: number } | null>(null);
+
+  const [questions, setQuestions] = useState<ProductQuestionItem[]>([]);
+  const [activeCommunityTab, setActiveCommunityTab] = useState<'reviews' | 'questions'>('reviews');
+  const [newQuestion, setNewQuestion] = useState('');
+  const [submittingQuestion, setSubmittingQuestion] = useState(false);
+  const [replyingQuestionId, setReplyingQuestionId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [submittingReply, setSubmittingReply] = useState(false);
+
+  const [showOfferModal, setShowOfferModal] = useState(false);
+  const [offeredPriceInput, setOfferedPriceInput] = useState('');
+  const [offerQtyInput, setOfferQtyInput] = useState(1);
+  const [offerNoteInput, setOfferNoteInput] = useState('');
+  const [submittingOffer, setSubmittingOffer] = useState(false);
 
   useEffect(() => {
     if (productId && initialVariantId) {
@@ -72,6 +95,27 @@ export default function ProductDetail() {
     });
 
     return () => unsubscribe();
+  }, [productId]);
+
+  useEffect(() => {
+    if (!productId) return;
+    const q = query(
+      collection(db, 'productQuestions'),
+      where('productId', '==', productId)
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as ProductQuestionItem))
+          .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setQuestions(list);
+      },
+      (err) => {
+        console.warn('Product Q&A listener notice:', err.message);
+      }
+    );
+    return () => unsub();
   }, [productId]);
 
   useEffect(() => {
@@ -201,6 +245,117 @@ export default function ProductDetail() {
     }
   };
 
+  const handleOpenOfferModal = () => {
+    if (!user) {
+      login();
+      return;
+    }
+    const basePrice = Number(product?.price || 0);
+    setOfferedPriceInput(basePrice > 0 ? String(Math.max(1, Math.round(basePrice * 0.9))) : '');
+    setOfferQtyInput(Math.max(1, quantity));
+    setOfferNoteInput('');
+    setShowOfferModal(true);
+  };
+
+  const handleSubmitPriceOffer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !product) {
+      login();
+      return;
+    }
+    const proposed = Math.round(Number(offeredPriceInput || 0));
+    const orig = Math.round(Number(product.price || 0));
+    if (!proposed || proposed <= 0) {
+      toast.error('يرجى إدخال السعر المقترح بشكل صحيح');
+      return;
+    }
+    if (orig > 0 && proposed >= orig) {
+      toast.error('السعر المقترح للتفاوض يجب أن يكون أقل من السعر الحالي');
+      return;
+    }
+    setSubmittingOffer(true);
+    try {
+      await submitPriceOffer({
+        productId: product.id,
+        productTitle: product.title,
+        productImage: product.image || product.images?.[0] || null,
+        storeId: product.ownerId || 'global',
+        storeName: storeProfile?.name || product.ownerName || 'المتجر',
+        buyerId: user.uid,
+        buyerName: user.displayName || 'عميل المتجر',
+        originalPrice: orig,
+        offeredPrice: proposed,
+        quantity: offerQtyInput,
+        note: offerNoteInput,
+      });
+      setShowOfferModal(false);
+      toast.success('تم إرسال عرض التفاوض للمتجر بنجاح! يمكنك متابعته في صفحة طلباتي.');
+    } catch (err: any) {
+      toast.error(err?.message || 'تعذر إرسال عرض السعر حالياً');
+    } finally {
+      setSubmittingOffer(false);
+    }
+  };
+
+  const handleSubmitQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) {
+      login();
+      return;
+    }
+    if (!product) return;
+    setSubmittingQuestion(true);
+    try {
+      await askProductQuestion({
+        productId: product.id,
+        productTitle: product.title,
+        storeId: product.ownerId || 'global',
+        storeName: storeProfile?.name || product.ownerName || 'المتجر',
+        userId: user.uid,
+        userName: user.displayName || 'عميل المتجر',
+        userPhoto: user.photoURL || null,
+        question: newQuestion,
+      });
+      setNewQuestion('');
+      toast.success('تم نشر سؤالك وإبلاغ المتجر للرد عليك');
+    } catch (err: any) {
+      toast.error(err?.message || 'تعذر نشر السؤال');
+    } finally {
+      setSubmittingQuestion(false);
+    }
+  };
+
+  const handleSubmitQuestionReply = async (question: ProductQuestionItem) => {
+    if (!replyText.trim()) {
+      toast.error('يرجى كتابة الرد أولاً');
+      return;
+    }
+    setSubmittingReply(true);
+    try {
+      await answerProductQuestion({
+        question,
+        answer: replyText,
+        responderName: storeProfile?.name || product?.ownerName || user?.displayName || 'إدارة المتجر',
+      });
+      setReplyText('');
+      setReplyingQuestionId(null);
+      toast.success('تم نشر الرد وإشعار السائل بنجاح');
+    } catch (err: any) {
+      toast.error(err?.message || 'تعذر حفظ الرد');
+    } finally {
+      setSubmittingReply(false);
+    }
+  };
+
+  const handleDeleteQuestion = async (questionId: string) => {
+    try {
+      await deleteProductQuestion(questionId);
+      toast.success('تم حذف السؤال');
+    } catch {
+      toast.error('تعذر حذف السؤال');
+    }
+  };
+
   const handleShare = async () => {
     if (navigator.share) {
       try {
@@ -321,16 +476,38 @@ export default function ProductDetail() {
           <div className="lg:col-span-6 space-y-3 lg:sticky lg:top-22">
             <div
               onClick={() => activeImage && !imgFailed && setIsLightboxOpen(true)}
+              onMouseMove={(e) => {
+                if (!activeImage || imgFailed) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+                const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+                setZoomPos({ x, y });
+              }}
+              onMouseLeave={() => setZoomPos(null)}
               className={`aspect-square rounded-lg overflow-hidden border border-[#E5E2DA] dark:border-[#232730] bg-[#EFEDE6] dark:bg-[#1C1F26] relative group ${activeImage && !imgFailed ? 'cursor-zoom-in' : ''}`}
             >
               {activeImage && !imgFailed ? (
-                <img
-                  src={activeImage}
-                  alt={product.title}
-                  referrerPolicy="no-referrer"
-                  onError={() => setImgFailed(true)}
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                />
+                <>
+                  <img
+                    src={activeImage}
+                    alt={product.title}
+                    referrerPolicy="no-referrer"
+                    onError={() => setImgFailed(true)}
+                    className="w-full h-full object-cover transition-transform duration-300"
+                  />
+                  {zoomPos && (
+                    <img
+                      src={activeImage}
+                      alt=""
+                      aria-hidden="true"
+                      referrerPolicy="no-referrer"
+                      style={{
+                        transformOrigin: `${zoomPos.x}% ${zoomPos.y}%`,
+                      }}
+                      className="hidden md:block pointer-events-none absolute inset-0 w-full h-full object-cover scale-[1.9] transition-opacity duration-150"
+                    />
+                  )}
+                </>
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <Store className="w-16 h-16 text-[#5C5B57] dark:text-zinc-600 opacity-40" />
@@ -827,6 +1004,17 @@ export default function ProductDetail() {
                 </div>
               )}
 
+              {isPubliclyVisible && !product.externalLink && !isOutOfStock && !isNoDelivery && effectivePrice > 0 && product.ownerId !== user?.uid && (
+                <button
+                  type="button"
+                  onClick={handleOpenOfferModal}
+                  className="w-full min-h-[44px] border border-indigo-200 dark:border-indigo-800/70 bg-indigo-50/70 dark:bg-indigo-950/30 hover:bg-indigo-100/80 dark:hover:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200 py-3 rounded-lg font-bold text-center transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm"
+                >
+                  <Handshake className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>تفاوض على السعر (قدّم عرضك للمتجر)</span>
+                </button>
+              )}
+
               {product.ownerId && product.ownerId !== user?.uid && (
                 <Link
                   to={`/contact?to=${product.ownerId}`}
@@ -847,6 +1035,21 @@ export default function ProductDetail() {
                   currentPrice={effectivePrice}
                   isOutOfStock={isOutOfStock}
                 />
+              )}
+
+              {isPubliclyVisible && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    openAiDrawer(
+                      `ما تفاصيل التوصيل والحجز بالعربون والسعر لمنتج: ${product.title}`
+                    )
+                  }
+                  className="w-full min-h-[44px] border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/70 dark:bg-emerald-950/25 hover:bg-emerald-100/80 dark:hover:bg-emerald-950/45 text-emerald-900 dark:text-emerald-200 py-3 rounded-lg font-bold text-center transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm"
+                >
+                  <Bot className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                  <span>استشر المستشار الذكي فوراً حول هذا المنتج</span>
+                </button>
               )}
             </div>
 
@@ -964,112 +1167,300 @@ export default function ProductDetail() {
         </Suspense>
       )}
 
-      {/* Customer Reviews Section */}
+      {/* Customer Reviews & Public Product Q&A Section */}
       <section className="border-t border-[#E5E2DA] dark:border-[#232730] pt-10">
-        <div className="mb-8">
-          <h2 className="font-display text-xl sm:text-2xl font-extrabold text-[#111214] dark:text-[#F4F4F2]">آراء وتقييمات العملاء</h2>
-          <p className="text-xs sm:text-sm text-[#5C5B57] dark:text-zinc-400 mt-1 tabular-nums">
-            إجمالي التقييمات المسجلة: {reviews.length}
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+          <div>
+            <h2 className="font-display text-xl sm:text-2xl font-extrabold text-[#111214] dark:text-[#F4F4F2]">
+              {activeCommunityTab === 'reviews' ? 'آراء وتقييمات العملاء' : 'الأسئلة والاستفسارات حول المنتج'}
+            </h2>
+            <p className="text-xs sm:text-sm text-[#5C5B57] dark:text-zinc-400 mt-1 tabular-nums">
+              {activeCommunityTab === 'reviews'
+                ? `إجمالي التقييمات المسجلة: ${reviews.length}`
+                : `استفسارات العملاء وإجابات المتجر المعتمدة (${questions.length})`}
+            </p>
+          </div>
+
+          <div className="inline-flex rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] p-1">
+            <button
+              type="button"
+              onClick={() => setActiveCommunityTab('reviews')}
+              className={`min-h-[38px] px-4 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-colors ${
+                activeCommunityTab === 'reviews'
+                  ? `${getThemeClasses('bg')}`
+                  : 'text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white'
+              }`}
+            >
+              <Star className="w-3.5 h-3.5" />
+              <span>التقييمات ({reviews.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveCommunityTab('questions')}
+              className={`min-h-[38px] px-4 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-colors ${
+                activeCommunityTab === 'questions'
+                  ? `${getThemeClasses('bg')}`
+                  : 'text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white'
+              }`}
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>الأسئلة والأجوبة ({questions.length})</span>
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-4">
-            <div className="rounded-lg p-5 sm:p-6 border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519]">
-              <h3 className="font-bold text-base mb-4 text-[#111214] dark:text-[#F4F4F2]">أضف تقييمك</h3>
-              {user ? (
-                <form onSubmit={handleSubmitReview} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-[#5C5B57] dark:text-zinc-400 mb-2">التقييم</label>
-                    <div className="flex items-center gap-1.5">
-                      {[1, 2, 3, 4, 5].map((num) => (
-                        <button
-                          key={num}
-                          type="button"
-                          onClick={() => setNewRating(num)}
-                          className="p-1 transition-transform hover:scale-110"
-                          aria-label={`${num} نجوم`}
-                        >
-                          <Star
-                            className={`w-6 h-6 transition-colors ${num <= newRating ? 'fill-amber-400 text-amber-400' : 'text-[#D5D1C7] dark:text-zinc-700'}`}
-                          />
-                        </button>
-                      ))}
+        {activeCommunityTab === 'reviews' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="lg:col-span-4">
+              <div className="rounded-lg p-5 sm:p-6 border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519]">
+                <h3 className="font-bold text-base mb-4 text-[#111214] dark:text-[#F4F4F2]">أضف تقييمك</h3>
+                {user ? (
+                  <form onSubmit={handleSubmitReview} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#5C5B57] dark:text-zinc-400 mb-2">التقييم</label>
+                      <div className="flex items-center gap-1.5">
+                        {[1, 2, 3, 4, 5].map((num) => (
+                          <button
+                            key={num}
+                            type="button"
+                            onClick={() => setNewRating(num)}
+                            className="p-1 transition-transform hover:scale-110"
+                            aria-label={`${num} نجوم`}
+                          >
+                            <Star
+                              className={`w-6 h-6 transition-colors ${num <= newRating ? 'fill-amber-400 text-amber-400' : 'text-[#D5D1C7] dark:text-zinc-700'}`}
+                            />
+                          </button>
+                        ))}
+                      </div>
                     </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#5C5B57] dark:text-zinc-400 mb-1.5">التعليق</label>
+                      <textarea
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        placeholder="اكتب تجربتك مع هذا المنتج..."
+                        className="w-full border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] placeholder:text-[#5C5B57] dark:placeholder:text-zinc-500 rounded-lg p-3.5 text-sm outline-none focus:border-[#111214] dark:focus:border-zinc-400 transition-colors h-28 resize-none text-right"
+                        dir="rtl"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={submittingReview}
+                      className={`w-full min-h-[44px] ${getThemeClasses('bg')} ${getThemeClasses('hover')} py-2.5 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50`}
+                    >
+                      {submittingReview ? 'جاري الإرسال...' : (
+                        <>
+                          <span>إرسال التقييم</span>
+                          <Send className="w-3.5 h-3.5 rotate-180" />
+                        </>
+                      )}
+                    </button>
+                  </form>
+                ) : (
+                  <div className="text-center py-6 rounded-lg bg-[#FAF9F6] dark:bg-[#1C1F26]">
+                    <p className="text-[#5C5B57] dark:text-zinc-400 text-xs font-semibold mb-3">سجل دخولك لإضافة تقييم على المنتج</p>
+                    <button
+                      type="button"
+                      onClick={login}
+                      className={`min-h-[40px] px-5 py-2 ${getThemeClasses('bg')} ${getThemeClasses('hover')} rounded-lg font-bold text-xs transition-colors`}
+                    >
+                      تسجيل الدخول
+                    </button>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#5C5B57] dark:text-zinc-400 mb-1.5">التعليق</label>
-                    <textarea
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="اكتب تجربتك مع هذا المنتج..."
-                      className="w-full border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] placeholder:text-[#5C5B57] dark:placeholder:text-zinc-500 rounded-lg p-3.5 text-sm outline-none focus:border-[#111214] dark:focus:border-zinc-400 transition-colors h-28 resize-none text-right"
-                      dir="rtl"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={submittingReview}
-                    className={`w-full min-h-[44px] ${getThemeClasses('bg')} ${getThemeClasses('hover')} py-2.5 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50`}
-                  >
-                    {submittingReview ? 'جاري الإرسال...' : (
-                      <>
-                        <span>إرسال التقييم</span>
-                        <Send className="w-3.5 h-3.5 rotate-180" />
-                      </>
-                    )}
-                  </button>
-                </form>
-              ) : (
-                <div className="text-center py-6 rounded-lg bg-[#FAF9F6] dark:bg-[#1C1F26]">
-                  <p className="text-[#5C5B57] dark:text-zinc-400 text-xs font-semibold mb-3">سجل دخولك لإضافة تقييم على المنتج</p>
-                  <button
-                    type="button"
-                    onClick={login}
-                    className={`min-h-[40px] px-5 py-2 ${getThemeClasses('bg')} ${getThemeClasses('hover')} rounded-lg font-bold text-xs transition-colors`}
-                  >
-                    تسجيل الدخول
-                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="lg:col-span-8 divide-y divide-[#E5E2DA] dark:divide-[#232730] rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519]">
+              {reviews.length === 0 ? (
+                <div className="text-center py-12 px-6">
+                  <Star className="w-8 h-8 text-[#5C5B57] dark:text-zinc-600 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2]">لا توجد تقييمات حتى الآن</p>
+                  <p className="text-xs text-[#5C5B57] dark:text-zinc-400 mt-1">شارك تجربتك إذا سبق لك شراء هذا المنتج</p>
                 </div>
+              ) : (
+                reviews.map((review) => (
+                  <div key={review.id} className="p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center border border-[#E5E2DA] dark:border-[#232730] bg-[#EFEDE6] dark:bg-[#1C1F26] text-[#5C5B57] dark:text-zinc-400">
+                          {review.userPhoto ? <img src={review.userPhoto} alt="" className="w-full h-full object-cover" /> : <User className="w-4 h-4" />}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-[#111214] dark:text-[#F4F4F2] text-sm">{review.userName}</h4>
+                          <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400 tabular-nums">
+                            {formatArabicDate(review.createdAt)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 text-xs font-bold text-amber-600 dark:text-amber-400 tabular-nums">
+                        <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                        <span>{review.rating}.0</span>
+                      </div>
+                    </div>
+                    <p className="text-[#5C5B57] dark:text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">
+                      {review.comment}
+                    </p>
+                  </div>
+                ))
               )}
             </div>
           </div>
-
-          <div className="lg:col-span-8 divide-y divide-[#E5E2DA] dark:divide-[#232730] rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519]">
-            {reviews.length === 0 ? (
-              <div className="text-center py-12 px-6">
-                <Star className="w-8 h-8 text-[#5C5B57] dark:text-zinc-600 mx-auto mb-2 opacity-40" />
-                <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2]">لا توجد تقييمات حتى الآن</p>
-                <p className="text-xs text-[#5C5B57] dark:text-zinc-400 mt-1">شارك تجربتك إذا سبق لك شراء هذا المنتج</p>
-              </div>
-            ) : (
-              reviews.map((review) => (
-                <div key={review.id} className="p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center border border-[#E5E2DA] dark:border-[#232730] bg-[#EFEDE6] dark:bg-[#1C1F26] text-[#5C5B57] dark:text-zinc-400">
-                        {review.userPhoto ? <img src={review.userPhoto} alt="" className="w-full h-full object-cover" /> : <User className="w-4 h-4" />}
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-[#111214] dark:text-[#F4F4F2] text-sm">{review.userName}</h4>
-                        <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400 tabular-nums">
-                          {formatArabicDate(review.createdAt)}
-                        </span>
-                      </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="lg:col-span-4">
+              <div className="rounded-lg p-5 sm:p-6 border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519]">
+                <h3 className="font-bold text-base mb-2 text-[#111214] dark:text-[#F4F4F2]">اسأل المتجر عن المنتج</h3>
+                <p className="text-xs text-[#5C5B57] dark:text-zinc-400 mb-4 leading-relaxed">
+                  يصل سؤالك لإدارة المتجر فوراً وتظهر الإجابة هنا علنياً ليستفيد باقي المتسوقين.
+                </p>
+                {user ? (
+                  <form onSubmit={handleSubmitQuestion} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#5C5B57] dark:text-zinc-400 mb-1.5">نص السؤال</label>
+                      <textarea
+                        value={newQuestion}
+                        onChange={(e) => setNewQuestion(e.target.value)}
+                        placeholder="مثال: هل يتوفر مع الضمان؟ هل يناسب موديل 2024؟"
+                        className="w-full border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] placeholder:text-[#5C5B57] dark:placeholder:text-zinc-500 rounded-lg p-3.5 text-sm outline-none focus:border-[#111214] dark:focus:border-zinc-400 transition-colors h-28 resize-none text-right"
+                        dir="rtl"
+                      />
                     </div>
-                    <div className="flex items-center gap-1 text-xs font-bold text-amber-600 dark:text-amber-400 tabular-nums">
-                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                      <span>{review.rating}.0</span>
-                    </div>
+                    <button
+                      type="submit"
+                      disabled={submittingQuestion || newQuestion.trim().length < 4}
+                      className={`w-full min-h-[44px] ${getThemeClasses('bg')} ${getThemeClasses('hover')} py-2.5 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50`}
+                    >
+                      {submittingQuestion ? 'جاري النشر...' : (
+                        <>
+                          <span>نشر السؤال</span>
+                          <Send className="w-3.5 h-3.5 rotate-180" />
+                        </>
+                      )}
+                    </button>
+                  </form>
+                ) : (
+                  <div className="text-center py-6 rounded-lg bg-[#FAF9F6] dark:bg-[#1C1F26]">
+                    <p className="text-[#5C5B57] dark:text-zinc-400 text-xs font-semibold mb-3">سجل دخولك لطرح استفسار حول هذا المنتج</p>
+                    <button
+                      type="button"
+                      onClick={login}
+                      className={`min-h-[40px] px-5 py-2 ${getThemeClasses('bg')} ${getThemeClasses('hover')} rounded-lg font-bold text-xs transition-colors`}
+                    >
+                      تسجيل الدخول
+                    </button>
                   </div>
-                  <p className="text-[#5C5B57] dark:text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">
-                    {review.comment}
-                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="lg:col-span-8 divide-y divide-[#E5E2DA] dark:divide-[#232730] rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519]">
+              {questions.length === 0 ? (
+                <div className="text-center py-12 px-6">
+                  <HelpCircle className="w-8 h-8 text-[#5C5B57] dark:text-zinc-600 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2]">لا توجد استفسارات حتى الآن</p>
+                  <p className="text-xs text-[#5C5B57] dark:text-zinc-400 mt-1">كن أول من يطرح سؤالاً للمتجر حول المواصفات أو الضمان</p>
                 </div>
-              ))
-            )}
+              ) : (
+                questions.map((qItem) => {
+                  const canAnswer = Boolean(isAdmin || (user?.uid && user.uid === product.ownerId));
+                  const canDelete = Boolean(isAdmin || (user?.uid && (user.uid === product.ownerId || user.uid === qItem.userId)));
+                  const isReplying = replyingQuestionId === qItem.id;
+
+                  return (
+                    <div key={qItem.id} className="p-5 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center border border-[#E5E2DA] dark:border-[#232730] bg-[#EFEDE6] dark:bg-[#1C1F26] text-[#5C5B57] dark:text-zinc-400 shrink-0">
+                            {qItem.userPhoto ? <img src={qItem.userPhoto} alt="" className="w-full h-full object-cover" /> : <User className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-[#111214] dark:text-[#F4F4F2] text-xs sm:text-sm">{qItem.userName}</h4>
+                            <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400 tabular-nums">
+                              {formatArabicDate(qItem.createdAt)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {canAnswer && !qItem.answer && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReplyingQuestionId(isReplying ? null : qItem.id);
+                                setReplyText('');
+                              }}
+                              className={`px-3 py-1 rounded-md text-[11px] font-bold ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                            >
+                              {isReplying ? 'إلغاء' : 'رد الآن'}
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteQuestion(qItem.id)}
+                              title="حذف السؤال"
+                              className="w-7 h-7 rounded-md border border-[#E5E2DA] dark:border-[#232730] flex items-center justify-center text-[#5C5B57] hover:text-rose-600 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2] leading-relaxed">
+                        س: {qItem.question}
+                      </p>
+
+                      {qItem.answer ? (
+                        <div className="p-3.5 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] space-y-1.5">
+                          <div className="flex items-center justify-between gap-2 text-[11px]">
+                            <span className="font-extrabold text-emerald-700 dark:text-emerald-400 inline-flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>رد {qItem.answeredByName || storeProfile?.name || 'المتجر'}</span>
+                            </span>
+                            {qItem.answeredAt && (
+                              <span className="text-[#5C5B57] dark:text-zinc-500 tabular-nums">
+                                {formatArabicDate(qItem.answeredAt)}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs sm:text-sm text-[#5C5B57] dark:text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                            {qItem.answer}
+                          </p>
+                        </div>
+                      ) : isReplying ? (
+                        <div className="p-3.5 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] space-y-2.5">
+                          <textarea
+                            value={replyText}
+                            onChange={(e) => setReplyText(e.target.value)}
+                            placeholder="اكتب رد المتجر الواضح للعميل..."
+                            className="w-full min-h-[76px] p-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-xs sm:text-sm text-[#111214] dark:text-[#F4F4F2] outline-none resize-none"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleSubmitQuestionReply(qItem)}
+                              disabled={submittingReply}
+                              className={`min-h-[36px] px-4 py-1.5 rounded-lg text-xs font-bold ${getThemeClasses('bg')} ${getThemeClasses('hover')} disabled:opacity-50`}
+                            >
+                              {submittingReply ? 'جاري الحفظ...' : 'حفظ ونشر الرد'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="inline-block text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                          بانتظار رد المتجر...
+                        </span>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </section>
 
       {/* Related Products Section */}
@@ -1212,6 +1603,131 @@ export default function ProductDetail() {
               ))}
             </div>
           )}
+        </div>
+      )}
+      {/* Smart Price Bargaining / Make an Offer Modal */}
+      {showOfferModal && (
+        <div
+          className="fixed inset-0 z-[170] bg-black/65 backdrop-blur-xs flex items-center justify-center p-4"
+          dir="rtl"
+          onClick={() => setShowOfferModal(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-xl bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] shadow-2xl overflow-hidden"
+          >
+            <div className="px-5 py-4 border-b border-[#E5E2DA] dark:border-[#232730] flex items-center justify-between">
+              <div className="flex items-center gap-2 font-extrabold text-sm text-[#111214] dark:text-[#F4F4F2]">
+                <Handshake className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <span>تفاوض مباشر على السعر</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOfferModal(false)}
+                className="w-8 h-8 rounded-lg border border-[#E5E2DA] dark:border-[#232730] flex items-center justify-center text-[#5C5B57] hover:text-[#111214] dark:hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitPriceOffer} className="p-5 space-y-4">
+              <div className="p-3 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2] truncate">{product.title}</p>
+                  <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400">
+                    السعر الحالي للقطعة: <span className="font-extrabold tabular-nums">{effectivePrice.toLocaleString()} ر.ي</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">
+                  اختر خصماً سريعاً أو اكتب سعرك للقطعة (ر.ي)
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[5, 10, 15].map((pct) => {
+                    const suggested = Math.max(1, Math.round(effectivePrice * (1 - pct / 100)));
+                    return (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setOfferedPriceInput(String(suggested))}
+                        className="py-2 px-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] hover:border-indigo-400 text-[11px] font-bold text-[#111214] dark:text-[#F4F4F2] tabular-nums transition-colors"
+                      >
+                        -{pct}% ({suggested.toLocaleString()})
+                      </button>
+                    );
+                  })}
+                </div>
+                <input
+                  type="number"
+                  min={1}
+                  max={Math.max(1, effectivePrice - 1)}
+                  value={offeredPriceInput}
+                  onChange={(e) => setOfferedPriceInput(e.target.value)}
+                  placeholder="أدخل سعرك المقترح للقطعة..."
+                  dir="ltr"
+                  required
+                  className="w-full min-h-[42px] px-3.5 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] text-sm font-extrabold text-[#111214] dark:text-[#F4F4F2] text-left tabular-nums outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-lg border border-[#E5E2DA] dark:border-[#232730]">
+                <span className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">الكمية المطلوبة</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOfferQtyInput((q) => Math.max(1, q - 1))}
+                    className="w-8 h-8 rounded-md border border-[#E5E2DA] dark:border-[#232730] flex items-center justify-center"
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="w-8 text-center font-extrabold text-sm tabular-nums">{offerQtyInput}</span>
+                  <button
+                    type="button"
+                    onClick={() => setOfferQtyInput((q) => Math.min(effectiveStockLimit ?? 500, q + 1))}
+                    className="w-8 h-8 rounded-md border border-[#E5E2DA] dark:border-[#232730] flex items-center justify-center"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#5C5B57] dark:text-zinc-400 mb-1">
+                  ملاحظة للمتجر (اختياري)
+                </label>
+                <textarea
+                  value={offerNoteInput}
+                  onChange={(e) => setOfferNoteInput(e.target.value)}
+                  placeholder="مثال: أرغب بشراء أكثر من قطعة إذا تم تخفيض السعر..."
+                  className="w-full h-20 p-3 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] text-xs text-[#111214] dark:text-[#F4F4F2] outline-none resize-none"
+                />
+              </div>
+
+              {Number(offeredPriceInput) > 0 && Number(offeredPriceInput) < effectivePrice && (
+                <div className="p-3 rounded-lg bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between text-xs">
+                  <span className="font-bold text-emerald-800 dark:text-emerald-300">
+                    الإجمالي المقترح ({offerQtyInput} قطعة):
+                  </span>
+                  <span className="font-extrabold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                    {(Math.round(Number(offeredPriceInput)) * offerQtyInput).toLocaleString()} ر.ي
+                    {' '}
+                    (توفير {((effectivePrice - Math.round(Number(offeredPriceInput))) * offerQtyInput).toLocaleString()})
+                  </span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={submittingOffer}
+                className={`w-full min-h-[44px] rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+              >
+                <Handshake className="w-4 h-4" />
+                <span>{submittingOffer ? 'جاري إرسال العرض...' : 'إرسال عرض السعر للمتجر'}</span>
+              </button>
+            </form>
+          </div>
         </div>
       )}
     </div>

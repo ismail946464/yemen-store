@@ -4798,7 +4798,7 @@ export default function AdminDashboard() {
 
                                 <div className="flex flex-col text-right">
                                   <span className="font-display font-bold text-sm text-[#111214] dark:text-[#F4F4F2]">
-                                    {localSettings.storeName || 'يمن ستور'}
+                                    {localSettings.storeName || 'متجر محيط'}
                                   </span>
                                   <span className="text-[10px] text-[#5C5B57] dark:text-zinc-400">سوق التجارة الإلكترونية</span>
                                 </div>
@@ -4823,7 +4823,7 @@ export default function AdminDashboard() {
                               ) : (
                                 <Store className="w-4 h-4 text-emerald-400" />
                               )}
-                              <span className="text-zinc-200 font-bold">{localSettings.storeName || 'يمن ستور'}</span>
+                              <span className="text-zinc-200 font-bold">{localSettings.storeName || 'متجر محيط'}</span>
                             </div>
                           </div>
                         </div>

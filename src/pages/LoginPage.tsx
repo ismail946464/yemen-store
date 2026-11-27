@@ -168,7 +168,7 @@ export default function LoginPage() {
             </div>
             <div>
               <h1 className="font-display text-2xl font-extrabold text-[#111214] dark:text-[#F4F4F2] tracking-tight">
-                {settings?.storeName || 'يمن ستور'}
+                {settings?.storeName || 'متجر محيط'}
               </h1>
               <p className="text-xs sm:text-sm text-[#5C5B57] dark:text-zinc-400 mt-2 leading-relaxed">
                 بوابة موحدة لإدارة مشترياتك، تتبع الشحنات عبر الخريطة، والحجز المسبق لدى المتاجر المعتمدة.

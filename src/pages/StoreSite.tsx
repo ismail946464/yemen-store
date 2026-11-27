@@ -82,7 +82,7 @@ export default function StoreSite() {
     }
     loadData();
 
-    const title = settings?.seoTitle || settings?.storeName || 'يمن ستور';
+    const title = settings?.seoTitle || settings?.storeName || 'متجر محيط';
     const description = settings?.seoDescription || settings?.heroSubtitle || 'تسوق أفضل المنتجات اليمنية بأفضل الأسعار';
 
     document.title = title;
@@ -459,7 +459,7 @@ export default function StoreSite() {
           <div className="space-y-1 text-center sm:text-right">
             <h2 className="font-display text-lg font-extrabold">{settings?.storeName || 'المتجر'}</h2>
             <p className="text-xs text-[#5C5B57] dark:text-zinc-400">
-              جميع الحقوق محفوظة © {new Date().getFullYear()} {settings?.storeName || 'يمن ستور'}
+              جميع الحقوق محفوظة © {new Date().getFullYear()} {settings?.storeName || 'متجر محيط'}
             </p>
           </div>
           <div className="flex items-center gap-3">

@@ -102,7 +102,7 @@ function CartItemThumbnail({ src, alt }: { src?: string; alt: string }) {
 
 export default function Cart() {
   const { cart, removeFromCart, updateCartQuantity, syncCartItemStock, cartTotal, user, userData, clearCart, getThemeClasses, settings, openLoginModal } = useAppContext();
-  const currentStoreName = settings?.storeName || 'يمن ستور';
+  const currentStoreName = settings?.storeName || 'متجر محيط';
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'wallet'>('cod');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -294,6 +294,17 @@ export default function Cart() {
     );
     return () => unsub();
   }, [cart.length, activeCartStoreId, hasMultipleStores]);
+
+  useEffect(() => {
+    if (cart.length === 0 || appliedCoupon) return;
+    try {
+      const pending = sessionStorage.getItem('yemen_pending_coupon');
+      if (pending) {
+        sessionStorage.removeItem('yemen_pending_coupon');
+        void handleApplyCouponCode(pending);
+      }
+    } catch {}
+  }, [cart.length]);
 
   const handleApplyCouponCode = async (rawCode: string) => {
     const cleanCode = normalizeCouponCode(rawCode);
@@ -560,7 +571,7 @@ export default function Cart() {
         customerPhone: customerPhone.trim() || userData?.phone || '',
         customerNotes: customerNotes.trim(),
         storeId: targetStoreId || 'global',
-        storeName: storeProfileData?.name || cart[0]?.product?.ownerName || (settings?.storeName || 'يمن ستور'),
+        storeName: storeProfileData?.name || cart[0]?.product?.ownerName || (settings?.storeName || 'متجر محيط'),
         storeAddress: storeProfileData?.address || (storeProfileData?.city ? `${storeProfileData.city} - المركز` : 'صنعاء'),
         storeLocation: storeProfileData?.location || storeProfileData?.coordinates || null,
         storeMapsUrl: storeProfileData?.googleMapsUrl || storeProfileData?.mapsUrl || '',
@@ -616,7 +627,7 @@ export default function Cart() {
       }
 
       const offerIdsToMark = Array.from(
-        new Set(
+        new Set<string>(
           cart
             .map((i) => i.product?.negotiatedOfferId)
             .filter((id): id is string => typeof id === 'string' && id.length > 0)

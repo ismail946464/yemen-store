@@ -239,7 +239,7 @@ export default function PreOrderModal({ product, isOpen, onClose }: PreOrderModa
         deliveryStatus: isPickupOnly ? 'store_pickup_only' : 'pending_pickup',
         deliveryFee: effectiveDeliveryFee,
         storeId: product.ownerId || '',
-        storeName: pickupStoreProfile?.name || product.ownerName || (settings?.storeName || 'يمن ستور'),
+        storeName: pickupStoreProfile?.name || product.ownerName || (settings?.storeName || 'متجر محيط'),
         items: [{
           productId: product.id,
           id: product.id,

@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useRef, useMemo, useCallback } from 'react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, getCountFromServer, increment, updateDoc, addDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, getCountFromServer, increment, updateDoc, addDoc, limit } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import { getStockLimit, isItemOutOfStock } from './lib/stockUtils';
@@ -92,6 +92,10 @@ interface AppContextType {
   isSearchPaletteOpen: boolean;
   openSearchPalette: () => void;
   closeSearchPalette: () => void;
+  isAiDrawerOpen: boolean;
+  aiDrawerInitialQuery: string;
+  openAiDrawer: (initialQuery?: string) => void;
+  closeAiDrawer: () => void;
 }
 
 export interface CartItem {
@@ -125,6 +129,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSearchPaletteOpen, setIsSearchPaletteOpen] = useState(false);
   const openSearchPalette = useCallback(() => setIsSearchPaletteOpen(true), []);
   const closeSearchPalette = useCallback(() => setIsSearchPaletteOpen(false), []);
+  const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
+  const [aiDrawerInitialQuery, setAiDrawerInitialQuery] = useState('');
+  const openAiDrawer = useCallback((initialQuery?: string) => {
+    setAiDrawerInitialQuery(typeof initialQuery === 'string' ? initialQuery.trim() : '');
+    setIsAiDrawerOpen(true);
+  }, []);
+  const closeAiDrawer = useCallback(() => {
+    setIsAiDrawerOpen(false);
+  }, []);
   const [userData, setUserData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>(() => {
@@ -138,16 +151,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return [];
   });
   const cartRef = useRef<CartItem[]>(cart);
+  const didMountCartRef = useRef(false);
 
   useEffect(() => {
     cartRef.current = cart;
+    if (!didMountCartRef.current) {
+      didMountCartRef.current = true;
+      return;
+    }
     safeLocalSet('yemen_store_cart_v1', JSON.stringify(cart));
   }, [cart]);
 
   const [settings, setSettings] = useState<any | null>(() => {
     try {
       const cached = safeLocalGet('yemen_store_settings_cache_v1');
-      return cached ? JSON.parse(cached) : null;
+      if (!cached) return null;
+      const parsed = JSON.parse(cached);
+      if (parsed && (!parsed.storeName || String(parsed.storeName).trim() === 'يمن ستور')) {
+        parsed.storeName = 'متجر محيط';
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -272,6 +295,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (Array.isArray(userData?.favorites)) {
       const remote = userData.favorites.filter((x: unknown) => typeof x === 'string').slice(0, 200) as string[];
       const merged = Array.from(new Set([...remote, ...favoriteIdsRef.current])).slice(0, 200);
+      const curr = favoriteIdsRef.current;
+      if (merged.length === curr.length && merged.every((id, idx) => id === curr[idx])) {
+        return;
+      }
       favoriteIdsRef.current = merged;
       setFavoriteIds(merged);
       safeLocalSet('yemen_store_favorites_v1', JSON.stringify(merged));
@@ -342,6 +369,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (Array.isArray(userData?.followedStores)) {
       const remote = userData.followedStores.filter((x: unknown) => typeof x === 'string').slice(0, 200) as string[];
       const merged = Array.from(new Set([...remote, ...followedStoreIdsRef.current])).slice(0, 200);
+      const curr = followedStoreIdsRef.current;
+      if (merged.length === curr.length && merged.every((id, idx) => id === curr[idx])) {
+        return;
+      }
       followedStoreIdsRef.current = merged;
       setFollowedStoreIds(merged);
       safeLocalSet('yemen_store_followed_stores_v1', JSON.stringify(merged));
@@ -491,8 +522,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updatePresence(isVisible);
     };
 
-    window.addEventListener('mousedown', handleActivity);
-    window.addEventListener('keypress', handleActivity);
+    window.addEventListener('mousedown', handleActivity, { passive: true });
+    window.addEventListener('keypress', handleActivity, { passive: true });
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
@@ -509,15 +540,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const statsUnsubscribe = onSnapshot(doc(db, 'stats', 'global'), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        setGlobalStats(prev => ({ 
-          ...prev, 
-          totalVisitors: data.totalVisitors || 0,
-          totalRegistered: data.totalRegistered || 0,
-          onlineCount: data.onlineCount || 0,
-          mainStoreLastSeen: data.mainStoreLastSeen || null,
-          dailyVisits: (data.dailyVisits && typeof data.dailyVisits === 'object') ? data.dailyVisits : {},
-          statsReset: data.statsReset || null
-        }));
+        const nextVisitors = data.totalVisitors || 0;
+        const nextRegistered = data.totalRegistered || 0;
+        const nextOnline = data.onlineCount || 0;
+        const nextLastSeen = data.mainStoreLastSeen || null;
+        const nextDailyVisits = (data.dailyVisits && typeof data.dailyVisits === 'object') ? data.dailyVisits : {};
+        const nextStatsReset = data.statsReset || null;
+        const todayKey = getLocalDateKey();
+        setGlobalStats(prev => {
+          if (
+            prev.totalVisitors === nextVisitors &&
+            prev.totalRegistered === nextRegistered &&
+            prev.onlineCount === nextOnline &&
+            prev.mainStoreLastSeen === nextLastSeen &&
+            prev.dailyVisits?.[todayKey] === nextDailyVisits?.[todayKey] &&
+            JSON.stringify(prev.statsReset) === JSON.stringify(nextStatsReset) &&
+            Object.keys(prev.dailyVisits).length === Object.keys(nextDailyVisits).length
+          ) {
+            return prev;
+          }
+          return {
+            ...prev,
+            totalVisitors: nextVisitors,
+            totalRegistered: nextRegistered,
+            onlineCount: nextOnline,
+            mainStoreLastSeen: nextLastSeen,
+            dailyVisits: nextDailyVisits,
+            statsReset: nextStatsReset
+          };
+        });
       }
     }, (error) => {
       console.warn('Global stats listener notice (handled):', (error as any)?.message);
@@ -575,7 +626,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const q = query(
       collection(db, 'messages'), 
       where('recipientId', '==', user.uid), 
-      where('isRead', '==', false)
+      where('isRead', '==', false),
+      limit(40)
     );
     
     // Unread messages snapshot
@@ -610,7 +662,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }, 0);
 
           if (document.hidden) {
-            showBrowserNotificationSafely("متجر يمن", {
+            showBrowserNotificationSafely("متجر محيط", {
               body: "لديك رسائل جديدة!",
               icon: "/pwa-192x192.png"
             });
@@ -683,7 +735,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const qOrders = query(
       collection(db, 'orders'),
-      where('userId', '==', user.uid)
+      where('userId', '==', user.uid),
+      limit(35)
     );
 
     const unsubscribeOrders = onSnapshot(qOrders, (snap) => {
@@ -764,12 +817,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubSettings = onSnapshot(doc(db, 'settings', 'global'), (snap) => {
       if (snap.exists()) {
-        const data = snap.data();
+        const rawData = (snap.data() || {}) as Record<string, any>;
+        const normalizedStoreName =
+          !rawData?.storeName || String(rawData.storeName).trim() === 'يمن ستور'
+            ? 'متجر محيط'
+            : rawData.storeName;
+        const data: Record<string, any> = { ...rawData, storeName: normalizedStoreName };
         setSettings(data);
         try {
           const lightCache = {
-            storeName: data.storeName,
-            shortName: data.shortName,
+            storeName: normalizedStoreName,
+            shortName: data.shortName && String(data.shortName).trim() !== 'يمن ستور' ? data.shortName : 'متجر محيط',
             storeDescription: data.storeDescription,
             storeLogo: data.storeLogo && String(data.storeLogo).length < 180000 ? data.storeLogo : undefined,
             siteIcon: data.siteIcon && String(data.siteIcon).length < 180000 ? data.siteIcon : undefined,
@@ -961,18 +1019,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  const openLoginModal = (initialEmail?: string) => {
+  const openLoginModal = useCallback((initialEmail?: string) => {
     if (initialEmail) setLoginModalInitialEmail(initialEmail);
     setIsLoginModalOpen(true);
-  };
+  }, []);
 
-  const closeLoginModal = () => {
+  const closeLoginModal = useCallback(() => {
     setIsLoginModalOpen(false);
-  };
+  }, []);
 
-  const login = () => {
+  const login = useCallback(() => {
     openLoginModal();
-  };
+  }, [openLoginModal]);
 
   const loginWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
@@ -1582,7 +1640,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isFollowingStore,
     isSearchPaletteOpen,
     openSearchPalette,
-    closeSearchPalette
+    closeSearchPalette,
+    isAiDrawerOpen,
+    aiDrawerInitialQuery,
+    openAiDrawer,
+    closeAiDrawer
   }), [
     user, 
     userData, 
@@ -1596,6 +1658,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     settingsLoading, 
     isLoginModalOpen,
     loginModalInitialEmail,
+    openLoginModal,
+    closeLoginModal,
+    login,
     cart, 
     cartTotal,
     addToCart,
@@ -1623,7 +1688,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isFollowingStore,
     isSearchPaletteOpen,
     openSearchPalette,
-    closeSearchPalette
+    closeSearchPalette,
+    isAiDrawerOpen,
+    aiDrawerInitialQuery,
+    openAiDrawer,
+    closeAiDrawer
   ]);
 
   return (

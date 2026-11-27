@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, X, CheckCircle, AlertTriangle, Info, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, onSnapshot, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, updateDoc, doc, deleteDoc, limit } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { useAppContext } from '../AppContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
@@ -20,7 +20,8 @@ export default function NotificationCenter() {
 
     const q = query(
       collection(db, 'notifications'),
-      where('userId', '==', user.uid)
+      where('userId', '==', user.uid),
+      limit(30)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {

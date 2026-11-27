@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare, Send, ArrowRight, User, Clock, Check, CheckCheck,
   Loader2, Search, PenSquare, ChevronDown, Camera, BadgeCheck, Trash2,
-  X, Download, Bot, ShoppingBag, Truck
+  X, Download, Bot, ShoppingBag, Truck, ShoppingCart, Copy, RotateCcw,
+  Tag, ArrowLeft, ShieldCheck
 } from 'lucide-react';
 import { db, auth } from '../firebase';
 import {
@@ -30,17 +31,19 @@ import toast from 'react-hot-toast';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
 import { SYSTEM_DELIVERY_SENDER_ID } from '../lib/deliveryFeeUtils';
+import { buildBaseProductForCart } from '../lib/variantUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { askStoreAssistant } from '../services/geminiService';
-import { runStandaloneStoreAi } from '../services/storeAiEngine';
+import { runStandaloneStoreAi, type AssistantPromoHint } from '../services/storeAiEngine';
 
 export default function Contact() {
-  const { userData, user, isDelivery, getThemeClasses, settings, markMessagesAsRead, openLoginModal } = useAppContext();
-  const currentStoreName = settings?.storeName || 'يمن ستور';
+  const { userData, user, isDelivery, getThemeClasses, settings, markMessagesAsRead, openLoginModal, addToCart } = useAppContext();
+  const currentStoreName = settings?.storeName || 'متجر محيط';
   const aiAssistantName = `مستشار ${currentStoreName}`;
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const rawRecipientId = searchParams.get('to');
+  const initialAiQuery = searchParams.get('q') || '';
   const recipientId = (rawRecipientId && user && rawRecipientId === user.uid) ? null : rawRecipientId;
   const [recipientProfile, setRecipientProfile] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -49,6 +52,10 @@ export default function Contact() {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [catalogProducts, setCatalogProducts] = useState<any[]>([]);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [activePromos, setActivePromos] = useState<AssistantPromoHint[]>([]);
+  const [storeCategories, setStoreCategories] = useState<Array<{ name: string; slug?: string }>>([]);
+  const autoAskedQueryRef = useRef<string>('');
 
   // Prevent user from starting a conversation with themselves
   useEffect(() => {
@@ -65,16 +72,56 @@ export default function Contact() {
     }
   }, [user]);
 
-  // Load active products so the store assistant references the real-time catalog
+  // Load active products, active coupons, and categories so the store assistant uses real-time data
   useEffect(() => {
-    const q = query(collection(db, 'products'), where('status', '==', 'active'), limit(80));
+    const q = query(collection(db, 'products'), where('status', '==', 'active'), limit(90));
     const unsubscribe = onSnapshot(q, (snap) => {
       const prods = snap.docs.map(d => ({ id: d.id, ...d.data() as any }));
       setCatalogProducts(prods);
+      setCatalogLoaded(true);
     }, (err) => {
       console.warn('Catalog products sync notice:', err.message);
+      setCatalogLoaded(true);
     });
-    return () => unsubscribe();
+
+    const unsubPromos = onSnapshot(
+      query(collection(db, 'promoCodes'), where('active', '==', true), limit(20)),
+      (snap) => {
+        const nowMs = Date.now();
+        const promos = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() as any }))
+          .filter((c) => !c.expiresAt || new Date(c.expiresAt).getTime() >= nowMs)
+          .filter((c) => c.maxUses === null || c.maxUses === undefined || Number(c.usedCount || 0) < Number(c.maxUses))
+          .map((c) => ({
+            code: String(c.code || ''),
+            discountType: c.discountType || 'percent',
+            discountValue: Number(c.discountValue || 0),
+            minOrderAmount: Number(c.minOrderAmount || 0),
+            expiresAt: c.expiresAt || ''
+          }))
+          .filter((c) => c.code);
+        setActivePromos(promos);
+      },
+      () => {}
+    );
+
+    const unsubCats = onSnapshot(
+      collection(db, 'categories'),
+      (snap) => {
+        if (!snap.empty) {
+          setStoreCategories(
+            snap.docs.map((d) => ({ name: String(d.data()?.name || ''), slug: String(d.data()?.slug || '') }))
+          );
+        }
+      },
+      () => {}
+    );
+
+    return () => {
+      unsubscribe();
+      unsubPromos();
+      unsubCats();
+    };
   }, []);
 
   // Search users functionality
@@ -121,22 +168,22 @@ export default function Contact() {
     return () => clearTimeout(timer);
   }, [searchTerm, userData?.role, user?.uid]);
 
+  const createWelcomeMessage = () => ({
+    id: 'guest_welcome',
+    text: `مرحباً بك في ${currentStoreName}.\nأنا مستشار المتجر المختص: أساعدك في البحث عن المنتجات حسب اسمها أو ميزانيتك، مقارنة الأسعار والتوصيل، معرفة أكواد الخصم النشطة، وحساب العربون والحجز المسبق.`,
+    productCards: [],
+    suggestedQuestions: [
+      'ما هي المنتجات الأكثر طلباً؟',
+      'عرض أحدث العروض والخصومات',
+      'هل يوجد كوبونات خصم نشطة؟'
+    ],
+    senderId: 'ai_assistant',
+    createdAt: new Date().toISOString()
+  });
+
   const [activeTab, setActiveTab] = useState<'messages' | 'orders'>('messages');
   const [messages, setMessages] = useState<any[]>([]);
-  const [guestMessages, setGuestMessages] = useState<any[]>(() => [
-    {
-      id: 'guest_welcome',
-      text: `مرحباً بك في ${currentStoreName}.\nأنا مستشار المتجر المختص لمساعدتك في البحث عن المنتجات، معرفة الأسعار، والاستفسار عن التوصيل والحجز المسبق. بماذا تود البدء اليوم؟`,
-      productCards: [],
-      suggestedQuestions: [
-        'ما هي المنتجات الأكثر طلباً؟',
-        'ابحث لي عن هاتف',
-        'كيف يعمل نظام دفع العربون والحجز؟'
-      ],
-      senderId: 'ai_assistant',
-      createdAt: new Date().toISOString()
-    }
-  ]);
+  const [guestMessages, setGuestMessages] = useState<any[]>(() => [createWelcomeMessage()]);
   const [conversations, setConversations] = useState<any[]>([]);
   const [userProfilesCache, setUserProfilesCache] = useState<Record<string, any>>({});
   const [text, setText] = useState('');
@@ -345,16 +392,21 @@ export default function Contact() {
       setGuestMessages(prev => [...prev, userGuestMsg]);
       setIsAiThinking(true);
       try {
-        const aiHistory = guestMessages.slice(-6).map(m => ({
-          role: (m.senderId === 'ai_assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
-          text: m.text || ''
-        }));
+        const aiHistory = guestMessages
+          .filter(m => m.id !== 'guest_welcome')
+          .slice(-6)
+          .map(m => ({
+            role: (m.senderId === 'ai_assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
+            text: m.text || ''
+          }));
 
         const aiRes = await askStoreAssistant({
           message: msgText,
           history: aiHistory,
           catalogProducts: catalogProducts,
-          storeSettings: settings
+          storeSettings: settings,
+          activePromos,
+          categories: storeCategories
         });
 
         const aiReplyMsg = {
@@ -362,17 +414,28 @@ export default function Contact() {
           text: aiRes.reply || 'أهلاً بك! يمكنك تصفح المنتجات المتوفرة في المتجر حالياً.',
           productCards: aiRes.products || [],
           suggestedQuestions: aiRes.suggestedQuestions || [],
+          actions: aiRes.actions || [],
+          comparisonRows: aiRes.comparisonRows || [],
+          promoHints: aiRes.promoHints || [],
+          statsHighlight: aiRes.statsHighlight || [],
           senderId: 'ai_assistant',
           createdAt: new Date().toISOString()
         };
         setGuestMessages(prev => [...prev, aiReplyMsg]);
       } catch {
-        const fallback = runStandaloneStoreAi(msgText, catalogProducts, settings);
+        const fallback = runStandaloneStoreAi(msgText, catalogProducts, settings, {
+          activePromos,
+          categories: storeCategories
+        });
         setGuestMessages(prev => [...prev, {
           id: `guest_ai_${Date.now()}`,
           text: fallback.reply,
           productCards: fallback.products || [],
           suggestedQuestions: fallback.suggestedQuestions || [],
+          actions: fallback.actions || [],
+          comparisonRows: fallback.comparisonRows || [],
+          promoHints: fallback.promoHints || [],
+          statsHighlight: fallback.statsHighlight || [],
           senderId: 'ai_assistant',
           createdAt: new Date().toISOString()
         }]);
@@ -416,13 +479,19 @@ export default function Contact() {
             message: msgText,
             history: aiHistory,
             catalogProducts: catalogProducts,
-            storeSettings: settings
+            storeSettings: settings,
+            activePromos,
+            categories: storeCategories
           });
 
           await addDoc(collection(db, 'messages'), {
             text: aiRes.reply || 'أهلاً بك! يمكنك تصفح المنتجات المتوفرة في المتجر حالياً.',
             productCards: aiRes.products || [],
             suggestedQuestions: aiRes.suggestedQuestions || [],
+            actions: aiRes.actions || [],
+            comparisonRows: aiRes.comparisonRows || [],
+            promoHints: aiRes.promoHints || [],
+            statsHighlight: aiRes.statsHighlight || [],
             senderId: 'ai_assistant',
             recipientId: user.uid,
             conversationId: conversationId,
@@ -439,11 +508,18 @@ export default function Contact() {
           }, { merge: true });
         } catch (aiErr) {
           console.error('Assistant error:', aiErr);
-          const fallback = runStandaloneStoreAi(msgText, catalogProducts, settings);
+          const fallback = runStandaloneStoreAi(msgText, catalogProducts, settings, {
+            activePromos,
+            categories: storeCategories
+          });
           await addDoc(collection(db, 'messages'), {
             text: fallback.reply,
             productCards: fallback.products || [],
             suggestedQuestions: fallback.suggestedQuestions || [],
+            actions: fallback.actions || [],
+            comparisonRows: fallback.comparisonRows || [],
+            promoHints: fallback.promoHints || [],
+            statsHighlight: fallback.statsHighlight || [],
             senderId: 'ai_assistant',
             recipientId: user.uid,
             conversationId: conversationId,
@@ -482,29 +558,48 @@ export default function Contact() {
       setGuestMessages(prev => [...prev, userGuestMsg]);
       setIsAiThinking(true);
       try {
-        const aiHistory = guestMessages.slice(-6).map(m => ({
-          role: (m.senderId === 'ai_assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
-          text: m.text || ''
-        }));
+        const aiHistory = guestMessages
+          .filter(m => m.id !== 'guest_welcome')
+          .slice(-6)
+          .map(m => ({
+            role: (m.senderId === 'ai_assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
+            text: m.text || ''
+          }));
         const aiRes = await askStoreAssistant({
           message: promptText,
           history: aiHistory,
           catalogProducts: catalogProducts,
-          storeSettings: settings
+          storeSettings: settings,
+          activePromos,
+          categories: storeCategories
         });
         const aiReplyMsg = {
           id: `guest_ai_${Date.now()}`,
           text: aiRes.reply,
           productCards: aiRes.products || [],
           suggestedQuestions: aiRes.suggestedQuestions || [],
+          actions: aiRes.actions || [],
+          comparisonRows: aiRes.comparisonRows || [],
+          promoHints: aiRes.promoHints || [],
+          statsHighlight: aiRes.statsHighlight || [],
           senderId: 'ai_assistant',
           createdAt: new Date().toISOString()
         };
         setGuestMessages(prev => [...prev, aiReplyMsg]);
       } catch {
+        const fallback = runStandaloneStoreAi(promptText, catalogProducts, settings, {
+          activePromos,
+          categories: storeCategories
+        });
         setGuestMessages(prev => [...prev, {
-          id: `guest_err_${Date.now()}`,
-          text: 'أعتذر، حدث تأخير بسيط. يمكنك إعادة السؤال أو كتابة استفسارك.',
+          id: `guest_ai_${Date.now()}`,
+          text: fallback.reply,
+          productCards: fallback.products || [],
+          suggestedQuestions: fallback.suggestedQuestions || [],
+          actions: fallback.actions || [],
+          comparisonRows: fallback.comparisonRows || [],
+          promoHints: fallback.promoHints || [],
+          statsHighlight: fallback.statsHighlight || [],
           senderId: 'ai_assistant',
           createdAt: new Date().toISOString()
         }]);
@@ -547,13 +642,19 @@ export default function Contact() {
           message: promptText,
           history: aiHistory,
           catalogProducts: catalogProducts,
-          storeSettings: settings
+          storeSettings: settings,
+          activePromos,
+          categories: storeCategories
         });
 
         await addDoc(collection(db, 'messages'), {
           text: aiRes.reply,
           productCards: aiRes.products || [],
           suggestedQuestions: aiRes.suggestedQuestions || [],
+          actions: aiRes.actions || [],
+          comparisonRows: aiRes.comparisonRows || [],
+          promoHints: aiRes.promoHints || [],
+          statsHighlight: aiRes.statsHighlight || [],
           senderId: 'ai_assistant',
           recipientId: user.uid,
           conversationId: conversationId,
@@ -575,6 +676,49 @@ export default function Contact() {
     } finally {
       setIsSending(false);
       setIsAiThinking(false);
+    }
+  };
+
+  // Auto-submit ?q=... deep-linked questions when navigating from Search Palette / ProductDetail / StoreFront
+  useEffect(() => {
+    const cleanQ = initialAiQuery.trim();
+    if (
+      recipientId === 'ai_assistant' &&
+      cleanQ &&
+      catalogLoaded &&
+      !loading &&
+      autoAskedQueryRef.current !== cleanQ
+    ) {
+      autoAskedQueryRef.current = cleanQ;
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('q');
+      setSearchParams(nextParams, { replace: true });
+      sendQuickMessage(cleanQ);
+    }
+  }, [recipientId, initialAiQuery, catalogLoaded, loading]);
+
+  const handleResetAiConversation = async () => {
+    if (isAiThinking || isSending) return;
+    if (!user) {
+      setGuestMessages([createWelcomeMessage()]);
+      toast.success('بدأت محادثة جديدة مع المستشار');
+      return;
+    }
+    try {
+      const msgsQuery = query(
+        collection(db, 'messages'),
+        where('conversationId', '==', conversationId),
+        where('participants', 'array-contains', user.uid)
+      );
+      const snap = await getDocs(msgsQuery);
+      if (!snap.empty) {
+        const batch = writeBatch(db);
+        snap.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+      toast.success('تم مسح المحادثة وبدء جلسة جديدة');
+    } catch {
+      toast.error('تعذر بدء جلسة جديدة الآن');
     }
   };
 
@@ -1138,11 +1282,20 @@ export default function Contact() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center gap-2 shrink-0">
                 {recipientId === 'ai_assistant' ? (
-                  <span className="text-[11px] font-bold px-2.5 py-1 rounded-md bg-white dark:bg-[#131519] text-[#5C5B57] dark:text-zinc-400 border border-[#E5E2DA] dark:border-[#232730] hidden sm:inline-flex">
-                    خاص بالمتجر فقط
-                  </span>
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleResetAiConversation}
+                      disabled={isAiThinking || isSending}
+                      title="بدء محادثة جديدة"
+                      className="min-h-[36px] px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] border border-[#E5E2DA] dark:border-[#232730] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-[11px] font-bold flex items-center gap-1.5 transition disabled:opacity-40"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">محادثة جديدة</span>
+                    </button>
+                  </>
                 ) : (
                   <span className="p-2 text-[#5C5B57] dark:text-zinc-400">
                     <Clock className="w-4 h-4" />
@@ -1159,35 +1312,44 @@ export default function Contact() {
                 </div>
               ) : activeMessages.length === 0 ? (
                 recipientId === 'ai_assistant' ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center px-4 py-8 max-w-lg mx-auto">
+                  <div className="h-full flex flex-col items-center justify-center text-center px-3 py-6 max-w-xl mx-auto">
                     <div className={`w-14 h-14 rounded-lg ${getThemeClasses('bg')} flex items-center justify-center text-white mb-4`}>
                       <Bot className="w-7 h-7" />
                     </div>
-                    <h4 className="font-display text-lg font-bold text-[#111214] dark:text-[#F4F4F2] mb-2">
+                    <h4 className="font-display text-lg sm:text-xl font-extrabold text-[#111214] dark:text-[#F4F4F2] mb-2 text-balance">
                       مرحباً بك في {aiAssistantName}
                     </h4>
-                    <p className="text-xs sm:text-sm text-[#5C5B57] dark:text-zinc-400 leading-relaxed font-medium">
-                      اسألني عن أي منتج متوفر في المتجر، قارن الأسعار، أو استفسر عن التوصيل وشروط الحجز المسبق ودفع العربون.
+                    <p className="text-xs sm:text-sm text-[#5C5B57] dark:text-zinc-400 leading-relaxed font-medium max-w-md">
+                      اسألني عن أي منتج بالاسم أو الميزانية، قارن الأسعار والتوصيل، اكتشف الكوبونات النشطة، أو استفسر عن الحجز بالعربون.
                     </p>
 
-                    <div className="mt-6 w-full space-y-2 text-right">
+                    <div className="mt-6 w-full space-y-2.5 text-right">
                       <span className="text-[11px] font-bold text-[#5C5B57] dark:text-zinc-400 block px-1">
-                        أسئلة يمكنك طرحها بنقرة واحدة:
+                        ابدأ بنقرة واحدة:
                       </span>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         {[
-                          'ابحث لي عن عسل يمني أصلي',
-                          'ما هي أحدث الهواتف المتوفرة؟',
-                          'كيف يعمل نظام الحجز المسبق والعربون؟',
-                          'ما هي سياسة الضمان والتوصيل في المنصة؟'
-                        ].map((prompt, pIdx) => (
+                          { title: 'المنتجات الأكثر طلباً', sub: 'أبرز المختارات المتاحة حالياً', prompt: 'ما هي المنتجات الأكثر طلباً؟' },
+                          { title: 'عروض وتخفيضات اليوم', sub: 'خصومات وتوصيل مجاني', prompt: 'عرض أحدث العروض والخصومات' },
+                          { title: 'أكواد وكوبونات الخصم', sub: 'عروض الكوبونات الفعالة بالسلة', prompt: 'هل يوجد كوبونات خصم نشطة؟' },
+                          { title: 'أقسام المتجر والأسعار', sub: 'استعراض جميع التصنيفات المتوفرة', prompt: 'ما هي أقسام المتجر الرئيسية؟' },
+                          { title: 'البحث الاقتصادي', sub: 'أرخص المنتجات المتوفرة حالياً', prompt: 'أرخص المنتجات المتوفرة' },
+                          { title: 'الحجز المسبق والعربون', sub: 'شرح التثبيت ودفع الباقي عند الاستلام', prompt: 'كيف يعمل نظام الحجز المسبق والعربون؟' }
+                        ].map((tile, pIdx) => (
                           <button
                             key={pIdx}
                             type="button"
-                            onClick={() => sendQuickMessage(prompt)}
-                            className="min-h-[44px] p-3 rounded-lg bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] hover:border-[#111214] dark:hover:border-zinc-500 transition text-xs font-bold text-[#111214] dark:text-[#F4F4F2] text-right flex items-center justify-between gap-2"
+                            onClick={() => sendQuickMessage(tile.prompt)}
+                            className="min-h-[54px] p-3 rounded-lg bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] hover:border-[#111214] dark:hover:border-zinc-500 transition text-right flex items-center justify-between gap-2.5"
                           >
-                            <span className="truncate">{prompt}</span>
+                            <div className="min-w-0">
+                              <span className="text-xs font-extrabold text-[#111214] dark:text-[#F4F4F2] block truncate">
+                                {tile.title}
+                              </span>
+                              <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400 block truncate">
+                                {tile.sub}
+                              </span>
+                            </div>
                             <ArrowRight className="w-3.5 h-3.5 rotate-180 text-[#5C5B57] dark:text-zinc-400 shrink-0" />
                           </button>
                         ))}
@@ -1267,6 +1429,122 @@ export default function Contact() {
 
                           {m.text && <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">{m.text}</p>}
 
+                          {/* Tabular Metric Highlights */}
+                          {isAi && Array.isArray(m.statsHighlight) && m.statsHighlight.length > 0 && (
+                            <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2.5 border-t border-[#E5E2DA] dark:border-[#232730]">
+                              {m.statsHighlight.map((st: any, stIdx: number) => (
+                                <div
+                                  key={stIdx}
+                                  className="px-2.5 py-2 rounded-md bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730]"
+                                >
+                                  <span className="text-[10px] text-[#5C5B57] dark:text-zinc-400 block">
+                                    {st.label}
+                                  </span>
+                                  <span className="text-xs font-extrabold tabular-nums text-[#111214] dark:text-[#F4F4F2]">
+                                    {st.value}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Active Promo Coupons Copyable Cards */}
+                          {isAi && Array.isArray(m.promoHints) && m.promoHints.length > 0 && (
+                            <div className="mt-3 pt-2.5 border-t border-[#E5E2DA] dark:border-[#232730] space-y-2">
+                              <span className="text-[11px] font-bold text-[#5C5B57] dark:text-zinc-400 flex items-center gap-1.5">
+                                <Tag className="w-3.5 h-3.5" />
+                                <span>أكواد الخصم المتاحة ({m.promoHints.length})</span>
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {m.promoHints.map((promo: any) => (
+                                  <div
+                                    key={promo.code}
+                                    className="p-2.5 rounded-lg border border-dashed border-[#111214]/30 dark:border-zinc-600 bg-[#FAF9F6] dark:bg-[#101216] flex items-center justify-between gap-2"
+                                  >
+                                    <div className="min-w-0">
+                                      <span className="font-mono text-xs font-extrabold tracking-wider text-[#111214] dark:text-[#F4F4F2] block" dir="ltr">
+                                        {promo.code}
+                                      </span>
+                                      <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                                        {promo.discountType === 'percent'
+                                          ? `خصم ${promo.discountValue}%`
+                                          : `خصم ${Number(promo.discountValue).toLocaleString()} ر.ي`}
+                                        {promo.minOrderAmount > 0 ? ` · فوق ${Number(promo.minOrderAmount).toLocaleString()} ر.ي` : ''}
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        navigator.clipboard?.writeText(promo.code);
+                                        toast.success(`تم نسخ الكود: ${promo.code}`);
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-md border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-[11px] font-bold text-[#111214] dark:text-[#F4F4F2] flex items-center gap-1 shrink-0 transition"
+                                    >
+                                      <Copy className="w-3 h-3" />
+                                      <span>نسخ</span>
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Side-by-side AI Product Comparison Table */}
+                          {isAi && Array.isArray(m.comparisonRows) && m.comparisonRows.length >= 2 && (
+                            <div className="mt-3 pt-2.5 border-t border-[#E5E2DA] dark:border-[#232730] space-y-2">
+                              <span className="text-[11px] font-bold text-[#5C5B57] dark:text-zinc-400 block">
+                                جدول المقارنة التفصيلي
+                              </span>
+                              <div className="overflow-x-auto rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216]">
+                                <table className="w-full text-right text-[11px]">
+                                  <thead className="border-b border-[#E5E2DA] dark:border-[#232730] text-[#5C5B57] dark:text-zinc-400">
+                                    <tr>
+                                      <th className="py-2 px-2.5 font-bold">المنتج</th>
+                                      <th className="py-2 px-2.5 font-bold">السعر</th>
+                                      <th className="py-2 px-2.5 font-bold">التوصيل</th>
+                                      <th className="py-2 px-2.5 font-bold">العربون</th>
+                                      <th className="py-2 px-2.5 font-bold">فتح</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-[#E5E2DA] dark:divide-[#232730]">
+                                    {m.comparisonRows.map((row: any) => (
+                                      <tr key={row.id} className="text-[#111214] dark:text-[#F4F4F2]">
+                                        <td className="py-2 px-2.5 font-bold max-w-[140px]">
+                                          <div className="flex items-center gap-1 truncate">
+                                            <span className="truncate">{row.title}</span>
+                                            {row.ownerVerified && <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />}
+                                          </div>
+                                        </td>
+                                        <td className="py-2 px-2.5 font-extrabold tabular-nums whitespace-nowrap">
+                                          {Number(row.price || 0).toLocaleString()} ر.ي
+                                        </td>
+                                        <td className="py-2 px-2.5 tabular-nums whitespace-nowrap text-[#5C5B57] dark:text-zinc-300">
+                                          {row.noDelivery
+                                            ? 'استلام من المتجر'
+                                            : Number(row.deliveryFee || 0) === 0
+                                              ? 'مجاني'
+                                              : `${Number(row.deliveryFee).toLocaleString()} ر.ي`}
+                                        </td>
+                                        <td className="py-2 px-2.5 tabular-nums whitespace-nowrap text-[#5C5B57] dark:text-zinc-300">
+                                          {Number(row.depositAmount || 0).toLocaleString()} ر.ي
+                                        </td>
+                                        <td className="py-2 px-2.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => navigate(`/product/${row.id}`)}
+                                            className="font-bold underline hover:opacity-75 whitespace-nowrap"
+                                          >
+                                            معاينة
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+
                           {isSystemDelivery && (
                             <div className="mt-3 pt-2.5 border-t border-[#E5E2DA] dark:border-[#232730]">
                               <Link
@@ -1279,7 +1557,7 @@ export default function Contact() {
                             </div>
                           )}
 
-                          {/* Product Cards from Store Consultant */}
+                          {/* Product Cards from Store Consultant (with Quick Add-to-Cart) */}
                           {m.productCards && Array.isArray(m.productCards) && m.productCards.length > 0 && (
                             <div className="mt-3 pt-3 border-t border-[#E5E2DA] dark:border-[#232730] space-y-2">
                               <div className="flex items-center justify-between text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">
@@ -1287,7 +1565,7 @@ export default function Contact() {
                                   <ShoppingBag className="w-3.5 h-3.5 text-[#5C5B57] dark:text-zinc-400" />
                                   <span>منتجات مقترحة ({m.productCards.length})</span>
                                 </span>
-                                <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400 font-normal">اضغط للمعاينة</span>
+                                <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400 font-normal">معاينة أو إضافة فورية</span>
                               </div>
 
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1295,7 +1573,7 @@ export default function Contact() {
                                   <div
                                     key={p.id}
                                     onClick={() => navigate(`/product/${p.id}`)}
-                                    className="flex items-center gap-2.5 p-2 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] text-[#111214] dark:text-[#F4F4F2] border border-[#E5E2DA] dark:border-[#232730] hover:border-[#111214] dark:hover:border-zinc-500 transition cursor-pointer text-right"
+                                    className="flex items-center gap-2.5 p-2.5 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] text-[#111214] dark:text-[#F4F4F2] border border-[#E5E2DA] dark:border-[#232730] hover:border-[#111214] dark:hover:border-zinc-500 transition cursor-pointer text-right"
                                   >
                                     <div className="w-12 h-12 rounded-md overflow-hidden bg-white dark:bg-[#131519] shrink-0 border border-[#E5E2DA] dark:border-[#232730]">
                                       {p.image || (p.images && p.images[0]) ? (
@@ -1312,24 +1590,68 @@ export default function Contact() {
                                     </div>
 
                                     <div className="flex-1 min-w-0">
-                                      <span className="text-[10px] text-[#5C5B57] dark:text-zinc-400 font-medium block truncate">
-                                        {p.category || 'منتج'}
-                                      </span>
-                                      <h5 className="font-bold text-xs truncate leading-tight">
+                                      <div className="flex items-center gap-1 text-[10px] text-[#5C5B57] dark:text-zinc-400 font-medium truncate">
+                                        <span className="truncate">{p.category || 'منتج'}</span>
+                                        {p.ownerName && (
+                                          <>
+                                            <span aria-hidden="true">·</span>
+                                            <span className="truncate">{p.ownerName}</span>
+                                          </>
+                                        )}
+                                        {p.ownerVerified && <BadgeCheck className="w-3 h-3 text-sky-600 dark:text-sky-400 shrink-0" />}
+                                      </div>
+                                      <h5 className="font-bold text-xs truncate leading-tight mt-0.5">
                                         {p.title}
                                       </h5>
-                                      <div className="flex items-center justify-between mt-1">
-                                        <span className="font-bold text-xs tabular-nums">
+                                      <div className="flex items-center justify-between gap-2 mt-1.5">
+                                        <span className="font-extrabold text-xs tabular-nums">
                                           {Number(p.price || 0).toLocaleString()} <span className="text-[9px] font-normal text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
                                         </span>
-                                        <span className="text-[10px] font-bold text-[#5C5B57] dark:text-zinc-300">
-                                          عرض
-                                        </span>
+                                        {!p.noDelivery && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              if (!user) {
+                                                openLoginModal();
+                                                return;
+                                              }
+                                              addToCart(buildBaseProductForCart(p), 1);
+                                            }}
+                                            title="أضف للسلة مباشرة"
+                                            className={`px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 shrink-0 transition ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                                          >
+                                            <ShoppingCart className="w-3 h-3" />
+                                            <span>أضف للسلة</span>
+                                          </button>
+                                        )}
                                       </div>
                                     </div>
                                   </div>
                                 ))}
                               </div>
+                            </div>
+                          )}
+
+                          {/* Direct Platform Action Shortcuts */}
+                          {isAi && Array.isArray(m.actions) && m.actions.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2 pt-2.5 border-t border-[#E5E2DA] dark:border-[#232730]">
+                              {m.actions.map((act: any, actIdx: number) => (
+                                <button
+                                  key={actIdx}
+                                  type="button"
+                                  onClick={() => navigate(act.route)}
+                                  className={`min-h-[34px] px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition ${
+                                    act.kind === 'primary'
+                                      ? `${getThemeClasses('bg')} ${getThemeClasses('hover')}`
+                                      : 'bg-[#FAF9F6] dark:bg-[#101216] text-[#111214] dark:text-[#F4F4F2] border border-[#E5E2DA] dark:border-[#232730] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26]'
+                                  }`}
+                                >
+                                  <span>{act.label}</span>
+                                  <ArrowLeft className="w-3.5 h-3.5" />
+                                </button>
+                              ))}
                             </div>
                           )}
 
@@ -1400,12 +1722,14 @@ export default function Contact() {
             <div className="p-3 sm:p-4 border-t border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] shrink-0 z-10 space-y-2 pb-[max(12px,env(safe-area-inset-bottom))]">
               {recipientId === 'ai_assistant' && (
                 <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 text-xs">
-                  <span className="text-[11px] font-bold text-[#5C5B57] dark:text-zinc-400 shrink-0">اقتراحات:</span>
+                  <span className="text-[11px] font-bold text-[#5C5B57] dark:text-zinc-400 shrink-0">سريع:</span>
                   {[
-                    'ابحث لي عن هاتف',
-                    'عسل يمني أصلي',
+                    'عروض وتخفيضات اليوم',
+                    'هل يوجد كوبونات خصم نشطة؟',
+                    'أرخص المنتجات المتوفرة',
+                    'ما هي أقسام المتجر الرئيسية؟',
                     'شروط الحجز والعربون',
-                    'ضمان وشحن المنصة'
+                    'متابعة طلباتي'
                   ].map((chip, cIdx) => (
                     <button
                       key={cIdx}

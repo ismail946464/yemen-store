@@ -29,7 +29,7 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    const { message, history, catalogProducts, catalog, storeSettings } = body || {};
+    const { message, history, catalogProducts, catalog, storeSettings, activePromos, categories } = body || {};
     let effectiveSettings = storeSettings || {};
 
     const { db } = getFirebaseAdmin();
@@ -63,11 +63,35 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    let resolvedPromos = Array.isArray(activePromos) ? activePromos : [];
+    if (resolvedPromos.length === 0 && db && hasServiceAccount) {
+      try {
+        const promoSnap = await db.collection("promoCodes").where("active", "==", true).limit(20).get();
+        const nowMs = Date.now();
+        resolvedPromos = promoSnap.docs
+          .map((d: any) => ({ id: d.id, ...d.data() }))
+          .filter((c: any) => !c.expiresAt || new Date(c.expiresAt).getTime() >= nowMs)
+          .filter((c: any) => c.maxUses === null || c.maxUses === undefined || Number(c.usedCount || 0) < Number(c.maxUses))
+          .map((c: any) => ({
+            code: String(c.code || ''),
+            discountType: c.discountType || 'percent',
+            discountValue: Number(c.discountValue || 0),
+            minOrderAmount: Number(c.minOrderAmount || 0),
+            expiresAt: c.expiresAt || ''
+          }))
+          .filter((c: any) => c.code);
+      } catch {
+        // ignore
+      }
+    }
+
     const response = await processAssistantMessage({
       message: String(message || ""),
       history: Array.isArray(history) ? history : [],
       catalogProducts: Array.isArray(products) ? products : [],
-      storeSettings: effectiveSettings
+      storeSettings: effectiveSettings,
+      activePromos: resolvedPromos,
+      categories: Array.isArray(categories) ? categories : []
     });
 
     return res.status(200).json({ success: true, ...response });

@@ -12,14 +12,15 @@ import DisclaimerModal from './components/DisclaimerModal';
 import InstallPrompt from './components/InstallPrompt';
 import NotificationCenter from './components/NotificationCenter';
 import BottomNav from './components/BottomNav';
-import CartDrawer from './components/CartDrawer';
 import ScrollToTopButton from './components/ScrollToTopButton';
-import CommandSearchModal from './components/CommandSearchModal';
 import { PageLoadingSkeleton } from './components/Skeletons';
 import StoreFront from './pages/StoreFront';
 
 const ContactModal = lazy(() => import('./components/ContactModal'));
 const LoginModal = lazy(() => import('./components/LoginModal'));
+const CartDrawer = lazy(() => import('./components/CartDrawer'));
+const CommandSearchModal = lazy(() => import('./components/CommandSearchModal'));
+const AiConciergeDrawer = lazy(() => import('./components/AiConciergeDrawer'));
 
 const StoreSite = lazy(() => import('./pages/StoreSite'));
 const Cart = lazy(() => import('./pages/Cart'));
@@ -39,7 +40,7 @@ const SafetyGuide = lazy(() => import('./pages/SafetyGuide'));
 const Watchlist = lazy(() => import('./pages/Watchlist'));
 
 function Header() {
-  const { user, userData, isDelivery, isStore, isAdmin, login, cart, unreadCount, settings, getThemeClasses, isDarkMode, toggleDarkMode, openCartDrawer, openSearchPalette } = useAppContext();
+  const { user, userData, isDelivery, isStore, isAdmin, login, cart, unreadCount, settings, getThemeClasses, isDarkMode, toggleDarkMode, openCartDrawer, openSearchPalette, openAiDrawer } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
   const [showContactModal, setShowContactModal] = useState(false);
@@ -55,7 +56,7 @@ function Header() {
 
   return (
     <header className={isIndependentStore ? 'hidden' : isContactPage ? 'hidden md:block sticky top-0 z-50 transition-colors duration-200 print:hidden' : 'sticky top-0 z-50 transition-colors duration-200 print:hidden'}>
-      <div className={`border-b relative z-10 h-16 flex items-center transition-colors duration-200 backdrop-blur-md ${getThemeClasses('headerBg')}`}>
+      <div className={`border-b relative z-10 h-16 flex items-center transition-colors duration-200 backdrop-blur-xs ${getThemeClasses('headerBg')}`}>
         <div className="max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 flex justify-between items-center gap-2 sm:gap-4 md:gap-8">
           {/* Zone 1: Single-line Brand Wordmark */}
           <Link to="/" className="flex items-center gap-2 sm:gap-2.5 shrink-0 min-w-0">
@@ -108,7 +109,7 @@ function Header() {
             })()}
 
             <span className="font-display text-sm sm:text-lg font-extrabold tracking-tight truncate max-w-[115px] sm:max-w-none text-[#111214] dark:text-[#F4F4F2]">
-              {settings?.storeName || 'يمن ستور'}
+              {settings?.storeName || 'متجر محيط'}
             </span>
           </Link>
 
@@ -184,15 +185,16 @@ function Header() {
 
           {/* Zone 3: Action Controls */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Mobile AI Assistant shortcut */}
-            <Link
-              to="/contact?to=ai_assistant"
-              title={`مساعد ${settings?.storeName || 'يمن ستور'}`}
+            {/* Mobile AI Assistant quick drawer */}
+            <button
+              type="button"
+              onClick={() => openAiDrawer()}
+              title={`مستشار ${settings?.storeName || 'متجر محيط'}`}
               className="md:hidden min-h-[40px] flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-bold border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition-colors whitespace-nowrap shrink-0"
             >
               <Bot className="w-4 h-4" />
-              <span>المساعد</span>
-            </Link>
+              <span>المستشار</span>
+            </button>
 
             {/* Delivery Courier Shortcut - Strictly for role === 'delivery' only */}
             {isDelivery && (
@@ -309,7 +311,20 @@ function Header() {
 }
 
 function MainLayout() {
-  const { settings, getThemeClasses, isDarkMode, isLoginModalOpen, closeLoginModal, loginModalInitialEmail, effectiveTheme } = useAppContext();
+  const {
+    settings,
+    getThemeClasses,
+    isDarkMode,
+    isLoginModalOpen,
+    closeLoginModal,
+    loginModalInitialEmail,
+    effectiveTheme,
+    isCartDrawerOpen,
+    isSearchPaletteOpen,
+    openSearchPalette,
+    closeSearchPalette,
+    isAiDrawerOpen,
+  } = useAppContext();
   const location = useLocation();
   const isIndependentStore = location.pathname.startsWith('/s/') || location.pathname.startsWith('/store-site/');
   const [dismissedBanner, setDismissedBanner] = useState<string>(() => {
@@ -321,6 +336,21 @@ function MainLayout() {
   });
   const topBannerText = String(settings?.bannerMessage || '').trim();
   const showTopBanner = Boolean(topBannerText && !isIndependentStore && dismissedBanner !== topBannerText);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        if (isSearchPaletteOpen) {
+          closeSearchPalette();
+        } else {
+          openSearchPalette();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isSearchPaletteOpen, openSearchPalette, closeSearchPalette]);
 
   // Load optional extra Google Font only if admin configured a non-default font
   useEffect(() => {
@@ -392,7 +422,7 @@ function MainLayout() {
 
   useEffect(() => {
     if (!settings) return;
-    const currentStoreName = settings?.storeName || 'يمن ستور';
+    const currentStoreName = settings?.storeName || 'متجر محيط';
     document.title = currentStoreName;
 
     const currentUrl = settings?.storePublicUrl || window.location.origin;
@@ -457,8 +487,21 @@ function MainLayout() {
         </div>
       )}
       <DisclaimerModal />
-      <CartDrawer />
-      <CommandSearchModal />
+      {isCartDrawerOpen && (
+        <Suspense fallback={null}>
+          <CartDrawer />
+        </Suspense>
+      )}
+      {isSearchPaletteOpen && (
+        <Suspense fallback={null}>
+          <CommandSearchModal />
+        </Suspense>
+      )}
+      {isAiDrawerOpen && (
+        <Suspense fallback={null}>
+          <AiConciergeDrawer />
+        </Suspense>
+      )}
       <ScrollToTopButton />
       <InstallPrompt />
       {isLoginModalOpen && (

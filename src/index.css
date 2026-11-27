@@ -33,6 +33,10 @@
     background-size: 200% 100%;
     animation: shimmerSlide 1.4s ease-in-out infinite;
   }
+  .cv-product-card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 390px;
+  }
 }
 
 @keyframes shimmerSlide {

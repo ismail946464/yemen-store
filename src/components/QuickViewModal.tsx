@@ -12,6 +12,7 @@ import {
   Layers,
   BookmarkCheck,
   Image as ImageIcon,
+  Bot,
 } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -46,6 +47,7 @@ export default function QuickViewModal({
     isFavorite,
     toggleFavorite,
     recordRecentlyViewed,
+    openAiDrawer,
   } = useAppContext();
 
   const [fullProduct, setFullProduct] = useState<any | null>(product);
@@ -351,6 +353,18 @@ export default function QuickViewModal({
                   <span>حجز مسبق بالعربون</span>
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  openAiDrawer(`ما رأيك ومواصفات وتوصيل منتج: ${fullProduct.title}`);
+                }}
+                className="w-full min-h-[40px] px-4 py-2 rounded-lg border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/70 dark:bg-emerald-950/25 hover:bg-emerald-100/80 dark:hover:bg-emerald-950/45 text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center justify-center gap-2"
+              >
+                <Bot className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                <span>اسأل المستشار الذكي عن هذا المنتج</span>
+              </button>
             </div>
           </div>
         </div>

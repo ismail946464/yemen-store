@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -15,12 +15,13 @@ import {
   Trash2,
   Image as ImageIcon,
 } from 'lucide-react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAppContext } from '../AppContext';
 import { safeLocalGet, safeLocalSet } from '../lib/deviceSafe';
 import { getAvailableProductVariants } from '../lib/variantUtils';
 import { isItemOutOfStock } from '../lib/stockUtils';
+import { normalizeArabic } from '../services/storeAiEngine';
 
 const RECENT_SEARCHES_KEY = 'yemen_store_recent_searches_v1';
 
@@ -30,10 +31,11 @@ interface CachedCatalog {
   fetchedAt: number;
 }
 
+let moduleSearchCatalogCache: CachedCatalog | null = null;
+
 export default function CommandSearchModal() {
   const {
     isSearchPaletteOpen,
-    openSearchPalette,
     closeSearchPalette,
     user,
     getThemeClasses,
@@ -42,8 +44,9 @@ export default function CommandSearchModal() {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [loading, setLoading] = useState(false);
-  const [catalog, setCatalog] = useState<CachedCatalog | null>(null);
+  const [catalog, setCatalog] = useState<CachedCatalog | null>(() => moduleSearchCatalogCache);
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     try {
       const saved = safeLocalGet(RECENT_SEARCHES_KEY);
@@ -55,44 +58,44 @@ export default function CommandSearchModal() {
     return [];
   });
 
-  // Global Ctrl+K / Cmd+K and Escape shortcut
+  // Escape key closes modal when mounted
   useEffect(() => {
+    if (!isSearchPaletteOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        if (isSearchPaletteOpen) {
-          closeSearchPalette();
-        } else {
-          openSearchPalette();
-        }
-      } else if (e.key === 'Escape' && isSearchPaletteOpen) {
+      if (e.key === 'Escape') {
         e.preventDefault();
         closeSearchPalette();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isSearchPaletteOpen, openSearchPalette, closeSearchPalette]);
+  }, [isSearchPaletteOpen, closeSearchPalette]);
 
-  // Autofocus & lazy load catalog (cached 3 minutes)
+  // Autofocus & lazy load catalog (cached 3 minutes across open/close cycles)
   useEffect(() => {
     if (!isSearchPaletteOpen) return;
-    setTimeout(() => inputRef.current?.focus(), 40);
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 40);
 
-    const isFresh = catalog && Date.now() - catalog.fetchedAt < 180_000;
-    if (isFresh) return;
+    const activeCache = catalog || moduleSearchCatalogCache;
+    const isFresh = activeCache && Date.now() - activeCache.fetchedAt < 180_000;
+    if (isFresh) {
+      if (!catalog && activeCache) setCatalog(activeCache);
+      return () => window.clearTimeout(focusTimer);
+    }
 
     let cancelled = false;
     setLoading(true);
     Promise.all([
-      getDocs(query(collection(db, 'products'), where('status', '==', 'active'))),
-      getDocs(collection(db, 'storeProfiles')),
+      getDocs(query(collection(db, 'products'), where('status', '==', 'active'), limit(120))),
+      getDocs(query(collection(db, 'storeProfiles'), limit(80))),
     ])
       .then(([prodSnap, storeSnap]) => {
         if (cancelled) return;
         const products = prodSnap.docs
           .map((d) => {
             const raw = d.data() as any;
+            const variants = Array.isArray(raw.variants) ? raw.variants : [];
+            const variantText = variants.map((v: any) => String(v?.name || '')).join(' ');
             return {
               id: d.id,
               title: raw.title || '',
@@ -105,7 +108,8 @@ export default function CommandSearchModal() {
               ownerVerified: Boolean(raw.ownerVerified),
               stock: raw.stock ?? null,
               available: raw.available !== false,
-              variants: Array.isArray(raw.variants) ? raw.variants : [],
+              variants,
+              _searchText: normalizeArabic(`${raw.title || ''} ${raw.category || ''} ${raw.ownerName || ''} ${variantText}`),
             };
           })
           .filter((p) => !isItemOutOfStock(p) || getAvailableProductVariants(p).length > 0);
@@ -125,11 +129,14 @@ export default function CommandSearchModal() {
               logoUrl: raw.logoUrl || '',
               isVerified,
               averageRating: Number(raw.averageRating || 0),
+              _searchText: normalizeArabic(`${raw.name || ''} ${raw.city || ''} ${raw.district || ''}`),
             };
           })
           .filter((s) => s.name.trim() !== '');
 
-        setCatalog({ products, stores, fetchedAt: Date.now() });
+        const nextCache = { products, stores, fetchedAt: Date.now() };
+        moduleSearchCatalogCache = nextCache;
+        setCatalog(nextCache);
       })
       .catch((err) => {
         console.warn('CommandSearch load notice:', err?.message);
@@ -140,6 +147,7 @@ export default function CommandSearchModal() {
 
     return () => {
       cancelled = true;
+      window.clearTimeout(focusTimer);
     };
   }, [isSearchPaletteOpen]);
 
@@ -158,31 +166,30 @@ export default function CommandSearchModal() {
     safeLocalSet(RECENT_SEARCHES_KEY, '[]');
   };
 
-  const normalizedTerm = searchTerm.trim().toLowerCase();
+  const normalizedTerm = useMemo(() => normalizeArabic(deferredSearchTerm), [deferredSearchTerm]);
 
   const matchedProducts = useMemo(() => {
     if (!catalog || !normalizedTerm) return [];
-    return catalog.products
-      .filter((p) => {
-        const inTitle = p.title.toLowerCase().includes(normalizedTerm);
-        const inCat = p.category.toLowerCase().includes(normalizedTerm);
-        const inStore = p.ownerName.toLowerCase().includes(normalizedTerm);
-        const inVariant = p.variants.some((v: any) => String(v?.name || '').toLowerCase().includes(normalizedTerm));
-        return inTitle || inCat || inStore || inVariant;
-      })
-      .slice(0, 8);
+    const results: any[] = [];
+    for (const p of catalog.products) {
+      if (p._searchText.includes(normalizedTerm)) {
+        results.push(p);
+        if (results.length >= 8) break;
+      }
+    }
+    return results;
   }, [catalog, normalizedTerm]);
 
   const matchedStores = useMemo(() => {
     if (!catalog || !normalizedTerm) return [];
-    return catalog.stores
-      .filter((s) => {
-        const inName = s.name.toLowerCase().includes(normalizedTerm);
-        const inCity = s.city.toLowerCase().includes(normalizedTerm);
-        const inDistrict = s.district.toLowerCase().includes(normalizedTerm);
-        return inName || inCity || inDistrict;
-      })
-      .slice(0, 5);
+    const results: any[] = [];
+    for (const s of catalog.stores) {
+      if (s._searchText.includes(normalizedTerm)) {
+        results.push(s);
+        if (results.length >= 5) break;
+      }
+    }
+    return results;
   }, [catalog, normalizedTerm]);
 
   const goTo = (path: string, saveTerm?: string) => {
@@ -204,7 +211,7 @@ export default function CommandSearchModal() {
 
   return (
     <div
-      className="fixed inset-0 z-[160] bg-black/60 backdrop-blur-xs flex items-start justify-center pt-12 sm:pt-20 px-3 sm:px-4 print:hidden"
+      className="fixed inset-0 z-[160] bg-black/65 flex items-start justify-center pt-12 sm:pt-20 px-3 sm:px-4 print:hidden"
       dir="rtl"
       onClick={closeSearchPalette}
     >
@@ -309,17 +316,48 @@ export default function CommandSearchModal() {
               ))}
             </div>
           ) : matchedProducts.length === 0 && matchedStores.length === 0 ? (
-            <div className="py-12 text-center space-y-2">
+            <div className="py-10 text-center space-y-3">
               <Search className="w-8 h-8 mx-auto text-[#5C5B57] dark:text-zinc-500 opacity-50" />
-              <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2]">
-                لا توجد نتائج مطابقة لـ «{searchTerm}»
-              </p>
-              <p className="text-xs text-[#5C5B57] dark:text-zinc-400">
-                جرب البحث باسم منتج عام أو اسم المدينة أو تصفح المتاجر مباشرة
-              </p>
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2]">
+                  لا توجد نتائج مطابقة لـ «{searchTerm}»
+                </p>
+                <p className="text-xs text-[#5C5B57] dark:text-zinc-400">
+                  جرب سؤال مستشار المتجر بالمواصفات أو الميزانية، أو اطلب تسعيرة مباشرة
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => goTo(`/contact?to=ai_assistant&q=${encodeURIComponent(searchTerm.trim())}`, searchTerm)}
+                  className={`min-h-[40px] px-4 py-2 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                >
+                  <Bot className="w-4 h-4" />
+                  <span>اسأل مستشار المتجر عن «{searchTerm.trim()}»</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => goTo('/requests', searchTerm)}
+                  className="min-h-[40px] px-4 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-xs font-bold text-[#111214] dark:text-[#F4F4F2] inline-flex items-center gap-1.5 transition"
+                >
+                  <Gavel className="w-4 h-4" />
+                  <span>اطلب تسعيرة</span>
+                </button>
+              </div>
             </div>
           ) : (
             <div className="space-y-5">
+              <button
+                type="button"
+                onClick={() => goTo(`/contact?to=ai_assistant&q=${encodeURIComponent(searchTerm.trim())}`, searchTerm)}
+                className="w-full p-3 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] hover:border-[#111214] dark:hover:border-zinc-500 flex items-center justify-between gap-3 text-right transition-colors"
+              >
+                <span className="flex items-center gap-2.5 text-xs font-bold text-[#111214] dark:text-[#F4F4F2] truncate">
+                  <Bot className="w-4 h-4 shrink-0" />
+                  <span className="truncate">اسأل مستشار المتجر الذكي عن «{searchTerm.trim()}»</span>
+                </span>
+                <ArrowLeft className="w-3.5 h-3.5 text-[#5C5B57] dark:text-zinc-400 shrink-0" />
+              </button>
               {matchedStores.length > 0 && (
                 <div className="space-y-2">
                   <h3 className="text-xs font-bold text-[#5C5B57] dark:text-zinc-400 flex items-center gap-1.5">
@@ -380,7 +418,7 @@ export default function CommandSearchModal() {
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="w-11 h-11 rounded-md overflow-hidden bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] shrink-0 flex items-center justify-center">
                             {product.image ? (
-                              <img src={product.image} alt={product.title} className="w-full h-full object-cover" />
+                              <img src={product.image} alt={product.title} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                             ) : (
                               <ImageIcon className="w-4 h-4 text-[#5C5B57] opacity-50" />
                             )}

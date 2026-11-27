@@ -29,7 +29,7 @@ export default function InstallPrompt() {
         if ('Notification' in window && Notification.permission === 'granted' && !standalone && 'serviceWorker' in navigator) {
           navigator.serviceWorker.ready.then(registration => {
             if (registration && typeof registration.showNotification === 'function') {
-              registration.showNotification(settings?.storeName || 'يمن ستور', {
+              registration.showNotification(settings?.storeName || 'متجر محيط', {
                 body: 'قم بتثبيت التطبيق للوصول السريع وإدارة الطلبات.',
                 icon: settings?.storeLogo || '/pwa-192x192.png',
                 badge: settings?.storeLogo || '/pwa-192x192.png',
@@ -99,7 +99,7 @@ export default function InstallPrompt() {
           </div>
           <div className="min-w-0">
             <p className="text-xs sm:text-sm font-bold truncate">
-              تثبيت تطبيق {settings?.storeName || 'يمن ستور'}
+              تثبيت تطبيق {settings?.storeName || 'متجر محيط'}
             </p>
             <p className="text-[11px] text-zinc-400 hidden sm:block truncate">
               وصول مباشر وسريع من الشاشة الرئيسية لجهازك

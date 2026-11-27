@@ -339,7 +339,7 @@ async function startServer() {
   // 6. Gemini Store AI Assistant
   app.post("/api/ai/assistant", async (req, res) => {
     try {
-      const { message, history, catalogProducts, catalog, storeSettings } = req.body || {};
+      const { message, history, catalogProducts, catalog, storeSettings, activePromos, categories } = req.body || {};
 
       let effectiveSettings = storeSettings || {};
 
@@ -368,11 +368,35 @@ async function startServer() {
         }
       }
 
+      let resolvedPromos = Array.isArray(activePromos) ? activePromos : [];
+      if (resolvedPromos.length === 0 && db && hasServiceAccount) {
+        try {
+          const promoSnap = await db.collection("promoCodes").where("active", "==", true).limit(20).get();
+          const nowMs = Date.now();
+          resolvedPromos = promoSnap.docs
+            .map((d: any) => ({ id: d.id, ...d.data() }))
+            .filter((c: any) => !c.expiresAt || new Date(c.expiresAt).getTime() >= nowMs)
+            .filter((c: any) => c.maxUses === null || c.maxUses === undefined || Number(c.usedCount || 0) < Number(c.maxUses))
+            .map((c: any) => ({
+              code: String(c.code || ''),
+              discountType: c.discountType || 'percent',
+              discountValue: Number(c.discountValue || 0),
+              minOrderAmount: Number(c.minOrderAmount || 0),
+              expiresAt: c.expiresAt || ''
+            }))
+            .filter((c: any) => c.code);
+        } catch {
+          // ignore
+        }
+      }
+
       const response = await processAssistantMessage({
         message: String(message || ""),
         history: Array.isArray(history) ? history : [],
         catalogProducts: Array.isArray(products) ? products : [],
-        storeSettings: effectiveSettings
+        storeSettings: effectiveSettings,
+        activePromos: resolvedPromos,
+        categories: Array.isArray(categories) ? categories : []
       });
 
       return res.json({ success: true, ...response });

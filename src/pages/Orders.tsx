@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Package, Clock, CheckCircle2, Truck, BookmarkCheck, AlertTriangle, XCircle, ShieldCheck, Bike, Store, MapPin, Phone, ExternalLink, RotateCcw, Receipt, Printer, X } from 'lucide-react';
+import { Package, Clock, CheckCircle2, Truck, BookmarkCheck, AlertTriangle, XCircle, ShieldCheck, Bike, Store, MapPin, Phone, ExternalLink, RotateCcw, Receipt, Printer, X, Handshake, Ticket, ShoppingBag } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -15,8 +15,9 @@ import {
 } from '../lib/deliveryFeeUtils';
 import { expireReservationTransaction, isStorePickupOnlyOrder } from '../lib/reservationUtils';
 import { formatArabicDate, formatArabicTime } from '../lib/deviceSafe';
+import { PriceOfferItem, getPriceOfferStatusLabel } from '../lib/priceOffers';
 
-type OrderFilter = 'all' | 'active' | 'delivered' | 'preorder';
+type OrderFilter = 'all' | 'active' | 'delivered' | 'preorder' | 'offers';
 
 function getOrderStepIndex(order: any, isPreOrder: boolean): number {
   const s = order?.status;
@@ -34,6 +35,7 @@ function getOrderStepIndex(order: any, isPreOrder: boolean): number {
 export default function Orders() {
   const { user, getThemeClasses, addToCart, openCartDrawer, settings } = useAppContext();
   const [orders, setOrders] = useState<any[]>([]);
+  const [priceOffers, setPriceOffers] = useState<PriceOfferItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<OrderFilter>('all');
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -71,6 +73,30 @@ export default function Orders() {
     );
 
     return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setPriceOffers([]);
+      return;
+    }
+    const q = query(
+      collection(db, 'priceOffers'),
+      where('buyerId', '==', user.uid)
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as PriceOfferItem))
+          .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setPriceOffers(list);
+      },
+      (err) => {
+        console.warn('Buyer price offers listener notice:', err.message);
+      }
+    );
+    return () => unsub();
   }, [user]);
 
   const hasPendingFeeProposals = useMemo(
@@ -179,6 +205,25 @@ export default function Orders() {
     }
   };
 
+  const handleAddAcceptedOfferToCart = (offer: PriceOfferItem) => {
+    addToCart(
+      {
+        id: offer.productId,
+        title: offer.productTitle,
+        price: Number(offer.offeredPrice || 0),
+        originalPrice: Number(offer.originalPrice || 0),
+        image: offer.productImage || '',
+        ownerId: offer.storeId,
+        ownerName: offer.storeName,
+        negotiatedOfferId: offer.id,
+        _cartKey: `${offer.productId}__offer__${offer.id}`,
+        offerTitle: 'سعر تفاوض مقبول',
+      },
+      Math.max(1, Number(offer.quantity) || 1)
+    );
+    openCartDrawer();
+  };
+
   const counts = useMemo(() => {
     const preorder = orders.filter(o => o.isPreOrder || o.orderType === 'preorder').length;
     const delivered = orders.filter(o => o.status === 'delivered' || o.deliveryStatus === 'delivered').length;
@@ -233,7 +278,7 @@ export default function Orders() {
     );
   }
 
-  if (orders.length === 0) {
+  if (orders.length === 0 && priceOffers.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4" dir="rtl">
         <div className="w-16 h-16 rounded-lg bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] flex items-center justify-center mb-4">
@@ -241,7 +286,7 @@ export default function Orders() {
         </div>
         <h2 className="font-display text-2xl font-extrabold text-[#111214] dark:text-[#F4F4F2] mb-2">لا توجد طلبات أو حجوزات</h2>
         <p className="text-sm text-[#5C5B57] dark:text-zinc-400 font-medium mb-6">
-          لم تقم بأي طلبات أو عمليات حجز مسبق بعد
+          لم تقم بأي طلبات أو عروض تفاوض أو عمليات حجز مسبق بعد
         </p>
         <Link
           to="/"
@@ -318,6 +363,7 @@ export default function Orders() {
     { id: 'active', label: 'قيد التنفيذ', count: counts.active },
     { id: 'delivered', label: 'تم التسليم', count: counts.delivered },
     { id: 'preorder', label: 'حجز مسبق', count: counts.preorder },
+    { id: 'offers', label: 'عروض الأسعار', count: priceOffers.length },
   ];
 
   return (
@@ -359,7 +405,114 @@ export default function Orders() {
         })}
       </div>
 
-      {filteredOrders.length === 0 ? (
+      {activeFilter === 'offers' ? (
+        priceOffers.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] p-12 text-center space-y-2">
+            <Handshake className="w-8 h-8 text-[#5C5B57] dark:text-zinc-500 mx-auto opacity-50" />
+            <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2]">لم ترسل أي عروض تفاوض أسعار بعد</p>
+            <p className="text-xs text-[#5C5B57] dark:text-zinc-400">
+              يمكنك اقتراح سعرك مباشرة من صفحة أي منتج عبر زر «تفاوض على السعر»
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {priceOffers.map((offer) => {
+              const agreedTotal = Number(offer.offeredPrice || 0) * Math.max(1, Number(offer.quantity || 1));
+              const badgeClass =
+                offer.status === 'accepted'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                  : offer.status === 'rejected'
+                    ? 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
+                    : offer.status === 'used'
+                      ? 'bg-[#EFEDE6] text-[#111214] border-[#E5E2DA] dark:bg-[#1C1F26] dark:text-zinc-300 dark:border-[#232730]'
+                      : 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800';
+
+              return (
+                <article
+                  key={offer.id}
+                  className="rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] p-5 space-y-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] shrink-0 flex items-center justify-center">
+                        {offer.productImage ? (
+                          <img src={offer.productImage} alt={offer.productTitle} className="w-full h-full object-cover" />
+                        ) : (
+                          <Handshake className="w-5 h-5 text-[#5C5B57] opacity-50" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <Link
+                          to={`/product/${offer.productId}`}
+                          className="font-bold text-sm text-[#111214] dark:text-[#F4F4F2] hover:underline line-clamp-1"
+                        >
+                          {offer.productTitle}
+                        </Link>
+                        <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400 mt-0.5 tabular-nums">
+                          {offer.storeName} · {formatArabicDate(offer.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className={`px-2.5 py-1 rounded-md border text-[11px] font-bold ${badgeClass}`}>
+                      {getPriceOfferStatusLabel(offer.status)}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 border border-[#E5E2DA] dark:border-[#232730] rounded-lg bg-[#FAF9F6] dark:bg-[#101216] divide-y sm:divide-y-0 sm:divide-x sm:divide-x-reverse divide-[#E5E2DA] dark:divide-[#232730] text-xs">
+                    <div className="p-3">
+                      <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400 block">السعر الأصلي</span>
+                      <span className="font-bold line-through opacity-70 tabular-nums">{Number(offer.originalPrice || 0).toLocaleString()} ر.ي</span>
+                    </div>
+                    <div className="p-3">
+                      <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400 block">سعرك المقترح</span>
+                      <span className="font-extrabold text-indigo-700 dark:text-indigo-400 tabular-nums">{Number(offer.offeredPrice || 0).toLocaleString()} ر.ي</span>
+                    </div>
+                    <div className="p-3">
+                      <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400 block">الكمية</span>
+                      <span className="font-extrabold tabular-nums">{offer.quantity} قطعة</span>
+                    </div>
+                    <div className="p-3">
+                      <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400 block">الإجمالي</span>
+                      <span className={`font-extrabold tabular-nums ${getThemeClasses('price')}`}>{agreedTotal.toLocaleString()} ر.ي</span>
+                    </div>
+                  </div>
+
+                  {(offer.note || offer.storeReply) && (
+                    <div className="space-y-1.5 text-xs">
+                      {offer.note && (
+                        <p className="text-[#5C5B57] dark:text-zinc-400">
+                          <span className="font-bold text-[#111214] dark:text-[#F4F4F2]">ملاحظتك: </span>
+                          {offer.note}
+                        </p>
+                      )}
+                      {offer.storeReply && (
+                        <p className="p-2.5 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-[#F4F4F2]">
+                          <span className="font-bold">رد المتجر: </span>
+                          {offer.storeReply}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {offer.status === 'accepted' && (
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleAddAcceptedOfferToCart(offer)}
+                        className={`min-h-[42px] px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                      >
+                        <ShoppingBag className="w-4 h-4" />
+                        <span>إضافة بالسعر المتفق عليه للسلة ({Number(offer.offeredPrice).toLocaleString()} ر.ي)</span>
+                      </button>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )
+      ) : filteredOrders.length === 0 ? (
         <div className="rounded-lg border border-dashed border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] p-12 text-center space-y-2">
           <Package className="w-8 h-8 text-[#5C5B57] dark:text-zinc-500 mx-auto opacity-50" />
           <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2]">لا توجد طلبات ضمن هذا التصنيف حالياً</p>
@@ -642,6 +795,17 @@ export default function Orders() {
 
                 {/* Footer Total */}
                 <div className="px-5 py-3.5 bg-[#FAF9F6] dark:bg-[#101216] border-t border-[#E5E2DA] dark:border-[#232730] space-y-1.5">
+                  {Number(order.discountAmount || 0) > 0 && (
+                    <div className="flex justify-between items-center text-xs text-emerald-700 dark:text-emerald-400">
+                      <span className="font-bold inline-flex items-center gap-1">
+                        <Ticket className="w-3.5 h-3.5" />
+                        <span>خصم الكوبون {order.couponCode ? `(${order.couponCode})` : ''}</span>
+                      </span>
+                      <span className="font-extrabold tabular-nums">
+                        -{Number(order.discountAmount).toLocaleString()} ر.ي
+                      </span>
+                    </div>
+                  )}
                   {(Number(order.deliveryFee || 0) > 0 || order.deliveryFeeApprovalStatus === 'accepted') && (
                     <div className="flex justify-between items-center text-xs text-[#5C5B57] dark:text-zinc-400">
                       <span className="font-medium">
@@ -729,7 +893,7 @@ export default function Orders() {
               <div className="flex items-start justify-between gap-4 border-b border-dashed border-[#E5E2DA] dark:border-[#232730] pb-4">
                 <div>
                   <h2 className="font-display text-lg font-extrabold text-[#111214] dark:text-[#F4F4F2] print:text-black">
-                    {settings?.storeName || 'يمن ستور'}
+                    {settings?.storeName || 'متجر محيط'}
                   </h2>
                   {invoiceOrder.storeName && (
                     <p className="text-xs text-[#5C5B57] dark:text-zinc-400 mt-0.5 print:text-zinc-600">
@@ -807,6 +971,12 @@ export default function Orders() {
               </div>
 
               <div className="border-t border-dashed border-[#E5E2DA] dark:border-[#232730] pt-4 space-y-1.5 text-xs">
+                {Number(invoiceOrder.discountAmount || 0) > 0 && (
+                  <div className="flex justify-between text-emerald-700 dark:text-emerald-400">
+                    <span>خصم الكوبون {invoiceOrder.couponCode ? `(${invoiceOrder.couponCode})` : ''}</span>
+                    <span className="font-extrabold tabular-nums">-{Number(invoiceOrder.discountAmount).toLocaleString()} ر.ي</span>
+                  </div>
+                )}
                 {Number(invoiceOrder.deliveryFee || 0) > 0 && (
                   <div className="flex justify-between text-[#5C5B57] dark:text-zinc-400">
                     <span>رسوم التوصيل</span>
