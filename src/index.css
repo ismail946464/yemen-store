@@ -263,6 +263,126 @@ h1, h2, h3, .font-display {
   --theme-shadow: rgba(255, 255, 255, 0.08);
 }
 
+/* Mocha / Yemeni Espresso & Bronze Theme */
+[data-theme='mocha'] {
+  --primary-color: #7c4a2d;
+  --primary-hover: #633922;
+  --primary-light: #f3ece6;
+  --primary-text: #7c4a2d;
+  --theme-price: #7c4a2d;
+  --theme-bg-page: #f7f3ee;
+  --theme-card-bg: #ffffff;
+  --theme-border: #e6ddd3;
+  --theme-ink: #1b1410;
+  --theme-muted: #695a50;
+  --theme-shadow: rgba(124, 74, 45, 0.08);
+}
+.dark[data-theme='mocha'],
+.dark [data-theme='mocha'],
+[data-theme='mocha'].dark {
+  --primary-color: #c28858;
+  --primary-hover: #d19b6e;
+  --primary-light: #241913;
+  --primary-text: #dfac80;
+  --theme-price: #dfac80;
+  --theme-bg-page: #110c09;
+  --theme-card-bg: #1a130e;
+  --theme-border: #2f231b;
+  --theme-ink: #f5efe9;
+  --theme-muted: #b19e90;
+  --theme-shadow: rgba(194, 136, 88, 0.14);
+}
+
+/* Gold / Royal Amber Theme */
+[data-theme='gold'] {
+  --primary-color: #b45309;
+  --primary-hover: #92400e;
+  --primary-light: #f9f2e3;
+  --primary-text: #b45309;
+  --theme-price: #b45309;
+  --theme-bg-page: #faf7f0;
+  --theme-card-bg: #ffffff;
+  --theme-border: #ebe3d0;
+  --theme-ink: #18140c;
+  --theme-muted: #675e4c;
+  --theme-shadow: rgba(180, 83, 9, 0.08);
+}
+.dark[data-theme='gold'],
+.dark [data-theme='gold'],
+[data-theme='gold'].dark {
+  --primary-color: #f59e0b;
+  --primary-hover: #d97706;
+  --primary-light: #261b08;
+  --primary-text: #fbbf24;
+  --theme-price: #fbbf24;
+  --theme-bg-page: #0f0d08;
+  --theme-card-bg: #18140d;
+  --theme-border: #302717;
+  --theme-ink: #f7f4eb;
+  --theme-muted: #b0a285;
+  --theme-shadow: rgba(245, 158, 11, 0.14);
+}
+
+/* Teal / Aden Coastal Theme */
+[data-theme='teal'] {
+  --primary-color: #0f766e;
+  --primary-hover: #115e59;
+  --primary-light: #eaf4f4;
+  --primary-text: #0f766e;
+  --theme-price: #0f766e;
+  --theme-bg-page: #f3f8f8;
+  --theme-card-bg: #ffffff;
+  --theme-border: #d9e7e6;
+  --theme-ink: #0f1717;
+  --theme-muted: #526362;
+  --theme-shadow: rgba(15, 118, 110, 0.08);
+}
+.dark[data-theme='teal'],
+.dark [data-theme='teal'],
+[data-theme='teal'].dark {
+  --primary-color: #14b8a6;
+  --primary-hover: #0d9488;
+  --primary-light: #0d2624;
+  --primary-text: #2dd4bf;
+  --theme-price: #2dd4bf;
+  --theme-bg-page: #071112;
+  --theme-card-bg: #0f1b1c;
+  --theme-border: #1d3234;
+  --theme-ink: #eff6f6;
+  --theme-muted: #93aba9;
+  --theme-shadow: rgba(20, 184, 166, 0.15);
+}
+
+/* Olive / Haraz Terraced Botanical Theme */
+[data-theme='olive'] {
+  --primary-color: #3f6212;
+  --primary-hover: #365314;
+  --primary-light: #f0f4e8;
+  --primary-text: #3f6212;
+  --theme-price: #3f6212;
+  --theme-bg-page: #f6f7f2;
+  --theme-card-bg: #ffffff;
+  --theme-border: #e1e5d6;
+  --theme-ink: #14180d;
+  --theme-muted: #5c634f;
+  --theme-shadow: rgba(63, 98, 18, 0.08);
+}
+.dark[data-theme='olive'],
+.dark [data-theme='olive'],
+[data-theme='olive'].dark {
+  --primary-color: #84cc16;
+  --primary-hover: #65a30d;
+  --primary-light: #1a240b;
+  --primary-text: #a3e635;
+  --theme-price: #a3e635;
+  --theme-bg-page: #0b0e07;
+  --theme-card-bg: #13180e;
+  --theme-border: #252f1b;
+  --theme-ink: #f3f6ee;
+  --theme-muted: #9ca78d;
+  --theme-shadow: rgba(132, 204, 22, 0.14);
+}
+
 .theme-price-color {
   color: var(--theme-price) !important;
 }

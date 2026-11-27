@@ -1,10 +1,10 @@
 import React, { Suspense, lazy, memo, useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  ShoppingCart, Image as ImageIcon, ShieldAlert,
+  ShoppingCart, Image as ImageIcon,
   BookmarkCheck, ChevronRight, ChevronLeft, LayoutGrid,
   Laptop, Smartphone, Shirt, Sparkles, MapPin, Watch,
   ShoppingBag, Heart, Home, Gamepad2, Tag, Search,
-  SlidersHorizontal, X, ArrowUpDown, ShieldCheck, Percent, Layers, Store
+  SlidersHorizontal, X, ArrowUpDown, ShieldCheck, Percent, Layers, Store, Gavel, Eye, Columns2, UserCheck
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
@@ -19,6 +19,7 @@ import { getStockLimit, isItemOutOfStock, calculateSafeDeposit } from '../lib/st
 
 const PreOrderModal = lazy(() => import('../components/PreOrderModal'));
 const ProductVariantsModal = lazy(() => import('../components/ProductVariantsModal'));
+const QuickViewModal = lazy(() => import('../components/QuickViewModal'));
 
 const INITIAL_VISIBLE_PRODUCTS = 24;
 const PRODUCTS_BATCH_SIZE = 24;
@@ -51,8 +52,9 @@ const getCategoryIcon = (slugOrName: string) => {
   return <Tag className="w-3.5 h-3.5 shrink-0" />;
 };
 
-const ProductCardImage = ({ src, alt }: { src?: string; alt: string }) => {
+const ProductCardImage = ({ src, secondarySrc, alt }: { src?: string; secondarySrc?: string; alt: string }) => {
   const [failed, setFailed] = useState(false);
+  const [secFailed, setSecFailed] = useState(false);
   if (!src || failed) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-[#EFEDE6] dark:bg-[#1C1F26] text-[#5C5B57] dark:text-zinc-500">
@@ -61,15 +63,29 @@ const ProductCardImage = ({ src, alt }: { src?: string; alt: string }) => {
     );
   }
   return (
-    <img
-      src={src}
-      alt={alt}
-      loading="lazy"
-      decoding="async"
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-      className="w-full h-full object-cover group-hover/card:scale-[1.03] transition-transform duration-300"
-    />
+    <div className="relative w-full h-full">
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+        className="w-full h-full object-cover group-hover/card:scale-[1.03] transition-transform duration-300"
+      />
+      {secondarySrc && !secFailed && (
+        <img
+          src={secondarySrc}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onError={() => setSecFailed(true)}
+          className="hidden sm:block absolute inset-0 w-full h-full object-cover opacity-0 group-hover/card:opacity-100 transition-opacity duration-300"
+        />
+      )}
+    </div>
   );
 };
 
@@ -79,22 +95,28 @@ const StoreFrontProductCard = memo(function StoreFrontProductCard({
   inCartQty,
   themeClasses,
   hasUser,
+  isFav,
   onNavigate,
   onLogin,
   onAddToCart,
   onOpenPreOrder,
   onOpenVariants,
+  onToggleFavorite,
+  onQuickView,
 }: {
   product: any;
   ownerProf: any;
   inCartQty: number;
   themeClasses: { price: string; bg: string; hover: string };
   hasUser: boolean;
+  isFav: boolean;
   onNavigate: (path: string) => void;
   onLogin: () => void;
   onAddToCart: (p: any) => void;
   onOpenPreOrder: (p: any) => void;
   onOpenVariants: (p: any) => void;
+  onToggleFavorite: (id: string) => void;
+  onQuickView: (p: any) => void;
 }) {
   const isStoreVerified = Boolean(product.ownerVerified || ownerProf?.isVerified);
   const isNoDelivery = Boolean(product.noDelivery);
@@ -103,6 +125,9 @@ const StoreFrontProductCard = memo(function StoreFrontProductCard({
   const hasOfferActive = isProductOfferActive(product);
   const offerBadge = hasOfferActive ? getProductOfferBadgeText(product) : '';
   const hasCrossedPrice = Number(product.originalPrice || 0) > Number(product.price || 0);
+  const savePct = hasCrossedPrice && Number(product.originalPrice) > 0
+    ? Math.round(((Number(product.originalPrice) - Number(product.price || 0)) / Number(product.originalPrice)) * 100)
+    : 0;
   const availableVariants = getAvailableProductVariants(product);
   const baseOutOfStock = isItemOutOfStock(product);
   const fullyOutOfStock = baseOutOfStock && availableVariants.length === 0;
@@ -112,21 +137,60 @@ const StoreFrontProductCard = memo(function StoreFrontProductCard({
   return (
     <article
       onClick={() => onNavigate(`/product/${product.id}`)}
-      className="group/card flex flex-col h-full cursor-pointer"
+      className="group/card flex flex-col h-full cursor-pointer transition-transform duration-200 hover:-translate-y-0.5"
     >
       {/* Matte Product Media Frame */}
-      <div className="relative aspect-[4/5] rounded-lg overflow-hidden bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] mb-3">
-        <ProductCardImage src={product.image || product.images?.[0]} alt={product.title} />
+      <div className="relative aspect-[4/5] rounded-xl overflow-hidden bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA] dark:border-[#232730] group-hover/card:border-[#111214]/25 dark:group-hover/card:border-zinc-600 shadow-none group-hover/card:shadow-md transition-all duration-200 mb-3">
+        <ProductCardImage
+          src={product.image || product.images?.[0]}
+          secondarySrc={product.secondaryImage}
+          alt={product.title}
+        />
 
         {offerBadge ? (
-          <span className="absolute top-2.5 right-2.5 bg-[#111214] dark:bg-[#F4F4F2] text-white dark:text-[#111214] text-[10px] font-bold px-2 py-0.5 rounded-md">
+          <span className="absolute top-2.5 right-2.5 bg-[#111214] dark:bg-[#F4F4F2] text-white dark:text-[#111214] text-[10px] font-bold px-2 py-0.5 rounded-md shadow-xs">
             {offerBadge}
+          </span>
+        ) : savePct > 0 ? (
+          <span className="absolute top-2.5 right-2.5 bg-emerald-700 text-white text-[10px] font-bold px-2 py-0.5 rounded-md tabular-nums shadow-xs">
+            خصم {savePct}%
           </span>
         ) : (product.category === 'local' || (product.category && String(product.category).includes('محلي'))) && (
           <span className="absolute top-2.5 right-2.5 bg-[#111214]/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
             منتج محلي
           </span>
         )}
+
+        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-10">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleFavorite(product.id);
+            }}
+            aria-label={isFav ? 'إزالة من المفضلة' : 'حفظ في المفضلة'}
+            className={`w-8 h-8 rounded-lg border backdrop-blur-md flex items-center justify-center transition-colors ${
+              isFav
+                ? 'bg-rose-600 border-rose-600 text-white'
+                : 'bg-white/85 dark:bg-[#131519]/85 border-[#E5E2DA]/80 dark:border-[#232730] text-[#5C5B57] dark:text-zinc-300 hover:text-rose-600'
+            }`}
+          >
+            <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onQuickView(product);
+            }}
+            aria-label="معاينة سريعة"
+            className="w-8 h-8 rounded-lg border border-[#E5E2DA]/80 dark:border-[#232730] bg-white/85 dark:bg-[#131519]/85 backdrop-blur-md text-[#111214] dark:text-zinc-200 hover:bg-white dark:hover:bg-[#1C1F26] flex items-center justify-center transition-colors"
+          >
+            <Eye className="w-3.5 h-3.5" />
+          </button>
+        </div>
 
         {fullyOutOfStock && (
           <div className="absolute inset-0 bg-black/55 flex items-center justify-center z-10">
@@ -203,11 +267,16 @@ const StoreFrontProductCard = memo(function StoreFrontProductCard({
                   onAddToCart(buildBaseProductForCart(product));
                 }}
                 disabled={baseOutOfStock || baseAtCartMax}
-                className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${themeClasses.bg} ${themeClasses.hover}`}
+                className={`relative w-9 h-9 rounded-lg flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${themeClasses.bg} ${themeClasses.hover}`}
                 title={baseOutOfStock ? 'نفدت الكمية من المنتج الأساسي' : baseAtCartMax ? 'بلغت الحد الأقصى المتاح بالمخزون' : 'إضافة إلى السلة'}
                 aria-label="إضافة إلى السلة"
               >
                 <ShoppingCart className="h-4 w-4" />
+                {inCartQty > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold tabular-nums flex items-center justify-center border border-white dark:border-[#131519]">
+                    {inCartQty}
+                  </span>
+                )}
               </button>
             ) : (
               <button
@@ -303,9 +372,28 @@ export default function StoreFront() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'price-asc' | 'price-desc' | 'rating-desc'>('newest');
   const [verifiedOnly, setVerifiedOnly] = useState(false);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [wideGrid, setWideGrid] = useState(false);
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_PRODUCTS);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+  const [cityFilter, setCityFilter] = useState('all');
+  const [deliveryFilter, setDeliveryFilter] = useState<'all' | 'delivery' | 'pickup'>('all');
+  const [followedOnly, setFollowedOnly] = useState(false);
 
-  const { addToCart, cart, settings, getThemeClasses, user, login } = useAppContext();
+  const {
+    addToCart,
+    cart,
+    settings,
+    getThemeClasses,
+    user,
+    login,
+    favoriteIds,
+    toggleFavorite,
+    recentlyViewedIds,
+    followedStoreIds,
+  } = useAppContext();
   const navigate = useNavigate();
 
   const [products, setProducts] = useState<any[]>([]);
@@ -314,6 +402,7 @@ export default function StoreFront() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPreOrderProduct, setSelectedPreOrderProduct] = useState<any | null>(null);
   const [variantsModalProduct, setVariantsModalProduct] = useState<any | null>(null);
+  const [quickViewProduct, setQuickViewProduct] = useState<any | null>(null);
 
   const categoriesScrollRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -334,11 +423,16 @@ export default function StoreFront() {
       const productsData: any[] = [];
       snap.docs.forEach((d) => {
         const raw = d.data() as any;
+        const primaryImg = raw.image || raw.images?.[0] || '';
+        const secondCandidate = Array.isArray(raw.images)
+          ? raw.images.find((img: unknown) => typeof img === 'string' && img && img !== primaryImg)
+          : '';
         const p = {
           ...raw,
           id: d.id,
-          // Keep only primary image in storefront grid state to avoid holding large multi-image base64 galleries in memory
-          image: raw.image || raw.images?.[0] || '',
+          // Keep only primary (+ compact secondary hover preview) in storefront grid state
+          image: primaryImg,
+          secondaryImage: secondCandidate && secondCandidate.length < 150000 ? secondCandidate : undefined,
           images: undefined,
         };
         if (!isItemOutOfStock(p) || getAvailableProductVariants(p).length > 0) {
@@ -438,9 +532,30 @@ export default function StoreFront() {
     return map;
   }, [cart]);
 
+  const availableCities = useMemo(() => {
+    const citySet = new Set<string>();
+    Object.values(storeProfiles).forEach((prof: any) => {
+      const c = String(prof?.city || '').trim();
+      if (c) citySet.add(c);
+    });
+    return Array.from(citySet).sort((a, b) => a.localeCompare(b, 'ar'));
+  }, [storeProfiles]);
+
+  const activeAdvFiltersCount = useMemo(() => {
+    let count = 0;
+    if (minPrice.trim() !== '') count += 1;
+    if (maxPrice.trim() !== '') count += 1;
+    if (cityFilter !== 'all') count += 1;
+    if (deliveryFilter !== 'all') count += 1;
+    if (followedOnly) count += 1;
+    return count;
+  }, [minPrice, maxPrice, cityFilter, deliveryFilter, followedOnly]);
+
   const filteredProducts = useMemo(() => {
     const activeCatObj = allAvailableCategories.find(c => c.slug === activeTab);
     const term = searchQuery.trim().toLowerCase();
+    const minP = minPrice.trim() !== '' ? Number(minPrice) : null;
+    const maxP = maxPrice.trim() !== '' ? Number(maxPrice) : null;
 
     const list = products.filter(p => {
       if (activeTab === 'offers') {
@@ -451,6 +566,17 @@ export default function StoreFront() {
       const ownerProf = p.ownerId ? storeProfiles[p.ownerId] : null;
       const isStoreVerified = Boolean(p.ownerVerified || ownerProf?.isVerified);
       if (verifiedOnly && !isStoreVerified) return false;
+      if (favoritesOnly && !favoriteIds.includes(p.id)) return false;
+      if (followedOnly && (!p.ownerId || !followedStoreIds.includes(p.ownerId))) return false;
+      if (deliveryFilter === 'delivery' && Boolean(p.noDelivery)) return false;
+      if (deliveryFilter === 'pickup' && !p.noDelivery) return false;
+      if (cityFilter !== 'all') {
+        const storeCity = String(ownerProf?.city || '').trim();
+        if (storeCity !== cityFilter) return false;
+      }
+      const priceVal = Number(p.price || 0);
+      if (minP !== null && !Number.isNaN(minP) && priceVal < minP) return false;
+      if (maxP !== null && !Number.isNaN(maxP) && priceVal > maxP) return false;
       if (term) {
         const matchTitle = String(p.title || '').toLowerCase().includes(term);
         const matchCat = String(p.category || '').toLowerCase().includes(term);
@@ -472,11 +598,11 @@ export default function StoreFront() {
       return [...list].sort((a, b) => Number(b.averageRating || 0) - Number(a.averageRating || 0));
     }
     return [...list].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-  }, [products, activeTab, allAvailableCategories, verifiedOnly, storeProfiles, searchQuery, sortBy]);
+  }, [products, activeTab, allAvailableCategories, verifiedOnly, favoritesOnly, favoriteIds, followedOnly, followedStoreIds, deliveryFilter, cityFilter, minPrice, maxPrice, storeProfiles, searchQuery, sortBy]);
 
   useEffect(() => {
     setVisibleCount(INITIAL_VISIBLE_PRODUCTS);
-  }, [activeTab, searchQuery, verifiedOnly, sortBy]);
+  }, [activeTab, searchQuery, verifiedOnly, favoritesOnly, followedOnly, deliveryFilter, cityFilter, minPrice, maxPrice, sortBy]);
 
   const visibleProducts = useMemo(
     () => filteredProducts.slice(0, visibleCount),
@@ -511,6 +637,16 @@ export default function StoreFront() {
   const handleNavigate = useCallback((path: string) => navigate(path), [navigate]);
   const handleOpenPreOrder = useCallback((p: any) => setSelectedPreOrderProduct(p), []);
   const handleOpenVariants = useCallback((p: any) => setVariantsModalProduct(p), []);
+  const handleQuickView = useCallback((p: any) => setQuickViewProduct(p), []);
+
+  const recentlyViewedProducts = useMemo(
+    () =>
+      recentlyViewedIds
+        .map((id) => products.find((p) => p.id === id))
+        .filter(Boolean)
+        .slice(0, 8),
+    [recentlyViewedIds, products]
+  );
 
   return (
     <div className="space-y-8">
@@ -533,7 +669,7 @@ export default function StoreFront() {
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 lg:w-[460px] shrink-0">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 lg:w-[560px] shrink-0">
             <div className="relative flex-1">
               <Search className="w-4 h-4 text-[#5C5B57] dark:text-zinc-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
@@ -555,13 +691,23 @@ export default function StoreFront() {
               )}
             </div>
 
-            <Link
-              to="/search-stores"
-              className={`min-h-[44px] px-4 py-2.5 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
-            >
-              <span>تصفح المتاجر</span>
-              <ChevronLeft className="w-4 h-4" />
-            </Link>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link
+                to="/requests"
+                className="flex-1 sm:flex-none min-h-[44px] px-3.5 py-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-colors"
+              >
+                <Gavel className="w-4 h-4" />
+                <span>اطلب تسعيرة</span>
+              </Link>
+
+              <Link
+                to="/search-stores"
+                className={`flex-1 sm:flex-none min-h-[44px] px-4 py-2.5 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+              >
+                <span>تصفح المتاجر</span>
+                <ChevronLeft className="w-4 h-4" />
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -652,6 +798,19 @@ export default function StoreFront() {
           <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
+              onClick={() => setFavoritesOnly(v => !v)}
+              className={`min-h-[38px] px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+                favoritesOnly
+                  ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
+                  : 'bg-white dark:bg-[#131519] border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26]'
+              }`}
+            >
+              <Heart className={`w-3.5 h-3.5 ${favoritesOnly ? 'fill-current' : ''}`} />
+              <span>المفضلة{favoriteIds.length > 0 ? ` (${favoriteIds.length})` : ''}</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setVerifiedOnly(v => !v)}
               className={`min-h-[38px] px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
                 verifiedOnly
@@ -661,6 +820,22 @@ export default function StoreFront() {
             >
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>متاجر موثقة فقط</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowAdvancedFilters(v => !v)}
+              className={`min-h-[38px] px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+                showAdvancedFilters || activeAdvFiltersCount > 0
+                  ? `${getThemeClasses('badge')}`
+                  : 'bg-white dark:bg-[#131519] border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26]'
+              }`}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>فلاتر متقدمة</span>
+              {activeAdvFiltersCount > 0 && (
+                <span className="tabular-nums font-extrabold">({activeAdvFiltersCount})</span>
+              )}
             </button>
 
             <div className="flex items-center gap-1.5">
@@ -678,8 +853,177 @@ export default function StoreFront() {
                 <option value="rating-desc">الأعلى تقييماً</option>
               </select>
             </div>
+
+            <div className="hidden sm:inline-flex items-center p-0.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519]">
+              <button
+                type="button"
+                onClick={() => setWideGrid(false)}
+                title="عرض شبكي قياسي"
+                aria-label="عرض شبكي قياسي"
+                className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+                  !wideGrid
+                    ? `${getThemeClasses('bg')}`
+                    : 'text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setWideGrid(true)}
+                title="عرض معرض واسع"
+                aria-label="عرض معرض واسع"
+                className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+                  wideGrid
+                    ? `${getThemeClasses('bg')}`
+                    : 'text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white'
+                }`}
+              >
+                <Columns2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* Collapsible Advanced Filter Drawer (Budget, City, Delivery Mode, Followed Stores) */}
+        {showAdvancedFilters && (
+          <div className="p-4 sm:p-5 rounded-xl border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#E5E2DA] dark:border-[#232730]">
+              <span className="text-xs sm:text-sm font-extrabold text-[#111214] dark:text-[#F4F4F2] flex items-center gap-1.5">
+                <SlidersHorizontal className="w-4 h-4" />
+                <span>تخصيص الميزانية والمدينة وطريقة الاستلام</span>
+              </span>
+              {activeAdvFiltersCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMinPrice('');
+                    setMaxPrice('');
+                    setCityFilter('all');
+                    setDeliveryFilter('all');
+                    setFollowedOnly(false);
+                  }}
+                  className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline"
+                >
+                  مسح الفلاتر المتقدمة
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+              {/* Price Range + Quick Budget Presets */}
+              <div className="md:col-span-5 space-y-2">
+                <label className="text-xs font-bold text-[#5C5B57] dark:text-zinc-400 block">
+                  نطاق السعر (ر.ي)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    value={minPrice}
+                    onChange={(e) => setMinPrice(e.target.value)}
+                    placeholder="من (ر.ي)"
+                    className="min-h-[38px] px-3 py-1.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] text-xs font-bold text-[#111214] dark:text-[#F4F4F2] outline-none tabular-nums"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    value={maxPrice}
+                    onChange={(e) => setMaxPrice(e.target.value)}
+                    placeholder="إلى (ر.ي)"
+                    className="min-h-[38px] px-3 py-1.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] text-xs font-bold text-[#111214] dark:text-[#F4F4F2] outline-none tabular-nums"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: 'أقل من 5,000', min: '', max: '5000' },
+                    { label: '5,000 - 25,000', min: '5000', max: '25000' },
+                    { label: '25,000 - 100,000', min: '25000', max: '100000' },
+                    { label: 'أعلى من 100,000', min: '100000', max: '' },
+                  ].map((preset) => {
+                    const active = minPrice === preset.min && maxPrice === preset.max;
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          setMinPrice(active ? '' : preset.min);
+                          setMaxPrice(active ? '' : preset.max);
+                        }}
+                        className={`px-2.5 py-1 rounded-md border text-[11px] font-bold tabular-nums transition-colors ${
+                          active
+                            ? `${getThemeClasses('bg')} border-transparent`
+                            : 'bg-[#FAF9F6] dark:bg-[#101216] border-[#E5E2DA] dark:border-[#232730] text-[#5C5B57] dark:text-zinc-300 hover:text-[#111214] dark:hover:text-white'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* City Filter */}
+              <div className="md:col-span-3 space-y-2">
+                <label className="text-xs font-bold text-[#5C5B57] dark:text-zinc-400 block">
+                  المحافظة / المدينة
+                </label>
+                <select
+                  value={cityFilter}
+                  onChange={(e) => setCityFilter(e.target.value)}
+                  className="w-full min-h-[38px] px-3 py-1.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] text-xs font-bold text-[#111214] dark:text-[#F4F4F2] outline-none cursor-pointer"
+                >
+                  <option value="all">جميع المدن</option>
+                  {availableCities.map((city) => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Delivery Mode & Followed Stores */}
+              <div className="md:col-span-4 space-y-2">
+                <label className="text-xs font-bold text-[#5C5B57] dark:text-zinc-400 block">
+                  طريقة الاستلام والمتابعة
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: 'all', label: 'الكل' },
+                    { id: 'delivery', label: 'يدعم التوصيل' },
+                    { id: 'pickup', label: 'استلام من المتجر' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setDeliveryFilter(opt.id as any)}
+                      className={`min-h-[36px] px-3 py-1 rounded-lg border text-xs font-bold transition-colors ${
+                        deliveryFilter === opt.id
+                          ? `${getThemeClasses('bg')} border-transparent`
+                          : 'bg-[#FAF9F6] dark:bg-[#101216] border-[#E5E2DA] dark:border-[#232730] text-[#5C5B57] dark:text-zinc-300'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+
+                  {followedStoreIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setFollowedOnly(v => !v)}
+                      className={`min-h-[36px] px-3 py-1 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-colors ${
+                        followedOnly
+                          ? `${getThemeClasses('bg')} border-transparent`
+                          : 'bg-[#FAF9F6] dark:bg-[#101216] border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-zinc-200'
+                      }`}
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>متاجر أتابعها ({followedStoreIds.length})</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Editorial Product Catalog Grid */}
@@ -696,6 +1040,12 @@ export default function StoreFront() {
               setActiveTab('all');
               setSearchQuery('');
               setVerifiedOnly(false);
+              setFavoritesOnly(false);
+              setFollowedOnly(false);
+              setMinPrice('');
+              setMaxPrice('');
+              setCityFilter('all');
+              setDeliveryFilter('all');
             }}
             className={`mt-4 min-h-[40px] px-5 py-2 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover')} font-bold text-xs transition-colors`}
           >
@@ -704,7 +1054,9 @@ export default function StoreFront() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-8 sm:gap-x-6 sm:gap-y-10">
+          <div className={`grid gap-x-4 gap-y-8 sm:gap-x-6 sm:gap-y-10 ${
+            wideGrid ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'
+          }`}>
             {visibleProducts.map((product) => (
               <StoreFrontProductCard
                 key={product.id}
@@ -713,11 +1065,14 @@ export default function StoreFront() {
                 inCartQty={cartQtyMap[product.id] || 0}
                 themeClasses={cardThemeClasses}
                 hasUser={Boolean(user)}
+                isFav={favoriteIds.includes(product.id)}
                 onNavigate={handleNavigate}
                 onLogin={login}
                 onAddToCart={addToCart}
                 onOpenPreOrder={handleOpenPreOrder}
                 onOpenVariants={handleOpenVariants}
+                onToggleFavorite={toggleFavorite}
+                onQuickView={handleQuickView}
               />
             ))}
           </div>
@@ -736,19 +1091,67 @@ export default function StoreFront() {
         </>
       )}
 
+      {recentlyViewedProducts.length > 0 && (
+        <section className="pt-6 border-t border-[#E5E2DA] dark:border-[#232730] space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-display text-base sm:text-lg font-extrabold text-[#111214] dark:text-[#F4F4F2]">
+              شاهدته مؤخراً
+            </h2>
+            <Link
+              to="/watchlist"
+              className="text-xs font-bold text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white transition-colors"
+            >
+              المفضلة والرادار
+            </Link>
+          </div>
+          <div className="flex gap-3.5 overflow-x-auto no-scrollbar pb-1">
+            {recentlyViewedProducts.map((item: any) => (
+              <Link
+                key={item.id}
+                to={`/product/${item.id}`}
+                className="w-36 sm:w-44 shrink-0 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] p-2.5 hover:border-[#111214]/40 dark:hover:border-zinc-500 transition-colors space-y-2"
+              >
+                <div className="aspect-square rounded-md overflow-hidden bg-[#EFEDE6] dark:bg-[#1C1F26]">
+                  <ProductCardImage src={item.image || item.images?.[0]} alt={item.title} />
+                </div>
+                <p className="font-bold text-xs text-[#111214] dark:text-[#F4F4F2] line-clamp-1">
+                  {item.title}
+                </p>
+                <p className={`text-xs font-extrabold tabular-nums ${getThemeClasses('price')}`}>
+                  {Number(item.price || 0).toLocaleString()} ر.ي
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Quiet Editorial Footer Link */}
       <footer className="mt-10 pt-6 border-t border-[#E5E2DA] dark:border-[#232730] flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-right">
         <p className="text-xs text-[#5C5B57] dark:text-zinc-400">
-          جميع المعاملات تخضع لإرشادات الأمان والتحقق الخاصة بالمنصة.
+          تسوق بثقة مع إرشادات جودة الخدمة وحماية المشتري داخل المنصة.
         </p>
         <Link
           to="/safety-guide"
-          className="inline-flex items-center gap-2 min-h-[40px] px-4 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-rose-700 dark:text-rose-400 font-bold text-xs transition-colors"
+          className="inline-flex items-center gap-2 min-h-[40px] px-4 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] font-bold text-xs transition-colors"
         >
-          <ShieldAlert className="w-4 h-4 shrink-0" />
-          <span>دليل الأمان ومكافحة الاحتيال</span>
+          <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <span>دليل التسوق الآمن وحماية المشتري</span>
         </Link>
       </footer>
+
+      {quickViewProduct && (
+        <Suspense fallback={null}>
+          <QuickViewModal
+            product={quickViewProduct}
+            storeProfile={quickViewProduct.ownerId ? storeProfiles[quickViewProduct.ownerId] : null}
+            isOpen={!!quickViewProduct}
+            onClose={() => setQuickViewProduct(null)}
+            onOpenVariants={handleOpenVariants}
+            onOpenPreOrder={handleOpenPreOrder}
+          />
+        </Suspense>
+      )}
 
       {selectedPreOrderProduct && (
         <Suspense fallback={null}>

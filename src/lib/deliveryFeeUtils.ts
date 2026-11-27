@@ -21,7 +21,8 @@ const expiringInFlight = new Set<string>();
 
 export function computeOrderBaseSubtotal(data: any): number {
   if (typeof data?.subtotal === 'number' && !Number.isNaN(data.subtotal)) {
-    return Math.max(0, Number(data.subtotal));
+    const discount = Math.max(0, Number(data?.discountAmount || 0));
+    return Math.max(0, Number(data.subtotal) - discount);
   }
   const total = Number(data?.total || 0);
   const fee = Number(data?.deliveryFee || 0);

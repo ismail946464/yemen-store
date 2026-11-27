@@ -18,6 +18,8 @@ import {
   showBrowserNotificationSafely,
   formatArabicDate
 } from './lib/deviceSafe';
+import { ThemeColor, VALID_THEME_IDS } from './lib/storeStyles';
+export type { ThemeColor };
 
 export interface AppUser {
   uid: string;
@@ -27,8 +29,6 @@ export interface AppUser {
   role?: string;
   [key: string]: any;
 }
-
-export type ThemeColor = 'green' | 'blue' | 'red' | 'black' | 'white';
 
 interface AppContextType {
   user: User | AppUser | null;
@@ -78,6 +78,20 @@ interface AppContextType {
   isDarkMode: boolean;
   toggleDarkMode: () => void;
   getAuthHeaders: () => Promise<Record<string, string>>;
+  favoriteIds: string[];
+  toggleFavorite: (productId: string) => void;
+  isFavorite: (productId: string) => boolean;
+  recentlyViewedIds: string[];
+  recordRecentlyViewed: (productId: string) => void;
+  isCartDrawerOpen: boolean;
+  openCartDrawer: () => void;
+  closeCartDrawer: () => void;
+  followedStoreIds: string[];
+  toggleFollowStore: (storeId: string, storeName?: string) => void;
+  isFollowingStore: (storeId: string) => boolean;
+  isSearchPaletteOpen: boolean;
+  openSearchPalette: () => void;
+  closeSearchPalette: () => void;
 }
 
 export interface CartItem {
@@ -105,6 +119,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginModalInitialEmail, setLoginModalInitialEmail] = useState('');
+  const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
+  const openCartDrawer = useCallback(() => setIsCartDrawerOpen(true), []);
+  const closeCartDrawer = useCallback(() => setIsCartDrawerOpen(false), []);
+  const [isSearchPaletteOpen, setIsSearchPaletteOpen] = useState(false);
+  const openSearchPalette = useCallback(() => setIsSearchPaletteOpen(true), []);
+  const closeSearchPalette = useCallback(() => setIsSearchPaletteOpen(false), []);
   const [userData, setUserData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>(() => {
@@ -143,7 +163,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return 'white';
       }
       const saved = safeLocalGet('user_preferred_theme');
-      if (saved && ['green', 'blue', 'red', 'black', 'white'].includes(saved)) {
+      if (saved && VALID_THEME_IDS.includes(saved as ThemeColor)) {
         return saved as ThemeColor;
       }
     } catch {}
@@ -183,7 +203,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toggleDarkMode = useCallback(() => {
     const canOverride = settings?.allowUserThemeOverride !== false;
     const rawTheme = settings?.storeTheme || 'white';
-    const currentAdminTheme = ['green', 'blue', 'red', 'black', 'white'].includes(rawTheme) ? rawTheme : 'white';
+    const currentAdminTheme = VALID_THEME_IDS.includes(rawTheme) ? rawTheme : 'white';
     const currentEffective = canOverride && userTheme ? userTheme : currentAdminTheme;
     if (currentEffective === 'white') {
       toast('الستايل الأبيض النقي مفعل افتراضياً', { icon: '⚪' });
@@ -194,7 +214,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const allowUserThemeOverride = settings?.allowUserThemeOverride !== false;
   const rawAdminTheme = settings?.storeTheme || 'white';
-  const adminTheme: ThemeColor = ['green', 'blue', 'red', 'black', 'white'].includes(rawAdminTheme)
+  const adminTheme: ThemeColor = VALID_THEME_IDS.includes(rawAdminTheme)
     ? (rawAdminTheme as ThemeColor)
     : 'white';
 
@@ -224,13 +244,138 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Sync user preferredTheme from userData if not set locally
   useEffect(() => {
-    if (userData?.preferredTheme && ['green', 'blue', 'red', 'black', 'white'].includes(userData.preferredTheme)) {
+    if (userData?.preferredTheme && VALID_THEME_IDS.includes(userData.preferredTheme as ThemeColor)) {
       if (!userTheme) {
         setUserThemeState(userData.preferredTheme as ThemeColor);
         safeLocalSet('user_preferred_theme', userData.preferredTheme);
       }
     }
   }, [userData?.preferredTheme]);
+
+  // Favorites (Wishlist) & Recently Viewed Products
+  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => {
+    try {
+      const saved = safeLocalGet('yemen_store_favorites_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed.filter((x) => typeof x === 'string').slice(0, 200) : [];
+      }
+    } catch {}
+    return [];
+  });
+  const favoriteIdsRef = useRef<string[]>(favoriteIds);
+  useEffect(() => {
+    favoriteIdsRef.current = favoriteIds;
+  }, [favoriteIds]);
+
+  useEffect(() => {
+    if (Array.isArray(userData?.favorites)) {
+      const remote = userData.favorites.filter((x: unknown) => typeof x === 'string').slice(0, 200) as string[];
+      const merged = Array.from(new Set([...remote, ...favoriteIdsRef.current])).slice(0, 200);
+      favoriteIdsRef.current = merged;
+      setFavoriteIds(merged);
+      safeLocalSet('yemen_store_favorites_v1', JSON.stringify(merged));
+    }
+  }, [userData?.favorites]);
+
+  const toggleFavorite = useCallback((productId: string) => {
+    if (!productId) return;
+    const prev = favoriteIdsRef.current;
+    const exists = prev.includes(productId);
+    const next = exists
+      ? prev.filter((id) => id !== productId)
+      : [productId, ...prev].slice(0, 200);
+    favoriteIdsRef.current = next;
+    setFavoriteIds(next);
+    safeLocalSet('yemen_store_favorites_v1', JSON.stringify(next));
+    if (user) {
+      const targetUid = (user.email?.toLowerCase() === '1ismaai0lll@gmail.com' || user.uid === 'u_32cd7332ee7ec2e0c1121512')
+        ? 'MQAwCYqFztd2PZbV1fRMxKRqoYX2'
+        : user.uid;
+      setDoc(doc(db, 'users', targetUid), { favorites: next }, { merge: true }).catch(() => {});
+    }
+    toast.success(exists ? 'تمت الإزالة من المفضلة' : 'تم الحفظ في المفضلة', { id: 'fav-toggle' });
+  }, [user]);
+
+  const isFavorite = useCallback((productId: string) => favoriteIds.includes(productId), [favoriteIds]);
+
+  const [recentlyViewedIds, setRecentlyViewedIds] = useState<string[]>(() => {
+    try {
+      const saved = safeLocalGet('yemen_store_recently_viewed_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed.filter((x) => typeof x === 'string').slice(0, 12) : [];
+      }
+    } catch {}
+    return [];
+  });
+  const recentlyViewedIdsRef = useRef<string[]>(recentlyViewedIds);
+  useEffect(() => {
+    recentlyViewedIdsRef.current = recentlyViewedIds;
+  }, [recentlyViewedIds]);
+
+  const recordRecentlyViewed = useCallback((productId: string) => {
+    if (!productId) return;
+    const next = [productId, ...recentlyViewedIdsRef.current.filter((id) => id !== productId)].slice(0, 12);
+    recentlyViewedIdsRef.current = next;
+    setRecentlyViewedIds(next);
+    safeLocalSet('yemen_store_recently_viewed_v1', JSON.stringify(next));
+  }, []);
+
+  const [followedStoreIds, setFollowedStoreIds] = useState<string[]>(() => {
+    try {
+      safeLocalRemove('yemen_store_compare_v1');
+      const saved = safeLocalGet('yemen_store_followed_stores_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed.filter((x) => typeof x === 'string').slice(0, 200) : [];
+      }
+    } catch {}
+    return [];
+  });
+  const followedStoreIdsRef = useRef<string[]>(followedStoreIds);
+  useEffect(() => {
+    followedStoreIdsRef.current = followedStoreIds;
+  }, [followedStoreIds]);
+
+  useEffect(() => {
+    if (Array.isArray(userData?.followedStores)) {
+      const remote = userData.followedStores.filter((x: unknown) => typeof x === 'string').slice(0, 200) as string[];
+      const merged = Array.from(new Set([...remote, ...followedStoreIdsRef.current])).slice(0, 200);
+      followedStoreIdsRef.current = merged;
+      setFollowedStoreIds(merged);
+      safeLocalSet('yemen_store_followed_stores_v1', JSON.stringify(merged));
+    }
+  }, [userData?.followedStores]);
+
+  const toggleFollowStore = useCallback((storeId: string, storeName?: string) => {
+    if (!storeId) return;
+    const prev = followedStoreIdsRef.current;
+    const exists = prev.includes(storeId);
+    const next = exists
+      ? prev.filter((id) => id !== storeId)
+      : [storeId, ...prev].slice(0, 200);
+    followedStoreIdsRef.current = next;
+    setFollowedStoreIds(next);
+    safeLocalSet('yemen_store_followed_stores_v1', JSON.stringify(next));
+    if (user) {
+      const targetUid = (user.email?.toLowerCase() === '1ismaai0lll@gmail.com' || user.uid === 'u_32cd7332ee7ec2e0c1121512')
+        ? 'MQAwCYqFztd2PZbV1fRMxKRqoYX2'
+        : user.uid;
+      setDoc(doc(db, 'users', targetUid), { followedStores: next }, { merge: true }).catch(() => {});
+    }
+    toast.success(
+      exists
+        ? `تم إلغاء متابعة ${storeName || 'المتجر'}`
+        : `تتابع الآن ${storeName || 'المتجر'}`,
+      { id: 'follow-store-toggle' }
+    );
+  }, [user]);
+
+  const isFollowingStore = useCallback(
+    (storeId: string) => followedStoreIds.includes(storeId),
+    [followedStoreIds]
+  );
 
   // Apply effective theme to document root and body
   useEffect(() => {
@@ -1285,6 +1430,82 @@ export function AppProvider({ children }: { children: ReactNode }) {
           verified: 'text-[#0D6E4E] dark:text-[#10B981]'
         }[type] || 'bg-[#111214] text-white';
 
+      case 'mocha':
+        return {
+          bg: 'bg-[#7C4A2D] text-white dark:bg-[#C28858] dark:text-[#18100B]',
+          text: 'text-[#7C4A2D] dark:text-[#DFAC80]',
+          hover: 'hover:bg-[#633922] dark:hover:bg-[#D19B6E]',
+          border: 'border-[#7C4A2D] dark:border-[#C28858]',
+          bgLight: 'bg-[#F3ECE6] dark:bg-[#241913]',
+          textDark: 'text-[#5A341E] dark:text-[#ECC8A6]',
+          badge: 'bg-[#F3ECE6] text-[#5A341E] border-[#E4D6C9] dark:bg-[#241913] dark:text-[#ECC8A6] dark:border-[#3D2B20]',
+          ring: 'focus:ring-[#7C4A2D] ring-[#7C4A2D]',
+          gradient: 'from-[#2A180E] to-[#7C4A2D]',
+          activeTab: 'bg-[#7C4A2D] text-white dark:bg-[#C28858] dark:text-[#18100B]',
+          price: 'text-[#7C4A2D] dark:text-[#DFAC80]',
+          pageBg: 'bg-[#F7F3EE] dark:bg-[#110C09]',
+          cardBg: 'bg-white dark:bg-[#1A130E] border-[#E6DDD3] dark:border-[#2F231B]',
+          headerBg: 'bg-[#F7F3EE]/95 dark:bg-[#110C09]/95 border-[#E6DDD3] dark:border-[#2F231B]',
+          verified: 'text-[#0D6E4E] dark:text-[#34D399]'
+        }[type] || 'bg-[#7C4A2D] text-white';
+
+      case 'gold':
+        return {
+          bg: 'bg-[#B45309] text-white dark:bg-[#F59E0B] dark:text-[#181104]',
+          text: 'text-[#B45309] dark:text-[#FBBF24]',
+          hover: 'hover:bg-[#92400E] dark:hover:bg-[#D97706]',
+          border: 'border-[#B45309] dark:border-[#F59E0B]',
+          bgLight: 'bg-[#F9F2E3] dark:bg-[#261B08]',
+          textDark: 'text-[#78350F] dark:text-[#FDE68A]',
+          badge: 'bg-[#F9F2E3] text-[#78350F] border-[#E8D8B7] dark:bg-[#261B08] dark:text-[#FDE68A] dark:border-[#423010]',
+          ring: 'focus:ring-[#B45309] ring-[#B45309]',
+          gradient: 'from-[#241805] to-[#B45309]',
+          activeTab: 'bg-[#B45309] text-white dark:bg-[#F59E0B] dark:text-[#181104]',
+          price: 'text-[#B45309] dark:text-[#FBBF24]',
+          pageBg: 'bg-[#FAF7F0] dark:bg-[#0F0D08]',
+          cardBg: 'bg-white dark:bg-[#18140D] border-[#EBE3D0] dark:border-[#302717]',
+          headerBg: 'bg-[#FAF7F0]/95 dark:bg-[#0F0D08]/95 border-[#EBE3D0] dark:border-[#302717]',
+          verified: 'text-[#0D6E4E] dark:text-[#34D399]'
+        }[type] || 'bg-[#B45309] text-white';
+
+      case 'teal':
+        return {
+          bg: 'bg-[#0F766E] text-white dark:bg-[#14B8A6] dark:text-[#041816]',
+          text: 'text-[#0F766E] dark:text-[#2DD4BF]',
+          hover: 'hover:bg-[#115E59] dark:hover:bg-[#0D9488]',
+          border: 'border-[#0F766E] dark:border-[#14B8A6]',
+          bgLight: 'bg-[#EAF4F4] dark:bg-[#0D2624]',
+          textDark: 'text-[#134E4A] dark:text-[#99F6E4]',
+          badge: 'bg-[#EAF4F4] text-[#134E4A] border-[#CBE3E2] dark:bg-[#0D2624] dark:text-[#99F6E4] dark:border-[#19423F]',
+          ring: 'focus:ring-[#0F766E] ring-[#0F766E]',
+          gradient: 'from-[#082423] to-[#0F766E]',
+          activeTab: 'bg-[#0F766E] text-white dark:bg-[#14B8A6] dark:text-[#041816]',
+          price: 'text-[#0F766E] dark:text-[#2DD4BF]',
+          pageBg: 'bg-[#F3F8F8] dark:bg-[#071112]',
+          cardBg: 'bg-white dark:bg-[#0F1B1C] border-[#D9E7E6] dark:border-[#1D3234]',
+          headerBg: 'bg-[#F3F8F8]/95 dark:bg-[#071112]/95 border-[#D9E7E6] dark:border-[#1D3234]',
+          verified: 'text-[#0F766E] dark:text-[#2DD4BF]'
+        }[type] || 'bg-[#0F766E] text-white';
+
+      case 'olive':
+        return {
+          bg: 'bg-[#3F6212] text-white dark:bg-[#84CC16] dark:text-[#0F1704]',
+          text: 'text-[#3F6212] dark:text-[#A3E635]',
+          hover: 'hover:bg-[#365314] dark:hover:bg-[#65A30D]',
+          border: 'border-[#3F6212] dark:border-[#84CC16]',
+          bgLight: 'bg-[#F0F4E8] dark:bg-[#1A240B]',
+          textDark: 'text-[#365314] dark:text-[#D9F99D]',
+          badge: 'bg-[#F0F4E8] text-[#365314] border-[#D7E2C2] dark:bg-[#1A240B] dark:text-[#D9F99D] dark:border-[#304215]',
+          ring: 'focus:ring-[#3F6212] ring-[#3F6212]',
+          gradient: 'from-[#182208] to-[#3F6212]',
+          activeTab: 'bg-[#3F6212] text-white dark:bg-[#84CC16] dark:text-[#0F1704]',
+          price: 'text-[#3F6212] dark:text-[#A3E635]',
+          pageBg: 'bg-[#F6F7F2] dark:bg-[#0B0E07]',
+          cardBg: 'bg-white dark:bg-[#13180E] border-[#E1E5D6] dark:border-[#252F1B]',
+          headerBg: 'bg-[#F6F7F2]/95 dark:bg-[#0B0E07]/95 border-[#E1E5D6] dark:border-[#252F1B]',
+          verified: 'text-[#3F6212] dark:text-[#A3E635]'
+        }[type] || 'bg-[#3F6212] text-white';
+
       case 'green':
       default:
         return {
@@ -1347,7 +1568,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getThemeClasses,
     isDarkMode: effectiveIsDarkMode,
     toggleDarkMode,
-    getAuthHeaders
+    getAuthHeaders,
+    favoriteIds,
+    toggleFavorite,
+    isFavorite,
+    recentlyViewedIds,
+    recordRecentlyViewed,
+    isCartDrawerOpen,
+    openCartDrawer,
+    closeCartDrawer,
+    followedStoreIds,
+    toggleFollowStore,
+    isFollowingStore,
+    isSearchPaletteOpen,
+    openSearchPalette,
+    closeSearchPalette
   }), [
     user, 
     userData, 
@@ -1374,7 +1609,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     userTheme,
     allowUserThemeOverride,
     getThemeClasses,
-    effectiveIsDarkMode
+    effectiveIsDarkMode,
+    favoriteIds,
+    toggleFavorite,
+    isFavorite,
+    recentlyViewedIds,
+    recordRecentlyViewed,
+    isCartDrawerOpen,
+    openCartDrawer,
+    closeCartDrawer,
+    followedStoreIds,
+    toggleFollowStore,
+    isFollowingStore,
+    isSearchPaletteOpen,
+    openSearchPalette,
+    closeSearchPalette
   ]);
 
   return (

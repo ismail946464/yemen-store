@@ -21,10 +21,12 @@ import {
   MapPin,
   Phone,
   ExternalLink,
+  Heart,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PreOrderModal from '../components/PreOrderModal';
 import ProductPublisherMiniCard from '../components/ProductPublisherMiniCard';
+import PriceRadarButton from '../components/PriceRadarButton';
 import { ProductDetailSkeleton } from '../components/Skeletons';
 import {
   ProductVariant,
@@ -41,7 +43,7 @@ export default function VariantDetail() {
     slug?: string;
   }>();
   const navigate = useNavigate();
-  const { addToCart, cart, getThemeClasses, user, isAdmin, login } = useAppContext();
+  const { addToCart, cart, getThemeClasses, user, isAdmin, login, isFavorite, toggleFavorite, recordRecentlyViewed } = useAppContext();
 
   const [product, setProduct] = useState<any>(null);
   const [storeProfile, setStoreProfile] = useState<any>(null);
@@ -90,6 +92,7 @@ export default function VariantDetail() {
 
         setProduct(fullProduct);
         setNotFound(false);
+        recordRecentlyViewed(fullProduct.id);
 
         if (data.ownerId) {
           const storeSnap = await getDoc(doc(db, 'storeProfiles', data.ownerId));
@@ -202,9 +205,23 @@ export default function VariantDetail() {
             <span>رجوع</span>
           </button>
 
-          <div className="inline-flex items-center gap-2 text-xs font-bold text-[#5C5B57] dark:text-zinc-400">
-            <Layers className="w-4 h-4" />
-            <span>قائمة خاصة بالصنف</span>
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center gap-2 text-xs font-bold text-[#5C5B57] dark:text-zinc-400">
+              <Layers className="w-4 h-4" />
+              <span>قائمة خاصة بالصنف</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => toggleFavorite(product.id)}
+              aria-label={isFavorite(product.id) ? 'إزالة من المفضلة' : 'حفظ في المفضلة'}
+              className={`w-10 h-10 rounded-lg border flex items-center justify-center transition-colors ${
+                isFavorite(product.id)
+                  ? 'bg-rose-600 border-rose-600 text-white'
+                  : 'border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#5C5B57] dark:text-zinc-300 hover:text-rose-600'
+              }`}
+            >
+              <Heart className={`w-4 h-4 ${isFavorite(product.id) ? 'fill-current' : ''}`} />
+            </button>
           </div>
         </div>
 
@@ -538,6 +555,18 @@ export default function VariantDetail() {
                   <MessageCircle className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
                   <span>مراسلة المتجر</span>
                 </Link>
+              )}
+
+              {isPubliclyVisible && (
+                <PriceRadarButton
+                  productId={product.id}
+                  productTitle={`${product.title} — ${variant.name}`}
+                  productImage={displayImage || null}
+                  storeId={product.ownerId || ''}
+                  storeName={storeProfile?.name || product.ownerName || 'متجر'}
+                  currentPrice={unitPrice}
+                  isOutOfStock={isOutOfStock}
+                />
               )}
             </div>
 

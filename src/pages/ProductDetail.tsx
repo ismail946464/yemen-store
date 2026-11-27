@@ -1,16 +1,17 @@
 import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { db } from '../firebase';
-import { doc, getDoc, collection, query, where, orderBy, onSnapshot, addDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocs, limit, collection, query, where, orderBy, onSnapshot, addDoc, updateDoc } from 'firebase/firestore';
 import { useAppContext } from '../AppContext';
 import {
   ShoppingCart, ArrowRight, Share2, ShieldCheck, Truck,
   CheckCircle, Store, MessageCircle, Star, Send, User,
   Image as ImageIcon, PackageX, BookmarkCheck, ShoppingBag, Percent, Gift, Layers, ChevronDown, ChevronUp, Plus, Minus,
-  MapPin, Phone, ExternalLink
+  MapPin, Phone, ExternalLink, Heart, Maximize2, X, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ProductPublisherMiniCard from '../components/ProductPublisherMiniCard';
+import PriceRadarButton from '../components/PriceRadarButton';
 import { ProductDetailSkeleton } from '../components/Skeletons';
 import { formatArabicDate, safeCopyText } from '../lib/deviceSafe';
 
@@ -33,10 +34,11 @@ export default function ProductDetail() {
   const [activeImage, setActiveImage] = useState<string>('');
   const [imgFailed, setImgFailed] = useState(false);
 
-  const { addToCart, cart, getThemeClasses, user, isAdmin, login } = useAppContext();
+  const { addToCart, cart, getThemeClasses, user, isAdmin, login, isFavorite, toggleFavorite, recordRecentlyViewed } = useAppContext();
   const navigate = useNavigate();
   const [storeProfile, setStoreProfile] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
+  const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
   const [newRating, setNewRating] = useState(5);
   const [newComment, setNewComment] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
@@ -44,6 +46,7 @@ export default function ProductDetail() {
   const [showVariantsDrawer, setShowVariantsDrawer] = useState(false);
   const [showVariantsModal, setShowVariantsModal] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
   useEffect(() => {
     if (productId && initialVariantId) {
@@ -87,6 +90,7 @@ export default function ProductDetail() {
           setProduct(fullProduct);
           setActiveImage(data.image || (data.images && data.images[0]) || '');
           setNotFound(false);
+          recordRecentlyViewed(docSnap.id);
 
           if (data.ownerId) {
             const storeSnap = await getDoc(doc(db, 'storeProfiles', data.ownerId));
@@ -94,6 +98,45 @@ export default function ProductDetail() {
               setStoreProfile(storeSnap.data());
             }
           }
+
+          // Fetch up to 4 related active products from same category (fallback to same store)
+          try {
+            const relItems: any[] = [];
+            const seenIds = new Set<string>([docSnap.id]);
+            if (data.category) {
+              const catSnap = await getDocs(
+                query(
+                  collection(db, 'products'),
+                  where('status', '==', 'active'),
+                  where('category', '==', data.category),
+                  limit(8)
+                )
+              );
+              catSnap.docs.forEach((d) => {
+                if (!seenIds.has(d.id) && relItems.length < 4) {
+                  seenIds.add(d.id);
+                  relItems.push({ id: d.id, ...d.data() });
+                }
+              });
+            }
+            if (relItems.length < 4 && data.ownerId) {
+              const storeProdSnap = await getDocs(
+                query(
+                  collection(db, 'products'),
+                  where('status', '==', 'active'),
+                  where('ownerId', '==', data.ownerId),
+                  limit(8)
+                )
+              );
+              storeProdSnap.docs.forEach((d) => {
+                if (!seenIds.has(d.id) && relItems.length < 4) {
+                  seenIds.add(d.id);
+                  relItems.push({ id: d.id, ...d.data() });
+                }
+              });
+            }
+            if (isMounted) setRelatedProducts(relItems);
+          } catch {}
         } else {
           setNotFound(true);
         }
@@ -276,19 +319,36 @@ export default function ProductDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
           {/* Media Gallery */}
           <div className="lg:col-span-6 space-y-3 lg:sticky lg:top-22">
-            <div className="aspect-square rounded-lg overflow-hidden border border-[#E5E2DA] dark:border-[#232730] bg-[#EFEDE6] dark:bg-[#1C1F26] relative">
+            <div
+              onClick={() => activeImage && !imgFailed && setIsLightboxOpen(true)}
+              className={`aspect-square rounded-lg overflow-hidden border border-[#E5E2DA] dark:border-[#232730] bg-[#EFEDE6] dark:bg-[#1C1F26] relative group ${activeImage && !imgFailed ? 'cursor-zoom-in' : ''}`}
+            >
               {activeImage && !imgFailed ? (
                 <img
                   src={activeImage}
                   alt={product.title}
                   referrerPolicy="no-referrer"
                   onError={() => setImgFailed(true)}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <Store className="w-16 h-16 text-[#5C5B57] dark:text-zinc-600 opacity-40" />
                 </div>
+              )}
+
+              {activeImage && !imgFailed && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsLightboxOpen(true);
+                  }}
+                  aria-label="تكبير الصورة"
+                  className="absolute bottom-3 left-3 w-9 h-9 rounded-lg bg-white/90 dark:bg-[#131519]/90 border border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-[#F4F4F2] flex items-center justify-center opacity-85 group-hover:opacity-100 transition-opacity"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
               )}
 
               {offerBadge ? (
@@ -301,14 +361,28 @@ export default function ProductDetail() {
                 </span>
               )}
 
-              <button
-                type="button"
-                onClick={handleShare}
-                aria-label="مشاركة المنتج"
-                className="absolute top-3.5 left-3.5 w-10 h-10 flex items-center justify-center bg-white/95 dark:bg-[#131519]/95 text-[#111214] dark:text-[#F4F4F2] rounded-lg border border-[#E5E2DA] dark:border-[#232730] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition-colors"
-              >
-                <Share2 className="w-4 h-4" />
-              </button>
+              <div className="absolute top-3.5 left-3.5 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() => toggleFavorite(product.id)}
+                  aria-label={isFavorite(product.id) ? 'إزالة من المفضلة' : 'حفظ في المفضلة'}
+                  className={`w-10 h-10 flex items-center justify-center rounded-lg border transition-colors ${
+                    isFavorite(product.id)
+                      ? 'bg-rose-600 border-rose-600 text-white'
+                      : 'bg-white/95 dark:bg-[#131519]/95 text-[#111214] dark:text-[#F4F4F2] border-[#E5E2DA] dark:border-[#232730] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26]'
+                  }`}
+                >
+                  <Heart className={`w-4 h-4 ${isFavorite(product.id) ? 'fill-current' : ''}`} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  aria-label="مشاركة المنتج"
+                  className="w-10 h-10 flex items-center justify-center bg-white/95 dark:bg-[#131519]/95 text-[#111214] dark:text-[#F4F4F2] rounded-lg border border-[#E5E2DA] dark:border-[#232730] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition-colors"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {product.images && product.images.length > 1 && (
@@ -649,41 +723,61 @@ export default function ProductDetail() {
               ) : (
                 <div className="space-y-2.5">
                   {!isOutOfStock && (
-                    <div className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519]">
-                      <div className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">
-                        <span>الكمية المطلوبة</span>
-                        {inCartQty > 0 && (
-                          <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 mr-2 tabular-nums">
-                            (بالسلة: {inCartQty})
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519]">
+                        <div className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2]">
+                          <span>الكمية المطلوبة</span>
+                          {inCartQty > 0 && (
+                            <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 mr-2 tabular-nums">
+                              (بالسلة: {inCartQty})
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26]">
+                          <button
+                            type="button"
+                            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                            disabled={safeQuantity <= 1 || reachedCartMax}
+                            aria-label="إنقاص الكمية"
+                            className="w-9 h-9 flex items-center justify-center text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] transition-colors rounded-r-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="w-10 text-center text-sm font-extrabold text-[#111214] dark:text-[#F4F4F2] tabular-nums">
+                            {reachedCartMax ? 0 : safeQuantity}
                           </span>
-                        )}
+                          <button
+                            type="button"
+                            onClick={() => setQuantity((q) => {
+                              const next = q + 1;
+                              return remainingAddable !== null ? Math.min(next, remainingAddable) : next;
+                            })}
+                            disabled={reachedCartMax || (remainingAddable !== null && safeQuantity >= remainingAddable)}
+                            aria-label="زيادة الكمية"
+                            className="w-9 h-9 flex items-center justify-center text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] transition-colors rounded-l-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26]">
-                        <button
-                          type="button"
-                          onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                          disabled={safeQuantity <= 1 || reachedCartMax}
-                          aria-label="إنقاص الكمية"
-                          className="w-9 h-9 flex items-center justify-center text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] transition-colors rounded-r-lg disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          <Minus className="w-3.5 h-3.5" />
-                        </button>
-                        <span className="w-10 text-center text-sm font-extrabold text-[#111214] dark:text-[#F4F4F2] tabular-nums">
-                          {reachedCartMax ? 0 : safeQuantity}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setQuantity((q) => {
-                            const next = q + 1;
-                            return remainingAddable !== null ? Math.min(next, remainingAddable) : next;
-                          })}
-                          disabled={reachedCartMax || (remainingAddable !== null && safeQuantity >= remainingAddable)}
-                          aria-label="زيادة الكمية"
-                          className="w-9 h-9 flex items-center justify-center text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] transition-colors rounded-l-lg disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+
+                      {!reachedCartMax && safeQuantity > 1 && (
+                        <div className="px-3 py-2 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <span className="font-bold text-[#5C5B57] dark:text-zinc-400">
+                            الإجمالي لـ <span className="tabular-nums text-[#111214] dark:text-[#F4F4F2]">{safeQuantity}</span> قطع:
+                          </span>
+                          <div className="flex items-center gap-2.5 tabular-nums">
+                            {savingsAmount > 0 && (
+                              <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                                توفير {(savingsAmount * safeQuantity).toLocaleString()} ر.ي
+                              </span>
+                            )}
+                            <span className={`font-extrabold ${getThemeClasses('price')}`}>
+                              {(effectivePrice * safeQuantity).toLocaleString()} ر.ي
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -741,6 +835,18 @@ export default function ProductDetail() {
                   <MessageCircle className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
                   <span>مراسلة المتجر</span>
                 </Link>
+              )}
+
+              {isPubliclyVisible && (
+                <PriceRadarButton
+                  productId={product.id}
+                  productTitle={product.title}
+                  productImage={product.images?.[0] || product.image || null}
+                  storeId={product.ownerId || ''}
+                  storeName={storeProfile?.name || product.ownerName || 'متجر'}
+                  currentPrice={effectivePrice}
+                  isOutOfStock={isOutOfStock}
+                />
               )}
             </div>
 
@@ -965,6 +1071,149 @@ export default function ProductDetail() {
           </div>
         </div>
       </section>
+
+      {/* Related Products Section */}
+      {relatedProducts.length > 0 && (
+        <section className="border-t border-[#E5E2DA] dark:border-[#232730] pt-10 space-y-5">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="font-display text-lg sm:text-xl font-extrabold text-[#111214] dark:text-[#F4F4F2]">
+                منتجات مشابهة قد تعجبك
+              </h2>
+              <p className="text-xs text-[#5C5B57] dark:text-zinc-400 mt-0.5">
+                مختارات مقترحة من نفس القسم أو المتجر
+              </p>
+            </div>
+            <Link
+              to="/"
+              className="text-xs font-bold text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white transition-colors"
+            >
+              تصفح المزيد
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5">
+            {relatedProducts.map((item) => {
+              const thumb = item.image || item.images?.[0];
+              const relTarget = slug ? `/s/${slug}/product/${item.id}` : `/product/${item.id}`;
+              return (
+                <Link
+                  key={item.id}
+                  to={relTarget}
+                  className="group rounded-xl border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] p-3 hover:-translate-y-0.5 hover:shadow-md transition-all flex flex-col gap-2.5"
+                >
+                  <div className="aspect-[4/5] rounded-lg overflow-hidden bg-[#EFEDE6] dark:bg-[#1C1F26] border border-[#E5E2DA]/60 dark:border-[#232730]">
+                    {thumb ? (
+                      <img
+                        src={thumb}
+                        alt={item.title}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[#5C5B57]">
+                        <ImageIcon className="w-7 h-7 opacity-40" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    {item.ownerName && (
+                      <p className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400 truncate">
+                        {item.ownerName}
+                      </p>
+                    )}
+                    <h3 className="font-bold text-xs sm:text-sm text-[#111214] dark:text-[#F4F4F2] line-clamp-2 leading-snug">
+                      {item.title}
+                    </h3>
+                    <p className={`text-xs sm:text-sm font-extrabold tabular-nums ${getThemeClasses('price')}`}>
+                      {Number(item.price || 0).toLocaleString()} ر.ي
+                    </p>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Fullscreen Image Lightbox Modal */}
+      {isLightboxOpen && activeImage && !imgFailed && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/92 backdrop-blur-sm flex flex-col items-center justify-between p-4 sm:p-6"
+          onClick={() => setIsLightboxOpen(false)}
+          dir="rtl"
+        >
+          <div className="w-full max-w-5xl flex items-center justify-between text-white">
+            <span className="text-xs sm:text-sm font-bold truncate max-w-[70%]">{product.title}</span>
+            <button
+              type="button"
+              onClick={() => setIsLightboxOpen(false)}
+              aria-label="إغلاق المعرض"
+              className="w-10 h-10 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div
+            className="relative flex-1 w-full max-w-5xl flex items-center justify-center my-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={activeImage}
+              alt={product.title}
+              referrerPolicy="no-referrer"
+              className="max-h-[72vh] max-w-full object-contain rounded-lg"
+            />
+            {Array.isArray(product.images) && product.images.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const idx = product.images.indexOf(activeImage);
+                    const prev = (idx - 1 + product.images.length) % product.images.length;
+                    setActiveImage(product.images[prev]);
+                  }}
+                  aria-label="الصورة السابقة"
+                  className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-lg bg-black/60 hover:bg-black/80 text-white border border-white/20 flex items-center justify-center"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const idx = product.images.indexOf(activeImage);
+                    const next = (idx + 1) % product.images.length;
+                    setActiveImage(product.images[next]);
+                  }}
+                  aria-label="الصورة التالية"
+                  className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-lg bg-black/60 hover:bg-black/80 text-white border border-white/20 flex items-center justify-center"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+              </>
+            )}
+          </div>
+
+          {Array.isArray(product.images) && product.images.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto no-scrollbar max-w-full pb-1" onClick={(e) => e.stopPropagation()}>
+              {product.images.map((img: string, idx: number) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setActiveImage(img)}
+                  className={`w-14 h-14 rounded-md overflow-hidden border-2 shrink-0 transition-opacity ${
+                    activeImage === img ? 'border-white opacity-100' : 'border-white/25 opacity-60 hover:opacity-100'
+                  }`}
+                >
+                  <img src={img} alt="" className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

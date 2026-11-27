@@ -5,13 +5,16 @@
 
 import { Suspense, lazy, useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Store, ShoppingBag, User as UserIcon, Bot, MessageSquare, Bike } from 'lucide-react';
+import { Store, ShoppingBag, User as UserIcon, Bot, MessageSquare, Bike, Gavel, X, Sun, Moon, Search } from 'lucide-react';
 import { AppProvider, useAppContext } from './AppContext';
 import { Toaster } from 'react-hot-toast';
 import DisclaimerModal from './components/DisclaimerModal';
 import InstallPrompt from './components/InstallPrompt';
 import NotificationCenter from './components/NotificationCenter';
 import BottomNav from './components/BottomNav';
+import CartDrawer from './components/CartDrawer';
+import ScrollToTopButton from './components/ScrollToTopButton';
+import CommandSearchModal from './components/CommandSearchModal';
 import { PageLoadingSkeleton } from './components/Skeletons';
 import StoreFront from './pages/StoreFront';
 
@@ -29,12 +32,14 @@ const StoreProfile = lazy(() => import('./pages/StoreProfile'));
 const ProductDetail = lazy(() => import('./pages/ProductDetail'));
 const VariantDetail = lazy(() => import('./pages/VariantDetail'));
 const StoreSearch = lazy(() => import('./pages/StoreSearch'));
+const BuyerRequests = lazy(() => import('./pages/BuyerRequests'));
 const DeliveryPortal = lazy(() => import('./pages/DeliveryPortal'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const SafetyGuide = lazy(() => import('./pages/SafetyGuide'));
+const Watchlist = lazy(() => import('./pages/Watchlist'));
 
 function Header() {
-  const { user, userData, isDelivery, isStore, isAdmin, login, cart, unreadCount, settings, getThemeClasses } = useAppContext();
+  const { user, userData, isDelivery, isStore, isAdmin, login, cart, unreadCount, settings, getThemeClasses, isDarkMode, toggleDarkMode, openCartDrawer, openSearchPalette } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
   const [showContactModal, setShowContactModal] = useState(false);
@@ -49,7 +54,7 @@ function Header() {
   const cartCount = cart.reduce((sum, item) => sum + (item.quantity || 1), 0);
 
   return (
-    <header className={isIndependentStore ? 'hidden' : isContactPage ? 'hidden md:block sticky top-0 z-50 transition-colors duration-200' : 'sticky top-0 z-50 transition-colors duration-200'}>
+    <header className={isIndependentStore ? 'hidden' : isContactPage ? 'hidden md:block sticky top-0 z-50 transition-colors duration-200 print:hidden' : 'sticky top-0 z-50 transition-colors duration-200 print:hidden'}>
       <div className={`border-b relative z-10 h-16 flex items-center transition-colors duration-200 backdrop-blur-md ${getThemeClasses('headerBg')}`}>
         <div className="max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 flex justify-between items-center gap-2 sm:gap-4 md:gap-8">
           {/* Zone 1: Single-line Brand Wordmark */}
@@ -129,6 +134,17 @@ function Header() {
             >
               المتاجر
             </Link>
+            <Link
+              to="/requests"
+              className={`whitespace-nowrap shrink-0 py-1.5 flex items-center gap-1.5 transition-colors border-b-2 ${
+                location.pathname.startsWith('/requests')
+                  ? `${getThemeClasses('border')} text-[#111214] dark:text-white`
+                  : 'border-transparent text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white'
+              }`}
+            >
+              <Gavel className="w-3.5 h-3.5" />
+              <span>اطلب تسعيرة</span>
+            </Link>
             {user && (
               <Link
                 to="/orders"
@@ -190,10 +206,38 @@ function Header() {
               </Link>
             )}
 
-            {/* Desktop Cart Button */}
-            <Link
-              to="/cart"
-              title="سلة المشتريات"
+            {/* Instant Global Search & Command Palette */}
+            <button
+              type="button"
+              onClick={openSearchPalette}
+              title="بحث فوري سريع (Ctrl+K)"
+              aria-label="بحث فوري سريع"
+              className="h-10 px-2.5 lg:px-3 flex items-center justify-center gap-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition-colors shrink-0"
+            >
+              <Search className="w-4 h-4" />
+              <span className="hidden lg:inline text-xs font-bold text-[#5C5B57] dark:text-zinc-400">بحث سريع</span>
+              <kbd className="hidden lg:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono font-bold rounded bg-[#EFEDE6] dark:bg-[#1C1F26] text-[#5C5B57] dark:text-zinc-400 border border-[#E5E2DA] dark:border-[#232730]" dir="ltr">
+                Ctrl+K
+              </kbd>
+            </button>
+
+            {/* Light / Dark Mode Switch */}
+            <button
+              type="button"
+              onClick={toggleDarkMode}
+              title={isDarkMode ? 'التبديل للوضع الفاتح' : 'التبديل للوضع الداكن'}
+              aria-label={isDarkMode ? 'التبديل للوضع الفاتح' : 'التبديل للوضع الداكن'}
+              className="w-10 h-10 flex items-center justify-center rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition-colors shrink-0"
+            >
+              {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
+            </button>
+
+            {/* Desktop Quick Cart Drawer Button */}
+            <button
+              type="button"
+              onClick={openCartDrawer}
+              title="عرض سلة المشتريات السريعة"
+              aria-label="سلة المشتريات"
               className="hidden sm:flex relative w-10 h-10 items-center justify-center rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition-colors"
             >
               <ShoppingBag className="w-4.5 h-4.5" />
@@ -202,7 +246,7 @@ function Header() {
                   {cartCount > 99 ? '99+' : cartCount}
                 </span>
               )}
-            </Link>
+            </button>
 
             {user ? (
               <div className="flex items-center gap-2">
@@ -268,6 +312,15 @@ function MainLayout() {
   const { settings, getThemeClasses, isDarkMode, isLoginModalOpen, closeLoginModal, loginModalInitialEmail, effectiveTheme } = useAppContext();
   const location = useLocation();
   const isIndependentStore = location.pathname.startsWith('/s/') || location.pathname.startsWith('/store-site/');
+  const [dismissedBanner, setDismissedBanner] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem('yemen_dismissed_top_banner') || '';
+    } catch {
+      return '';
+    }
+  });
+  const topBannerText = String(settings?.bannerMessage || '').trim();
+  const showTopBanner = Boolean(topBannerText && !isIndependentStore && dismissedBanner !== topBannerText);
 
   // Load optional extra Google Font only if admin configured a non-default font
   useEffect(() => {
@@ -387,7 +440,26 @@ function MainLayout() {
       )}
 
       <Header />
+      {showTopBanner && (
+        <div className={`${getThemeClasses('bg')} text-xs font-bold py-1.5 px-4 flex items-center justify-center gap-3 relative`}>
+          <p className="text-center line-clamp-1">{topBannerText}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setDismissedBanner(topBannerText);
+              try { sessionStorage.setItem('yemen_dismissed_top_banner', topBannerText); } catch {}
+            }}
+            aria-label="إخفاء الشريط"
+            className="p-1 rounded hover:bg-black/15 transition-colors shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       <DisclaimerModal />
+      <CartDrawer />
+      <CommandSearchModal />
+      <ScrollToTopButton />
       <InstallPrompt />
       {isLoginModalOpen && (
         <Suspense fallback={null}>
@@ -432,6 +504,8 @@ function MainLayout() {
             <Route path="/store-site/:slug/product/:productId" element={<ProductDetail />} />
             <Route path="/store-site/:slug/variant/:productId/:variantId" element={<VariantDetail />} />
             <Route path="/search-stores" element={<StoreSearch />} />
+            <Route path="/requests" element={<BuyerRequests />} />
+            <Route path="/watchlist" element={<Watchlist />} />
             <Route path="/safety-guide" element={<SafetyGuide />} />
             <Route path="*" element={<StoreFront />} />
           </Routes>

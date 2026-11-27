@@ -41,7 +41,7 @@ service cloud.firestore {
     }
     
     function isValidUser(data) {
-      return data.keys().hasAny(['name', 'email', 'role', 'phone', 'photoURL', 'lastSeen', 'isOnline', 'pointsBalance', 'agreedToDisclaimer', 'createdAt'])
+      return data.keys().hasAny(['name', 'email', 'role', 'phone', 'photoURL', 'lastSeen', 'isOnline', 'pointsBalance', 'agreedToDisclaimer', 'createdAt', 'preferredTheme', 'favorites', 'followedStores'])
         && (!('name' in data) || (data.name is string && data.name.size() <= 200))
         && (!('email' in data) || (data.email is string && data.email.size() <= 200))
         && (!('phone' in data) || (data.phone is string && data.phone.size() <= 50))
@@ -49,13 +49,16 @@ service cloud.firestore {
         && (!('pointsBalance' in data) || (data.pointsBalance is number))
         && (!('role' in data) || data.role in ['user', 'store', 'admin', 'delivery'])
         && (!('agreedToDisclaimer' in data) || data.agreedToDisclaimer is bool)
+        && (!('preferredTheme' in data) || (data.preferredTheme is string && data.preferredTheme.size() <= 50))
+        && (!('favorites' in data) || (data.favorites is list && data.favorites.size() <= 200))
+        && (!('followedStores' in data) || (data.followedStores is list && data.followedStores.size() <= 200))
         && (!('lastSeen' in data) || data.lastSeen is string)
         && (!('isOnline' in data) || data.isOnline is bool)
         && (!('createdAt' in data) || data.createdAt is string);
     }
 
     function isValidStoreProfile(data) {
-      return data.keys().hasAny(['userId', 'name', 'description', 'bannerUrl', 'logoUrl', 'whatsapp', 'tiktok', 'instagram', 'ratingCount', 'averageRating', 'averageCredibility', 'updatedAt', 'lastSeen', 'seoTitle', 'seoDescription', 'verified', 'verifiedUntil', 'address', 'city', 'district', 'landmark', 'workingHours', 'googleMapsUrl', 'location', 'coordinates', 'phone', 'statsReset', 'adminOptions', 'storeCategoryIds'])
+      return data.keys().hasAny(['userId', 'name', 'description', 'bannerUrl', 'logoUrl', 'whatsapp', 'tiktok', 'instagram', 'ratingCount', 'averageRating', 'averageCredibility', 'updatedAt', 'lastSeen', 'seoTitle', 'seoDescription', 'verified', 'verifiedUntil', 'address', 'city', 'district', 'landmark', 'workingHours', 'googleMapsUrl', 'location', 'coordinates', 'phone', 'statsReset', 'adminOptions', 'storeCategoryIds', 'themeColor', 'storeStyle', 'storeAnnouncement'])
         && (!('userId' in data) || (data.userId is string && data.userId.size() <= 128))
         && (!('name' in data) || (data.name is string && data.name.size() <= 200))
         && (!('description' in data) || (data.description is string && data.description.size() <= 2000))
@@ -83,7 +86,10 @@ service cloud.firestore {
         && (!('lastSeen' in data) || data.lastSeen is string)
         && (!('statsReset' in data) || data.statsReset == null || data.statsReset is map)
         && (!('adminOptions' in data) || data.adminOptions == null || (data.adminOptions is list && data.adminOptions.size() <= 30))
-        && (!('storeCategoryIds' in data) || data.storeCategoryIds == null || (data.storeCategoryIds is list && data.storeCategoryIds.size() <= 20));
+        && (!('storeCategoryIds' in data) || data.storeCategoryIds == null || (data.storeCategoryIds is list && data.storeCategoryIds.size() <= 20))
+        && (!('themeColor' in data) || data.themeColor == null || (data.themeColor is string && data.themeColor.size() <= 50))
+        && (!('storeStyle' in data) || data.storeStyle == null || (data.storeStyle is string && data.storeStyle.size() <= 50))
+        && (!('storeAnnouncement' in data) || data.storeAnnouncement == null || (data.storeAnnouncement is string && data.storeAnnouncement.size() <= 300));
     }
 
     function isValidRating(data) {
@@ -398,7 +404,10 @@ service cloud.firestore {
         && (!('noDelivery' in data) || data.noDelivery == null || data.noDelivery is bool)
         && (!('fulfillmentType' in data) || data.fulfillmentType == null || data.fulfillmentType in ['delivery', 'store_pickup'])
         && (!('depositForfeited' in data) || data.depositForfeited == null || data.depositForfeited is bool)
-        && (!('depositForfeitedAt' in data) || data.depositForfeitedAt == null || (data.depositForfeitedAt is string && data.depositForfeitedAt.size() <= 100));
+        && (!('depositForfeitedAt' in data) || data.depositForfeitedAt == null || (data.depositForfeitedAt is string && data.depositForfeitedAt.size() <= 100))
+        && (!('couponId' in data) || data.couponId == null || (data.couponId is string && data.couponId.size() <= 128))
+        && (!('couponCode' in data) || data.couponCode == null || (data.couponCode is string && data.couponCode.size() <= 50))
+        && (!('discountAmount' in data) || data.discountAmount == null || (data.discountAmount is number && data.discountAmount >= 0));
     }
 
     match /orders/{orderId} {
@@ -506,6 +515,164 @@ service cloud.firestore {
 
     match /otpLogs/{logId} {
       allow read, write: if false;
+    }
+
+    function isValidBuyerRequest(data) {
+      return data.keys().hasAll(['userId', 'userName', 'city', 'category', 'title', 'status', 'bidsCount', 'createdAt', 'updatedAt'])
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128
+        && data.userName is string && data.userName.size() <= 150
+        && data.city is string && data.city.size() <= 80
+        && data.category is string && data.category.size() <= 100
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && (!('details' in data) || (data.details is string && data.details.size() <= 2000))
+        && (!('targetBudget' in data) || data.targetBudget == null || (data.targetBudget is number && data.targetBudget >= 0))
+        && (!('fulfillmentPreference' in data) || data.fulfillmentPreference in ['any', 'delivery', 'store_pickup'])
+        && (!('referenceImage' in data) || data.referenceImage == null || (data.referenceImage is string && data.referenceImage.size() <= 900000))
+        && data.status in ['open', 'accepted', 'closed']
+        && (!('acceptedBidId' in data) || data.acceptedBidId == null || (data.acceptedBidId is string && data.acceptedBidId.size() <= 200))
+        && (!('acceptedStoreId' in data) || data.acceptedStoreId == null || (data.acceptedStoreId is string && data.acceptedStoreId.size() <= 128))
+        && (!('acceptedStoreName' in data) || data.acceptedStoreName == null || (data.acceptedStoreName is string && data.acceptedStoreName.size() <= 200))
+        && (!('acceptedPrice' in data) || data.acceptedPrice == null || (data.acceptedPrice is number && data.acceptedPrice >= 0))
+        && data.bidsCount is number && data.bidsCount >= 0
+        && (!('lowestBidPrice' in data) || data.lowestBidPrice == null || (data.lowestBidPrice is number && data.lowestBidPrice >= 0))
+        && data.createdAt is string && data.createdAt.size() <= 100
+        && data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    function isValidRequestBid(data) {
+      return data.keys().hasAll(['requestId', 'storeId', 'storeName', 'price', 'deliveryIncluded', 'deliveryFee', 'status', 'createdAt', 'updatedAt'])
+        && data.requestId is string && data.requestId.size() > 0 && data.requestId.size() <= 128
+        && data.storeId is string && data.storeId.size() > 0 && data.storeId.size() <= 128
+        && data.storeName is string && data.storeName.size() > 0 && data.storeName.size() <= 200
+        && (!('storeLogo' in data) || (data.storeLogo is string && data.storeLogo.size() <= 900000))
+        && (!('storeCity' in data) || (data.storeCity is string && data.storeCity.size() <= 100))
+        && (!('storeVerified' in data) || data.storeVerified is bool)
+        && data.price is number && data.price >= 0
+        && data.deliveryIncluded is bool
+        && data.deliveryFee is number && data.deliveryFee >= 0
+        && (!('deliveryEstimate' in data) || (data.deliveryEstimate is string && data.deliveryEstimate.size() <= 120))
+        && (!('warrantyNote' in data) || (data.warrantyNote is string && data.warrantyNote.size() <= 1000))
+        && (!('productId' in data) || data.productId == null || (data.productId is string && data.productId.size() <= 128))
+        && (!('productTitle' in data) || data.productTitle == null || (data.productTitle is string && data.productTitle.size() <= 200))
+        && data.status in ['pending', 'accepted', 'rejected', 'withdrawn']
+        && data.createdAt is string && data.createdAt.size() <= 100
+        && data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    match /buyerRequests/{requestId} {
+      allow read: if true;
+      allow create: if isValidId(requestId) && isValidBuyerRequest(incoming());
+      allow update: if isValidId(requestId) && isValidBuyerRequest(incoming());
+      allow delete: if isValidId(requestId);
+    }
+
+    match /requestBids/{bidId} {
+      allow read: if true;
+      allow create: if isValidId(bidId) && isValidRequestBid(incoming());
+      allow update: if isValidId(bidId) && isValidRequestBid(incoming());
+      allow delete: if isValidId(bidId);
+    }
+
+    function isValidProductWatcher(data) {
+      return data.keys().hasAll(['userId', 'productId', 'productTitle', 'watchPriceDrop', 'watchRestock', 'lastKnownPrice', 'wasOutOfStock', 'createdAt', 'updatedAt'])
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128
+        && (!('userName' in data) || (data.userName is string && data.userName.size() <= 150))
+        && data.productId is string && data.productId.size() > 0 && data.productId.size() <= 128
+        && data.productTitle is string && data.productTitle.size() > 0 && data.productTitle.size() <= 200
+        && (!('productImage' in data) || data.productImage == null || (data.productImage is string && data.productImage.size() <= 900000))
+        && (!('storeId' in data) || (data.storeId is string && data.storeId.size() <= 128))
+        && (!('storeName' in data) || (data.storeName is string && data.storeName.size() <= 200))
+        && (!('targetPrice' in data) || data.targetPrice == null || (data.targetPrice is number && data.targetPrice >= 0))
+        && data.watchPriceDrop is bool
+        && data.watchRestock is bool
+        && data.lastKnownPrice is number && data.lastKnownPrice >= 0
+        && data.wasOutOfStock is bool
+        && (!('triggeredAt' in data) || data.triggeredAt == null || (data.triggeredAt is string && data.triggeredAt.size() <= 100))
+        && data.createdAt is string && data.createdAt.size() <= 100
+        && data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    match /productWatchers/{watchId} {
+      allow read: if true;
+      allow create: if isValidId(watchId) && isValidProductWatcher(incoming());
+      allow update: if isValidId(watchId) && isValidProductWatcher(incoming());
+      allow delete: if isValidId(watchId);
+    }
+
+    function isValidPromoCode(data) {
+      return data.keys().hasAll(['code', 'discountType', 'discountValue', 'minOrderAmount', 'usedCount', 'storeId', 'active', 'createdAt', 'updatedAt'])
+        && data.code is string && data.code.size() > 0 && data.code.size() <= 40
+        && (!('title' in data) || (data.title is string && data.title.size() <= 150))
+        && data.discountType in ['percent', 'fixed']
+        && data.discountValue is number && data.discountValue > 0
+        && (data.discountType != 'percent' || data.discountValue <= 100)
+        && data.minOrderAmount is number && data.minOrderAmount >= 0
+        && (!('maxDiscountAmount' in data) || data.maxDiscountAmount == null || (data.maxDiscountAmount is number && data.maxDiscountAmount >= 0))
+        && (!('maxUses' in data) || data.maxUses == null || (data.maxUses is number && data.maxUses >= 1))
+        && data.usedCount is number && data.usedCount >= 0
+        && data.storeId is string && data.storeId.size() > 0 && data.storeId.size() <= 128
+        && (!('storeName' in data) || (data.storeName is string && data.storeName.size() <= 200))
+        && data.active is bool
+        && (!('expiresAt' in data) || data.expiresAt == null || (data.expiresAt is string && data.expiresAt.size() <= 100))
+        && data.createdAt is string && data.createdAt.size() <= 100
+        && data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    match /promoCodes/{couponId} {
+      allow read: if true;
+      allow create: if isValidId(couponId) && isValidPromoCode(incoming());
+      allow update: if isValidId(couponId) && isValidPromoCode(incoming());
+      allow delete: if isValidId(couponId);
+    }
+
+    function isValidPriceOffer(data) {
+      return data.keys().hasAll(['productId', 'productTitle', 'storeId', 'buyerId', 'buyerName', 'originalPrice', 'offeredPrice', 'quantity', 'status', 'createdAt', 'updatedAt'])
+        && data.productId is string && data.productId.size() > 0 && data.productId.size() <= 128
+        && data.productTitle is string && data.productTitle.size() > 0 && data.productTitle.size() <= 200
+        && (!('productImage' in data) || data.productImage == null || (data.productImage is string && data.productImage.size() <= 900000))
+        && data.storeId is string && data.storeId.size() > 0 && data.storeId.size() <= 128
+        && (!('storeName' in data) || (data.storeName is string && data.storeName.size() <= 200))
+        && data.buyerId is string && data.buyerId.size() > 0 && data.buyerId.size() <= 128
+        && data.buyerName is string && data.buyerName.size() > 0 && data.buyerName.size() <= 150
+        && data.originalPrice is number && data.originalPrice >= 0
+        && data.offeredPrice is number && data.offeredPrice > 0
+        && data.quantity is number && data.quantity >= 1 && data.quantity <= 500
+        && (!('note' in data) || (data.note is string && data.note.size() <= 1000))
+        && (!('storeReply' in data) || data.storeReply == null || (data.storeReply is string && data.storeReply.size() <= 1000))
+        && data.status in ['pending', 'accepted', 'rejected', 'used']
+        && data.createdAt is string && data.createdAt.size() <= 100
+        && data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    match /priceOffers/{offerId} {
+      allow read: if true;
+      allow create: if isValidId(offerId) && isValidPriceOffer(incoming());
+      allow update: if isValidId(offerId) && isValidPriceOffer(incoming());
+      allow delete: if isValidId(offerId);
+    }
+
+    function isValidProductQuestion(data) {
+      return data.keys().hasAll(['productId', 'storeId', 'userId', 'userName', 'question', 'createdAt', 'updatedAt'])
+        && data.productId is string && data.productId.size() > 0 && data.productId.size() <= 128
+        && (!('productTitle' in data) || (data.productTitle is string && data.productTitle.size() <= 200))
+        && data.storeId is string && data.storeId.size() <= 128
+        && (!('storeName' in data) || (data.storeName is string && data.storeName.size() <= 200))
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128
+        && data.userName is string && data.userName.size() > 0 && data.userName.size() <= 150
+        && (!('userPhoto' in data) || data.userPhoto == null || (data.userPhoto is string && data.userPhoto.size() <= 900000))
+        && data.question is string && data.question.size() > 0 && data.question.size() <= 1000
+        && (!('answer' in data) || data.answer == null || (data.answer is string && data.answer.size() <= 2000))
+        && (!('answeredByName' in data) || data.answeredByName == null || (data.answeredByName is string && data.answeredByName.size() <= 200))
+        && (!('answeredAt' in data) || data.answeredAt == null || (data.answeredAt is string && data.answeredAt.size() <= 100))
+        && data.createdAt is string && data.createdAt.size() <= 100
+        && data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    match /productQuestions/{questionId} {
+      allow read: if true;
+      allow create: if isValidId(questionId) && isValidProductQuestion(incoming());
+      allow update: if isValidId(questionId) && isValidProductQuestion(incoming());
+      allow delete: if isValidId(questionId);
     }
   }
 }

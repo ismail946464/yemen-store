@@ -12,7 +12,10 @@
         "photoURL": { "type": "string" },
         "pointsBalance": { "type": "number" },
         "role": { "type": "string", "enum": ["user", "store", "admin"] },
-        "agreedToDisclaimer": { "type": "boolean" }
+        "agreedToDisclaimer": { "type": "boolean" },
+        "preferredTheme": { "type": "string" },
+        "favorites": { "type": "array", "items": { "type": "string" } },
+        "followedStores": { "type": "array", "items": { "type": "string" } }
       },
       "required": ["userId", "name"]
     },
@@ -208,6 +211,9 @@
           ]
         },
         "paymentMethod": { "type": "string" },
+        "couponId": { "type": ["string", "null"] },
+        "couponCode": { "type": ["string", "null"] },
+        "discountAmount": { "type": ["number", "null"] },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "total", "status"]
@@ -246,7 +252,10 @@
           "type": "array",
           "items": { "type": "string" },
           "description": "Admin-assigned store category IDs."
-        }
+        },
+        "themeColor": { "type": "string" },
+        "storeStyle": { "type": "string" },
+        "storeAnnouncement": { "type": "string" }
       }
     },
     "Rating": {
@@ -347,6 +356,145 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["wallets"]
+    },
+    "BuyerRequest": {
+      "title": "Buyer Request",
+      "description": "Customer reverse-marketplace product/price request where verified stores compete with live bids.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 150 },
+        "city": { "type": "string", "maxLength": 80 },
+        "category": { "type": "string", "maxLength": 100 },
+        "title": { "type": "string", "maxLength": 200 },
+        "details": { "type": "string", "maxLength": 2000 },
+        "targetBudget": { "type": ["number", "null"] },
+        "fulfillmentPreference": { "type": "string", "enum": ["any", "delivery", "store_pickup"] },
+        "referenceImage": { "type": ["string", "null"], "maxLength": 900000 },
+        "status": { "type": "string", "enum": ["open", "accepted", "closed"] },
+        "acceptedBidId": { "type": ["string", "null"], "maxLength": 200 },
+        "acceptedStoreId": { "type": ["string", "null"], "maxLength": 128 },
+        "acceptedStoreName": { "type": ["string", "null"], "maxLength": 200 },
+        "acceptedPrice": { "type": ["number", "null"] },
+        "bidsCount": { "type": "number" },
+        "lowestBidPrice": { "type": ["number", "null"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "city", "category", "title", "status", "bidsCount", "createdAt", "updatedAt"]
+    },
+    "RequestBid": {
+      "title": "Request Bid",
+      "description": "Competitive offer submitted by a store on a buyer request.",
+      "type": "object",
+      "properties": {
+        "requestId": { "type": "string", "maxLength": 128 },
+        "storeId": { "type": "string", "maxLength": 128 },
+        "storeName": { "type": "string", "maxLength": 200 },
+        "storeLogo": { "type": "string", "maxLength": 900000 },
+        "storeCity": { "type": "string", "maxLength": 100 },
+        "storeVerified": { "type": "boolean" },
+        "price": { "type": "number" },
+        "deliveryIncluded": { "type": "boolean" },
+        "deliveryFee": { "type": "number" },
+        "deliveryEstimate": { "type": "string", "maxLength": 120 },
+        "warrantyNote": { "type": "string", "maxLength": 1000 },
+        "productId": { "type": ["string", "null"], "maxLength": 128 },
+        "productTitle": { "type": ["string", "null"], "maxLength": 200 },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected", "withdrawn"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["requestId", "storeId", "storeName", "price", "deliveryIncluded", "deliveryFee", "status", "createdAt", "updatedAt"]
+    },
+    "ProductWatcher": {
+      "title": "Product Watcher",
+      "description": "Buyer price-drop and restock radar subscription for a product.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 150 },
+        "productId": { "type": "string", "maxLength": 128 },
+        "productTitle": { "type": "string", "maxLength": 200 },
+        "productImage": { "type": ["string", "null"], "maxLength": 900000 },
+        "storeId": { "type": "string", "maxLength": 128 },
+        "storeName": { "type": "string", "maxLength": 200 },
+        "targetPrice": { "type": ["number", "null"] },
+        "watchPriceDrop": { "type": "boolean" },
+        "watchRestock": { "type": "boolean" },
+        "lastKnownPrice": { "type": "number" },
+        "wasOutOfStock": { "type": "boolean" },
+        "triggeredAt": { "type": ["string", "null"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "productId", "productTitle", "watchPriceDrop", "watchRestock", "lastKnownPrice", "wasOutOfStock", "createdAt", "updatedAt"]
+    },
+    "PromoCode": {
+      "title": "Promo Code",
+      "description": "Store or platform discount coupon code validated in cart checkout.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "maxLength": 40 },
+        "title": { "type": "string", "maxLength": 150 },
+        "discountType": { "type": "string", "enum": ["percent", "fixed"] },
+        "discountValue": { "type": "number" },
+        "minOrderAmount": { "type": "number" },
+        "maxDiscountAmount": { "type": ["number", "null"] },
+        "maxUses": { "type": ["number", "null"] },
+        "usedCount": { "type": "number" },
+        "storeId": { "type": "string", "maxLength": 128 },
+        "storeName": { "type": "string", "maxLength": 200 },
+        "active": { "type": "boolean" },
+        "expiresAt": { "type": ["string", "null"], "maxLength": 100 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "discountType", "discountValue", "minOrderAmount", "usedCount", "storeId", "active", "createdAt", "updatedAt"]
+    },
+    "PriceOffer": {
+      "title": "Price Offer",
+      "description": "Direct buyer-to-store price negotiation offer on a product.",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string", "maxLength": 128 },
+        "productTitle": { "type": "string", "maxLength": 200 },
+        "productImage": { "type": ["string", "null"], "maxLength": 900000 },
+        "storeId": { "type": "string", "maxLength": 128 },
+        "storeName": { "type": "string", "maxLength": 200 },
+        "buyerId": { "type": "string", "maxLength": 128 },
+        "buyerName": { "type": "string", "maxLength": 150 },
+        "originalPrice": { "type": "number" },
+        "offeredPrice": { "type": "number" },
+        "quantity": { "type": "number" },
+        "note": { "type": "string", "maxLength": 1000 },
+        "storeReply": { "type": ["string", "null"], "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected", "used"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["productId", "productTitle", "storeId", "buyerId", "buyerName", "originalPrice", "offeredPrice", "quantity", "status", "createdAt", "updatedAt"]
+    },
+    "ProductQuestion": {
+      "title": "Product Question",
+      "description": "Public buyer question and official store answer on a product page.",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string", "maxLength": 128 },
+        "productTitle": { "type": "string", "maxLength": 200 },
+        "storeId": { "type": "string", "maxLength": 128 },
+        "storeName": { "type": "string", "maxLength": 200 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 150 },
+        "userPhoto": { "type": ["string", "null"], "maxLength": 900000 },
+        "question": { "type": "string", "maxLength": 1000 },
+        "answer": { "type": ["string", "null"], "maxLength": 2000 },
+        "answeredByName": { "type": ["string", "null"], "maxLength": 200 },
+        "answeredAt": { "type": ["string", "null"], "maxLength": 100 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["productId", "storeId", "userId", "userName", "question", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -413,6 +561,30 @@
     "serverLogs/{logId}": {
       "schema": { "$ref": "#/entities/ServerLog" },
       "description": "Server activity logs."
+    },
+    "buyerRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/BuyerRequest" },
+      "description": "Reverse-marketplace customer price requests."
+    },
+    "requestBids/{bidId}": {
+      "schema": { "$ref": "#/entities/RequestBid" },
+      "description": "Competitive store price bids for customer requests."
+    },
+    "productWatchers/{watchId}": {
+      "schema": { "$ref": "#/entities/ProductWatcher" },
+      "description": "Buyer price drop and restock radar subscriptions."
+    },
+    "promoCodes/{couponId}": {
+      "schema": { "$ref": "#/entities/PromoCode" },
+      "description": "Store and platform promo discount codes."
+    },
+    "priceOffers/{offerId}": {
+      "schema": { "$ref": "#/entities/PriceOffer" },
+      "description": "Buyer-to-store price negotiation offers."
+    },
+    "productQuestions/{questionId}": {
+      "schema": { "$ref": "#/entities/ProductQuestion" },
+      "description": "Public product Q&A threads."
     }
   }
 }

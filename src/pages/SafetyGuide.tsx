@@ -1,13 +1,13 @@
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  ShieldAlert,
+  ShieldCheck,
   Truck,
   FileText,
   Lock,
   ArrowRight,
   PhoneCall,
   Eye,
-  AlertOctagon,
+  CheckCircle2,
   CreditCard
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
@@ -39,17 +39,17 @@ export default function SafetyGuide() {
 
       {/* Editorial Header */}
       <header className="p-6 sm:p-8 rounded-xl border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] space-y-3">
-        <div className="inline-flex items-center gap-2 text-xs font-bold text-rose-600 dark:text-rose-400">
-          <ShieldAlert className="w-4 h-4" />
-          <span>دليل الأمان والمصداقية ومكافحة الاحتيال</span>
+        <div className="inline-flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+          <ShieldCheck className="w-4 h-4" />
+          <span>دليل التسوق الآمن وحماية المشتري</span>
         </div>
 
         <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#111214] dark:text-[#F4F4F2] tracking-tight leading-snug">
-          تعليمات استخدام المتجر وتنبيهات الحماية من النصب والاحتيال
+          إرشادات استخدام المتجر وتجربة الشراء الموثوقة
         </h1>
 
         <p className="text-sm text-[#5C5B57] dark:text-zinc-400 max-w-3xl font-medium leading-relaxed">
-          حرصاً من إدارة {settings?.storeName || 'المتجر'} على سلامتكم وحماية تعاملاتكم التجارية والمالية، وضعنا هذا الدليل الإرشادي والتنبيهي الشامل لضمان تجربة تسوق آمنة وموثوقة لجميع المتعاملين داخل محافظات الجمهورية اليمنية.
+          حرصاً من إدارة {settings?.storeName || 'المتجر'} على راحتكم وجودة تعاملاتكم التجارية، وضعنا هذا الدليل الإرشادي لضمان تجربة تسوق سهلة وواضحة لجميع المتعاملين داخل محافظات الجمهورية اليمنية.
         </p>
       </header>
 
@@ -108,34 +108,34 @@ export default function SafetyGuide() {
         </div>
       </div>
 
-      {/* Fraud Warning Notice */}
-      <div className="p-6 sm:p-7 rounded-xl border border-amber-300/80 dark:border-amber-800/60 bg-amber-50/70 dark:bg-amber-950/20 space-y-4">
+      {/* Buyer Confidence Notice */}
+      <div className="p-6 sm:p-7 rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/60 dark:bg-emerald-950/20 space-y-4">
         <div className="flex items-center gap-2.5">
-          <AlertOctagon className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <h3 className="font-display font-bold text-base sm:text-lg text-[#111214] dark:text-[#F4F4F2]">
-            إشارات تحذيرية تدل على شبهة احتيال
+            نصائح سريعة لتجربة تسوق مثالية
           </h3>
         </div>
 
         <ul className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs sm:text-sm font-medium text-[#111214] dark:text-zinc-200 list-disc list-inside">
-          <li>عرض سلع بأسعار متدنية بشكل غير منطقي لا تتطابق مع قيمتها السوقية الواقعية.</li>
-          <li>طلب تحويل الأموال على اسم شخص مختلف تماماً عن اسم صاحب المتجر المعتمد.</li>
-          <li>إرسال روابط دفع إلكترونية وهمية تطلب إدخال بيانات بنكية أو كلمات مرور سرية.</li>
-          <li>الضغط عليك للاستعجال بالتحويل بحجة انتهاء العرض أو نفاد الكمية فجأة.</li>
+          <li>قارن الأسعار وتصفح تقييمات وآراء المشترين السابقين قبل إتمام الطلب.</li>
+          <li>تأكد من مطابقة اسم المستلم الظاهر في فاتورة الطلب الرسمية عند التحويل.</li>
+          <li>احتفظ بصورة السند أو رقم المرجع لمتابعة حالة الطلب وشحنه بسهولة.</li>
+          <li>تواصل مع الدعم الفني عبر صفحة التواصل لأي استفسار أو مساعدة في طلبك.</li>
         </ul>
       </div>
 
-      {/* Official Disclaimer & Actions */}
+      {/* Official Policy & Actions */}
       <div className="p-6 sm:p-7 rounded-xl border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] space-y-4">
         <div className="flex items-center gap-2.5">
           <FileText className={`w-5 h-5 ${getThemeClasses('text')} shrink-0`} />
           <h3 className="font-display font-bold text-base sm:text-lg text-[#111214] dark:text-[#F4F4F2]">
-            وثيقة إخلاء المسؤولية والشروط والضوابط القانونية
+            سياسات الاستخدام وتنظيم التعاملات
           </h3>
         </div>
 
         <p className="text-xs sm:text-sm text-[#5C5B57] dark:text-zinc-400 font-medium leading-relaxed">
-          تعتبر منصة {settings?.storeName || 'المتجر'} منصة رقمية تربط البائعين المعتمدين والمشترين. وتقع مسؤولية جودة المنتجات ومطابقتها على عاتق البائع المعلن. نرجو الاطلاع على الوثيقة الكاملة لشروط الاستخدام وإخلاء المسؤولية الرسمية للمنصة.
+          تعمل إدارة منصة {settings?.storeName || 'المتجر'} على تنظيم عرض المنتجات والطلبات بين البائعين والمشترين، وتوفير قنوات تواصل مباشرة وشفافة لضمان سلاسة التوصيل وحفظ حقوق الطلبات المسجلة عبر المنصة.
         </p>
 
         <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -144,7 +144,7 @@ export default function SafetyGuide() {
             className={`min-h-[44px] px-5 py-2.5 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white font-bold text-xs transition flex items-center gap-2 active:scale-[0.99]`}
           >
             <FileText className="w-4 h-4" />
-            <span>قراءة وثيقة إخلاء المسؤولية والشروط الرسمية</span>
+            <span>قراءة سياسات الاستخدام والإرشادات</span>
           </button>
 
           <Link
@@ -152,7 +152,7 @@ export default function SafetyGuide() {
             className="min-h-[44px] px-5 py-2.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] font-bold text-xs transition flex items-center gap-2"
           >
             <PhoneCall className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>الإبلاغ عن نشاط مشبوه أو مخالفة</span>
+            <span>التواصل مع خدمة العملاء</span>
           </Link>
         </div>
       </div>

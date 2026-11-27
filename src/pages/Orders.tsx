@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Package, Clock, CheckCircle2, Truck, BookmarkCheck, AlertTriangle, XCircle, ShieldCheck, Bike, Store, MapPin, Phone, ExternalLink } from 'lucide-react';
+import { Package, Clock, CheckCircle2, Truck, BookmarkCheck, AlertTriangle, XCircle, ShieldCheck, Bike, Store, MapPin, Phone, ExternalLink, RotateCcw, Receipt, Printer, X } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -18,13 +18,27 @@ import { formatArabicDate, formatArabicTime } from '../lib/deviceSafe';
 
 type OrderFilter = 'all' | 'active' | 'delivered' | 'preorder';
 
+function getOrderStepIndex(order: any, isPreOrder: boolean): number {
+  const s = order?.status;
+  if (isPreOrder) {
+    if (s === 'delivered' || s === 'completed') return 2;
+    if (s === 'reserved' || s === 'deposit_paid' || s === 'processing') return 1;
+    return 0;
+  }
+  if (s === 'delivered' || order?.deliveryStatus === 'delivered') return 3;
+  if (s === 'shipped' || s === 'out_for_delivery') return 2;
+  if (s === 'processing') return 1;
+  return 0;
+}
+
 export default function Orders() {
-  const { user, getThemeClasses } = useAppContext();
+  const { user, getThemeClasses, addToCart, openCartDrawer, settings } = useAppContext();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<OrderFilter>('all');
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [respondingOrderId, setRespondingOrderId] = useState<string | null>(null);
+  const [invoiceOrder, setInvoiceOrder] = useState<any | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -132,6 +146,36 @@ export default function Orders() {
       toast.error(err?.message || 'تعذر تنفيذ العملية', { id: toastId });
     } finally {
       setRespondingOrderId(null);
+    }
+  };
+
+  const handleReorder = (order: any) => {
+    const items = Array.isArray(order?.items) ? order.items : [];
+    if (items.length === 0) {
+      toast.error('لا توجد أصناف لإعادة طلبها في هذه العملية');
+      return;
+    }
+    let addedCount = 0;
+    for (const item of items) {
+      const pid = item.productId || item.id;
+      if (!pid) continue;
+      addToCart(
+        {
+          id: pid,
+          title: item.title || 'منتج',
+          price: Number(item.price || 0),
+          image: item.image || '',
+          ownerId: item.ownerId || order.storeId || order.ownerId || '',
+          ownerName: item.ownerName || order.storeName || '',
+          selectedVariantId: item.variantId || item.selectedVariantId,
+          selectedVariantName: item.variantName || item.selectedVariantName,
+        },
+        Math.max(1, Number(item.quantity) || 1)
+      );
+      addedCount += 1;
+    }
+    if (addedCount > 0) {
+      openCartDrawer();
     }
   };
 
@@ -278,6 +322,7 @@ export default function Orders() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-16" dir="rtl">
+      <div className={invoiceOrder ? 'hidden print:hidden' : 'space-y-6'}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-[#111214] dark:text-[#F4F4F2] tracking-tight">
@@ -370,6 +415,48 @@ export default function Orders() {
                     <span>{getStatusText(order, isPreOrder)}</span>
                   </div>
                 </div>
+
+                {/* Clean Order Progress Timeline Stepper */}
+                {order.status !== 'cancelled' && order.status !== 'reservation_expired' && (
+                  <div className="px-5 py-3.5 border-b border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6]/70 dark:bg-[#101216]/70">
+                    {(() => {
+                      const steps = isPreOrder
+                        ? ['تسجيل الحجز', 'اعتماد العربون', 'مكتمل']
+                        : ['تم استلام الطلب', 'جاري التجهيز', 'في الطريق', 'تم التسليم'];
+                      const activeStep = getOrderStepIndex(order, isPreOrder);
+                      return (
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
+                          {steps.map((label, idx) => {
+                            const done = idx <= activeStep;
+                            const current = idx === activeStep;
+                            return (
+                              <div key={label} className="flex flex-col items-center text-center gap-1.5 relative">
+                                <div className="flex items-center w-full justify-center relative">
+                                  <div
+                                    className={`w-6 h-6 rounded-full text-[11px] font-extrabold flex items-center justify-center tabular-nums border z-10 transition-colors ${
+                                      done
+                                        ? `${getThemeClasses('bg')} border-transparent`
+                                        : 'bg-white dark:bg-[#131519] text-[#5C5B57] dark:text-zinc-500 border-[#E5E2DA] dark:border-[#232730]'
+                                    } ${current ? 'ring-2 ring-offset-2 ring-offset-[#FAF9F6] dark:ring-offset-[#101216] ring-emerald-500/40' : ''}`}
+                                  >
+                                    {done && idx < activeStep ? '✓' : idx + 1}
+                                  </div>
+                                </div>
+                                <span
+                                  className={`text-[10px] sm:text-[11px] font-bold leading-tight ${
+                                    done ? 'text-[#111214] dark:text-[#F4F4F2]' : 'text-[#5C5B57] dark:text-zinc-500'
+                                  }`}
+                                >
+                                  {label}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
 
                 {/* Courier Proposed Delivery Fee Approval Banner */}
                 {isFeePending && (
@@ -571,10 +658,180 @@ export default function Orders() {
                       {Number(order.total || 0).toLocaleString()} ر.ي
                     </span>
                   </div>
+
+                  {/* Quick Actions: Receipt & 1-Click Reorder */}
+                  <div className="pt-2.5 mt-2 border-t border-[#E5E2DA] dark:border-[#232730] flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setInvoiceOrder(order)}
+                      className="min-h-[36px] px-3 py-1.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] text-xs font-bold flex items-center gap-1.5 transition-colors"
+                    >
+                      <Receipt className="w-3.5 h-3.5" />
+                      <span>عرض الفاتورة</span>
+                    </button>
+
+                    {!isPreOrder && !isPickupOnly && Array.isArray(order.items) && order.items.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleReorder(order)}
+                        className={`min-h-[36px] px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>إعادة الطلب</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </article>
             );
           })}
+        </div>
+      )}
+      </div>
+
+      {/* Printable Invoice / Receipt Modal */}
+      {invoiceOrder && (
+        <div
+          className="fixed inset-0 z-[150] bg-black/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 print:static print:bg-white print:p-0 print:block"
+          dir="rtl"
+          onClick={() => setInvoiceOrder(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-xl bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] shadow-2xl print:shadow-none print:border-0 print:max-h-none print:bg-white print:text-black"
+          >
+            <div className="px-5 py-4 border-b border-[#E5E2DA] dark:border-[#232730] flex items-center justify-between gap-2 print:hidden">
+              <div className="flex items-center gap-2 text-sm font-extrabold text-[#111214] dark:text-[#F4F4F2]">
+                <Receipt className="w-4 h-4" />
+                <span>فاتورة الطلب الإلكترونية</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className={`min-h-[36px] px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>طباعة الفاتورة</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceOrder(null)}
+                  aria-label="إغلاق"
+                  className="w-9 h-9 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] flex items-center justify-center text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-5 text-xs sm:text-sm">
+              <div className="flex items-start justify-between gap-4 border-b border-dashed border-[#E5E2DA] dark:border-[#232730] pb-4">
+                <div>
+                  <h2 className="font-display text-lg font-extrabold text-[#111214] dark:text-[#F4F4F2] print:text-black">
+                    {settings?.storeName || 'يمن ستور'}
+                  </h2>
+                  {invoiceOrder.storeName && (
+                    <p className="text-xs text-[#5C5B57] dark:text-zinc-400 mt-0.5 print:text-zinc-600">
+                      المتجر: {invoiceOrder.storeName}
+                    </p>
+                  )}
+                </div>
+                <div className="text-left">
+                  <p className="font-mono font-extrabold text-xs text-[#111214] dark:text-[#F4F4F2] print:text-black tabular-nums">
+                    #{String(invoiceOrder.id || '').slice(0, 10).toUpperCase()}
+                  </p>
+                  <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400 print:text-zinc-600 tabular-nums mt-0.5">
+                    {invoiceOrder.createdAt ? `${formatArabicDate(invoiceOrder.createdAt)} · ${formatArabicTime(invoiceOrder.createdAt)}` : '—'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs bg-[#FAF9F6] dark:bg-[#101216] print:bg-zinc-50 p-3.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730]">
+                <div>
+                  <span className="text-[#5C5B57] dark:text-zinc-400 block text-[11px]">العميل</span>
+                  <span className="font-bold text-[#111214] dark:text-[#F4F4F2] print:text-black">
+                    {invoiceOrder.customerName || user?.displayName || 'عميل المنصة'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[#5C5B57] dark:text-zinc-400 block text-[11px]">الحالة</span>
+                  <span className="font-bold text-[#111214] dark:text-[#F4F4F2] print:text-black">
+                    {getStatusText(invoiceOrder, invoiceOrder.isPreOrder || invoiceOrder.orderType === 'preorder')}
+                  </span>
+                </div>
+                {invoiceOrder.customerPhone && (
+                  <div>
+                    <span className="text-[#5C5B57] dark:text-zinc-400 block text-[11px]">رقم التواصل</span>
+                    <span className="font-mono font-bold tabular-nums text-[#111214] dark:text-[#F4F4F2] print:text-black" dir="ltr">
+                      {invoiceOrder.customerPhone}
+                    </span>
+                  </div>
+                )}
+                {invoiceOrder.shippingAddress && (
+                  <div className="col-span-2">
+                    <span className="text-[#5C5B57] dark:text-zinc-400 block text-[11px]">عنوان التوصيل</span>
+                    <span className="font-semibold text-[#111214] dark:text-[#F4F4F2] print:text-black">
+                      {invoiceOrder.shippingAddress}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="border border-[#E5E2DA] dark:border-[#232730] rounded-lg overflow-hidden">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-[#FAF9F6] dark:bg-[#101216] print:bg-zinc-100 border-b border-[#E5E2DA] dark:border-[#232730]">
+                    <tr>
+                      <th className="p-2.5 font-bold text-[#5C5B57] dark:text-zinc-400">الصنف</th>
+                      <th className="p-2.5 font-bold text-[#5C5B57] dark:text-zinc-400 text-center">الكمية</th>
+                      <th className="p-2.5 font-bold text-[#5C5B57] dark:text-zinc-400 text-left">المبلغ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E5E2DA] dark:divide-[#232730]">
+                    {(invoiceOrder.items || []).map((item: any, idx: number) => (
+                      <tr key={idx}>
+                        <td className="p-2.5 font-semibold text-[#111214] dark:text-[#F4F4F2] print:text-black">
+                          {item.title}
+                          {item.variantName ? ` (${item.variantName})` : ''}
+                        </td>
+                        <td className="p-2.5 text-center tabular-nums font-bold text-[#5C5B57] dark:text-zinc-300">
+                          {item.quantity || 1}
+                        </td>
+                        <td className="p-2.5 text-left tabular-nums font-bold text-[#111214] dark:text-[#F4F4F2] print:text-black">
+                          {((item.price || 0) * (item.quantity || 1)).toLocaleString()} ر.ي
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="border-t border-dashed border-[#E5E2DA] dark:border-[#232730] pt-4 space-y-1.5 text-xs">
+                {Number(invoiceOrder.deliveryFee || 0) > 0 && (
+                  <div className="flex justify-between text-[#5C5B57] dark:text-zinc-400">
+                    <span>رسوم التوصيل</span>
+                    <span className="font-bold tabular-nums">{Number(invoiceOrder.deliveryFee).toLocaleString()} ر.ي</span>
+                  </div>
+                )}
+                {(invoiceOrder.isPreOrder || invoiceOrder.orderType === 'preorder') && (
+                  <>
+                    <div className="flex justify-between text-amber-700 dark:text-amber-400">
+                      <span>العربون المدفوع</span>
+                      <span className="font-bold tabular-nums">{Number(invoiceOrder.depositAmount || 0).toLocaleString()} ر.ي</span>
+                    </div>
+                    <div className="flex justify-between text-[#5C5B57] dark:text-zinc-400">
+                      <span>المتبقي عند الاستلام</span>
+                      <span className="font-bold tabular-nums">{Number(invoiceOrder.remainingAmount || 0).toLocaleString()} ر.ي</span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between items-center pt-2 text-sm font-extrabold text-[#111214] dark:text-[#F4F4F2] print:text-black">
+                  <span>الإجمالي الكلي</span>
+                  <span className="tabular-nums">{Number(invoiceOrder.total || 0).toLocaleString()} ر.ي</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

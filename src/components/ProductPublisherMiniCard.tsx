@@ -285,6 +285,13 @@ function ProductPublisherMiniCard({
           )}
         </div>
       )}
+
+      {isVerified && (
+        <div className="pt-2 border-t border-[#E5E2DA] dark:border-[#232730] text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+          <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+          <span>متجر موثق ومعتمد — تجربة تسوق مضمونة داخل المنصة.</span>
+        </div>
+      )}
     </div>
   );
 }

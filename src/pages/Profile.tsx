@@ -4,10 +4,11 @@ import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import {
   User, Shield, LogOut, Camera, Loader2, LayoutDashboard, Moon, Sun,
-  Lock, KeyRound, Palette, Bike, Store
+  Lock, KeyRound, Palette, Bike, Store, BellRing
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { PLATFORM_THEMES } from '../lib/storeStyles';
 
 export default function Profile() {
   const {
@@ -226,6 +227,14 @@ export default function Profile() {
                 </Link>
               )}
 
+              <Link
+                to="/watchlist"
+                className="w-full min-h-[42px] flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-bold text-xs border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] text-[#111214] dark:text-[#F4F4F2] transition-colors"
+              >
+                <BellRing className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span>المفضلة ورادار الأسعار</span>
+              </Link>
+
               <button
                 type="button"
                 onClick={() => logout()}
@@ -250,22 +259,16 @@ export default function Profile() {
             </div>
 
             {allowUserThemeOverride ? (
-              <div className="grid grid-cols-5 gap-2">
-                {[
-                  { id: 'white', name: 'حجري', color: '#f6f5f0', border: 'border-[#111214]' },
-                  { id: 'green', name: 'زمردي', color: '#0d6e4e', border: 'border-[#0d6e4e]' },
-                  { id: 'blue', name: 'أزرق', color: '#1d4ed8', border: 'border-[#1d4ed8]' },
-                  { id: 'red', name: 'قرمزي', color: '#be123c', border: 'border-[#be123c]' },
-                  { id: 'black', name: 'داكن', color: '#09090b', border: 'border-zinc-900' }
-                ].map((t) => {
+              <div className="grid grid-cols-3 gap-2">
+                {PLATFORM_THEMES.map((t) => {
                   const isSelected = effectiveTheme === t.id;
                   return (
                     <button
                       key={t.id}
                       type="button"
                       onClick={() => {
-                        setUserTheme(t.id as any);
-                        toast.success(`تم تغيير ستايل الموقع إلى ${t.name}`, { id: 'theme-change' });
+                        setUserTheme(t.id);
+                        toast.success(`تم تغيير ستايل الموقع إلى ${t.shortName}`, { id: 'theme-change' });
                       }}
                       className={`flex flex-col items-center gap-1.5 p-2 rounded-lg border transition-colors ${
                         isSelected
@@ -277,7 +280,7 @@ export default function Profile() {
                         className={`w-5 h-5 rounded-md border ${t.id === 'white' ? 'border-[#111214]/30' : 'border-transparent'}`}
                         style={{ backgroundColor: t.color }}
                       />
-                      <span className="text-[10px] font-bold text-[#111214] dark:text-zinc-200">{t.name}</span>
+                      <span className="text-[10px] font-bold text-[#111214] dark:text-zinc-200 whitespace-nowrap">{t.shortName}</span>
                     </button>
                   );
                 })}

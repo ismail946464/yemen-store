@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldAlert, ShieldCheck, AlertTriangle, CheckCircle2, Truck, FileText, ChevronDown, ChevronUp, Lock, PhoneCall } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, Truck, FileText, ChevronDown, ChevronUp, Lock, PhoneCall } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 
 export default function SecurityAndGuidelinesSection() {
@@ -17,14 +17,14 @@ export default function SecurityAndGuidelinesSection() {
         <div className="p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216]">
           <div className="space-y-2 max-w-2xl">
             <div className="inline-flex items-center gap-2 text-xs font-bold text-[#5C5B57] dark:text-zinc-400">
-              <ShieldAlert className={`w-4 h-4 ${getThemeClasses('text')}`} />
-              <span>دليل الأمان والمصداقية ومكافحة الاحتيال</span>
+              <ShieldCheck className={`w-4 h-4 ${getThemeClasses('text')}`} />
+              <span>دليل التسوق الآمن وجودة الخدمة</span>
             </div>
             <h2 className="font-display text-xl sm:text-2xl font-bold text-[#111214] dark:text-[#F4F4F2] tracking-tight">
-              تعليمات استخدام المتجر وتنبيهات الحماية من النصب والاحتيال
+              إرشادات استخدام المتجر وتجربة الشراء الموثوقة
             </h2>
             <p className="text-xs sm:text-sm text-[#5C5B57] dark:text-zinc-400 font-medium leading-relaxed">
-              حرصاً من إدارة {settings?.storeName || 'المتجر'} على سلامتكم وحماية تعاملاتكم التجارية والمالية، يرجى الالتزام بالإرشادات الأمنية التالية قبل إتمام أي طلب.
+              تلتزم منصة {settings?.storeName || 'المتجر'} بتوفير تجربة تسوق واضحة ومريحة لجميع العملاء، مع متابعة مستمرة للطلبات ودعم مباشر عبر خدمة العملاء.
             </p>
           </div>
 
@@ -33,7 +33,7 @@ export default function SecurityAndGuidelinesSection() {
               onClick={() => setIsExpanded(!isExpanded)}
               className="min-h-[44px] px-4 py-2.5 rounded-lg bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] font-bold text-xs text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition flex items-center gap-2"
             >
-              <span>{isExpanded ? 'طي التفاصيل الإضافية' : 'استعراض الإرشادات والتنبيهات'}</span>
+              <span>{isExpanded ? 'طي التفاصيل الإضافية' : 'استعراض إرشادات التسوق'}</span>
               {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
 
@@ -42,7 +42,7 @@ export default function SecurityAndGuidelinesSection() {
               className={`min-h-[44px] px-4 py-2.5 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white font-bold text-xs transition flex items-center gap-2 active:scale-[0.99]`}
             >
               <FileText className="w-4 h-4" />
-              <span>وثيقة إخلاء المسؤولية</span>
+              <span>سياسات المنصة</span>
             </button>
           </div>
         </div>
@@ -111,14 +111,14 @@ export default function SecurityAndGuidelinesSection() {
               </div>
 
               <div className="p-5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519]">
-                <h4 className="font-display font-bold text-sm flex items-center gap-2 mb-3 text-rose-600 dark:text-rose-400">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span>تنبيهات للوقاية من النصب والاحتيال</span>
+                <h4 className="font-display font-bold text-sm flex items-center gap-2 mb-3 text-[#111214] dark:text-[#F4F4F2]">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>نصائح لتجربة شراء مريحة وآمنة</span>
                 </h4>
                 <ul className="text-xs text-[#5C5B57] dark:text-zinc-400 space-y-2 list-disc list-inside leading-relaxed font-medium">
-                  <li>احذر من أي رسائل أو مكالمات تدعي فوزك بجوائز وتطلب منك رموزاً سرية أو تحويل مبالغ استلام.</li>
-                  <li>لا تحول أي مبالغ مالية إلى أي أرقام خارج قنوات الدفع الرسمية المدرجة على صفحة المتجر.</li>
-                  <li>في حال وجود أي نشاط مشبوه أو بائع غير ملتزم، تواصل فوراً مع الدعم الفني للإدارة للإبلاغ عنه.</li>
+                  <li>حافظ على سرية كلمة مرورك ولا تشاركها مع أي جهة كانت.</li>
+                  <li>استخدم قنوات الدفع والتواصل المعتمدة المدرجة داخل صفحة الطلب الرسمية.</li>
+                  <li>فريق الدعم الفني جاهز دائماً لمساعدتك والإجابة عن استفساراتك حول الطلبات.</li>
                 </ul>
               </div>
             </div>

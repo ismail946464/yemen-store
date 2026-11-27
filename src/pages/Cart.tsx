@@ -15,10 +15,12 @@ import {
   Plus,
   Minus,
   Phone,
+  Ticket,
+  Sparkles,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { db } from '../firebase';
-import { collection, addDoc, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
@@ -33,6 +35,14 @@ import {
 } from '../lib/stockUtils';
 import { getProductVariants } from '../lib/variantUtils';
 import { safeCopyText } from '../lib/deviceSafe';
+import {
+  PromoCodeItem,
+  findPromoCodeByCode,
+  normalizeCouponCode,
+  redeemCouponTransaction,
+  validateCouponForCart,
+} from '../lib/coupons';
+import { markPriceOfferUsed } from '../lib/priceOffers';
 
 const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800, quality = 0.65): Promise<string> => {
   return new Promise((resolve) => {
@@ -109,6 +119,12 @@ export default function Cart() {
   const [customerPhone, setCustomerPhone] = useState(userData?.phone || '');
   const [customerNotes, setCustomerNotes] = useState('');
 
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<PromoCodeItem | null>(null);
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [availableCoupons, setAvailableCoupons] = useState<PromoCodeItem[]>([]);
+
   const navigate = useNavigate();
 
   const getCartKey = (p: any) =>
@@ -126,6 +142,7 @@ export default function Cart() {
         syncCartItemStock(key, { stock: 0, available: false });
         continue;
       }
+      const isNegotiatedPrice = Boolean(ci.product?.negotiatedOfferId);
       if (ci.product?.selectedVariantId) {
         const matchedVariant = getProductVariants({ id: pid, ...prodData }).find(
           (v) => String(v.id) === String(ci.product.selectedVariantId)
@@ -138,7 +155,9 @@ export default function Cart() {
           syncCartItemStock(key, {
             stock: vStock,
             available: vAvail,
-            price: Number(matchedVariant.price) > 0 ? Number(matchedVariant.price) : Number(prodData.price || 0),
+            ...(isNegotiatedPrice
+              ? {}
+              : { price: Number(matchedVariant.price) > 0 ? Number(matchedVariant.price) : Number(prodData.price || 0) }),
             noDelivery: Boolean(prodData.noDelivery),
           });
         }
@@ -148,7 +167,7 @@ export default function Cart() {
         syncCartItemStock(key, {
           stock: bStock,
           available: bAvail,
-          price: Number(prodData.price || 0),
+          ...(isNegotiatedPrice ? {} : { price: Number(prodData.price || 0) }),
           noDelivery: Boolean(prodData.noDelivery),
         });
       }
@@ -241,6 +260,75 @@ export default function Cart() {
       cancelled = true;
     };
   }, [cartProductIdsKey, activeCartStoreId]);
+
+  const distinctStoreCount = new Set(cart.map((i) => i.product?.ownerId || 'global')).size;
+  const hasMultipleStores = distinctStoreCount > 1;
+
+  useEffect(() => {
+    if (cart.length === 0) {
+      setAvailableCoupons([]);
+      return;
+    }
+    const q = query(collection(db, 'promoCodes'), where('active', '==', true));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const now = Date.now();
+        const items = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as PromoCodeItem))
+          .filter((c) => {
+            if (!c.active) return false;
+            if (c.expiresAt && new Date(c.expiresAt).getTime() < now) return false;
+            if (c.maxUses !== null && c.maxUses !== undefined && Number(c.usedCount || 0) >= Number(c.maxUses)) return false;
+            if (c.storeId === 'global') return true;
+            return !hasMultipleStores && c.storeId === activeCartStoreId;
+          });
+        setAvailableCoupons(items);
+        setAppliedCoupon((prev) => {
+          if (!prev) return null;
+          const fresh = snap.docs.find((d) => d.id === prev.id);
+          return fresh ? ({ id: fresh.id, ...fresh.data() } as PromoCodeItem) : prev;
+        });
+      },
+      () => {}
+    );
+    return () => unsub();
+  }, [cart.length, activeCartStoreId, hasMultipleStores]);
+
+  const handleApplyCouponCode = async (rawCode: string) => {
+    const cleanCode = normalizeCouponCode(rawCode);
+    if (!cleanCode) {
+      setCouponError('يرجى إدخال كود الخصم');
+      return;
+    }
+    setApplyingCoupon(true);
+    setCouponError(null);
+    try {
+      const found = await findPromoCodeByCode(cleanCode);
+      if (!found) {
+        setCouponError('كود الخصم غير موجود أو غير صحيح');
+        return;
+      }
+      const check = validateCouponForCart({
+        coupon: found,
+        subtotal: cartTotal,
+        cartStoreId: activeCartStoreId,
+        hasMultipleStores,
+      });
+      if (!check.valid) {
+        setCouponError(check.reason || 'الكوبون غير صالح لهذه السلة');
+        return;
+      }
+      setAppliedCoupon(found);
+      setCouponInput(found.code);
+      setCouponError(null);
+      toast.success(`تم تطبيق الكوبون ${found.code} — خصم ${check.discountAmount.toLocaleString()} ر.ي`);
+    } catch {
+      setCouponError('تعذر التحقق من الكوبون حالياً');
+    } finally {
+      setApplyingCoupon(false);
+    }
+  };
 
   const requestLocation = (silent = false) => {
     if (!silent) setIsGettingLocation(true);
@@ -347,7 +435,17 @@ export default function Cart() {
     return Number.isFinite(fee) && fee > maxFee ? fee : maxFee;
   }, 0);
   const effectiveDeliveryFee = hasFreeDeliveryOffer ? 0 : rawDeliveryFee;
-  const finalOrderTotal = cartTotal + effectiveDeliveryFee;
+  const couponValidation = appliedCoupon
+    ? validateCouponForCart({
+        coupon: appliedCoupon,
+        subtotal: cartTotal,
+        cartStoreId: activeCartStoreId,
+        hasMultipleStores,
+      })
+    : null;
+  const isCouponValid = Boolean(appliedCoupon && couponValidation?.valid);
+  const discountAmount = isCouponValid ? (couponValidation?.discountAmount || 0) : 0;
+  const finalOrderTotal = Math.max(0, cartTotal - discountAmount) + effectiveDeliveryFee;
 
   const hasNoDeliveryItem = cart.some((item) => Boolean(item.product?.noDelivery));
   const hasStockIssue = cart.some((item) => {
@@ -444,6 +542,17 @@ export default function Cart() {
       // 1. Atomically validate and decrement product/variant stock in Firestore
       await reserveStockTransaction(stockItems);
 
+      // 2. Atomically validate & increment coupon redemption if an active coupon is applied
+      if (isCouponValid && appliedCoupon) {
+        try {
+          await redeemCouponTransaction(appliedCoupon.id);
+        } catch (couponErr) {
+          await restoreStockTransaction(stockItems).catch(() => {});
+          setAppliedCoupon(null);
+          throw couponErr;
+        }
+      }
+
       const orderData = {
         userId: user?.uid,
         customerName: userData?.displayName || userData?.name || user?.displayName || `عميل ${currentStoreName}`,
@@ -466,12 +575,19 @@ export default function Cart() {
           title: item.product.title,
           price: Number(item.product.price || 0),
           originalPrice: item.product.originalPrice || null,
-          offerTitle: isProductOfferActive(item.product) ? (item.product.offerTitle || null) : null,
+          offerTitle: item.product?.negotiatedOfferId
+            ? 'سعر تفاوض مقبول'
+            : isProductOfferActive(item.product)
+              ? (item.product.offerTitle || null)
+              : null,
           offerExtras: isProductOfferActive(item.product) ? (item.product.offerExtras || null) : null,
           quantity: item.quantity,
           image: item.product.image || (item.product.images && item.product.images[0]) || ''
         })),
         subtotal: cartTotal,
+        couponId: isCouponValid && appliedCoupon ? appliedCoupon.id : null,
+        couponCode: isCouponValid && appliedCoupon ? appliedCoupon.code : null,
+        discountAmount: isCouponValid ? discountAmount : 0,
         total: finalOrderTotal,
         stockDeducted: true,
         status: 'pending',
@@ -497,6 +613,17 @@ export default function Cart() {
         // Roll back stock reservation if writing order document failed
         await restoreStockTransaction(stockItems).catch(() => {});
         throw orderErr;
+      }
+
+      const offerIdsToMark = Array.from(
+        new Set(
+          cart
+            .map((i) => i.product?.negotiatedOfferId)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        )
+      );
+      if (offerIdsToMark.length > 0) {
+        await Promise.all(offerIdsToMark.map((oid) => markPriceOfferUsed(oid)));
       }
 
       toast.success("تم استلام طلبك بنجاح! وتم خصم الكمية من المخزون.");
@@ -563,6 +690,11 @@ export default function Cart() {
                         {item.product.selectedVariantName && (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#EFEDE6] text-[#111214] border border-[#E5E2DA] dark:bg-[#1C1F26] dark:text-[#F4F4F2] dark:border-[#232730]">
                             الصنف: {item.product.selectedVariantName}
+                          </span>
+                        )}
+                        {item.product.negotiatedOfferId && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800">
+                            سعر تفاوض متفق عليه
                           </span>
                         )}
                         {item.product.noDelivery && (
@@ -693,12 +825,122 @@ export default function Cart() {
               <h3 className="font-display text-lg font-extrabold text-[#111214] dark:text-[#F4F4F2]">ملخص الفاتورة والدفع</h3>
             </div>
 
+            {/* Promo Coupon Code Box */}
+            <div className="space-y-2.5 pt-1">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2] flex items-center gap-1.5">
+                  <Ticket className={`w-3.5 h-3.5 ${getThemeClasses('text')}`} />
+                  <span>كود الخصم (الكوبون)</span>
+                </label>
+                {appliedCoupon && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAppliedCoupon(null);
+                      setCouponInput('');
+                      setCouponError(null);
+                    }}
+                    className="text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:underline"
+                  >
+                    إزالة الكوبون
+                  </button>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={couponInput}
+                  onChange={(e) => {
+                    setCouponInput(e.target.value.toUpperCase());
+                    if (couponError) setCouponError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleApplyCouponCode(couponInput);
+                    }
+                  }}
+                  placeholder="أدخل كود الخصم مثل YEMEN10"
+                  dir="ltr"
+                  disabled={applyingCoupon}
+                  className="flex-1 min-h-[40px] px-3 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#1C1F26] text-[#111214] dark:text-[#F4F4F2] placeholder:text-[#5C5B57] dark:placeholder:text-zinc-500 text-xs font-mono font-bold text-left uppercase outline-none focus:border-[#111214] dark:focus:border-zinc-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleApplyCouponCode(couponInput)}
+                  disabled={applyingCoupon || !couponInput.trim()}
+                  className={`min-h-[40px] px-4 rounded-lg text-xs font-bold transition-colors shrink-0 disabled:opacity-40 ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                >
+                  {applyingCoupon ? '...' : 'تطبيق'}
+                </button>
+              </div>
+
+              {couponError && (
+                <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                  {couponError}
+                </p>
+              )}
+
+              {appliedCoupon && !isCouponValid && couponValidation?.reason && (
+                <p className="text-[11px] font-bold text-amber-700 dark:text-amber-300">
+                  {couponValidation.reason}
+                </p>
+              )}
+
+              {isCouponValid && appliedCoupon && (
+                <div className="px-3 py-2 rounded-lg bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between gap-2 text-xs">
+                  <span className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                    <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>تم تطبيق {appliedCoupon.code} ({appliedCoupon.title})</span>
+                  </span>
+                  <span className="font-extrabold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                    -{discountAmount.toLocaleString()} ر.ي
+                  </span>
+                </div>
+              )}
+
+              {!isCouponValid && availableCoupons.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[11px] font-semibold text-[#5C5B57] dark:text-zinc-400 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-500" />
+                    <span>كوبونات متاحة لك الآن (اضغط للتطبيق):</span>
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {availableCoupons.slice(0, 4).map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => handleApplyCouponCode(c.code)}
+                        className="px-2.5 py-1 rounded-md border border-dashed border-[#D5D1C7] dark:border-[#343A46] bg-[#FAF9F6] dark:bg-[#1C1F26] hover:border-[#111214] dark:hover:border-zinc-400 text-[11px] font-bold text-[#111214] dark:text-[#F4F4F2] transition-colors flex items-center gap-1.5"
+                      >
+                        <span className="font-mono">{c.code}</span>
+                        <span className="text-emerald-700 dark:text-emerald-400 tabular-nums">
+                          {c.discountType === 'percent' ? `${c.discountValue}%` : `${Number(c.discountValue).toLocaleString()} ر.ي`}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Clean Hairline Invoice Breakdown (No nested boxes) */}
-            <div className="space-y-2.5 text-sm">
+            <div className="space-y-2.5 text-sm pt-2 border-t border-[#E5E2DA] dark:border-[#232730]">
               <div className="flex justify-between items-center py-1">
                 <span className="text-[#5C5B57] dark:text-zinc-400 font-medium text-xs">المجموع الفرعي</span>
                 <span className="font-bold text-[#111214] dark:text-[#F4F4F2] tabular-nums">{cartTotal.toLocaleString()} ر.ي</span>
               </div>
+              {isCouponValid && discountAmount > 0 && (
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-emerald-700 dark:text-emerald-400 font-bold text-xs">
+                    خصم الكوبون ({appliedCoupon?.code})
+                  </span>
+                  <span className="font-extrabold text-emerald-700 dark:text-emerald-400 text-xs tabular-nums">
+                    -{discountAmount.toLocaleString()} ر.ي
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between items-center py-1">
                 <span className="text-[#5C5B57] dark:text-zinc-400 font-medium text-xs">رسوم التوصيل</span>
                 <span className={`${effectiveDeliveryFee === 0 ? getThemeClasses('price') : 'text-[#111214] dark:text-[#F4F4F2]'} font-bold text-xs tabular-nums`}>

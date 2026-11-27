@@ -1,12 +1,12 @@
 import React from 'react';
-import { AlertTriangle, CheckCircle2, X, Check } from 'lucide-react';
+import { CheckCircle2, X, Check } from 'lucide-react';
 import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { useAppContext } from '../AppContext';
 import toast from 'react-hot-toast';
 
 export default function DisclaimerModal() {
-  const { user, getThemeClasses } = useAppContext();
+  const { user, settings, getThemeClasses } = useAppContext();
   const [show, setShow] = React.useState(false);
   const [agreed, setAgreed] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
@@ -55,15 +55,15 @@ export default function DisclaimerModal() {
             {/* Header */}
             <div className="px-6 py-5 bg-[#FAF9F6] dark:bg-[#101216] border-b border-[#E5E2DA] dark:border-[#232730] flex items-start justify-between gap-4">
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/60 flex items-center justify-center shrink-0">
-                  <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <div>
                   <h2 className="font-display text-lg font-bold text-[#111214] dark:text-[#F4F4F2] leading-snug">
-                    تعليمات وتنبيهات الحماية من الاحتيال
+                    سياسة الاستخدام وإرشادات التسوق الآمن
                   </h2>
                   <p className="text-xs text-[#5C5B57] dark:text-zinc-400 font-medium mt-0.5">
-                    شروط الاستخدام وإخلاء المسؤولية المعتمدة
+                    تنظيم التعاملات وحماية تجربة المشتري داخل المنصة
                   </p>
                 </div>
               </div>
@@ -81,13 +81,13 @@ export default function DisclaimerModal() {
             <div className="p-6 space-y-5">
               <div className="p-4 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730]">
                 <p className="text-[#111214] dark:text-[#F4F4F2] text-sm sm:text-base font-bold leading-relaxed">
-                  نخلي مسؤوليتنا الكاملة عن أي عمليات نصب أو احتيال قد تحدث داخل المنصة من قبل متاجر غير موثقة من قبل إدارة المنصة.
+                  توفر {settings?.storeName || 'المنصة'} بيئة تجارة مباشرة بين البائعين والمشترين مع متابعة مستمرة للطلبات الرسمية والالتزام بمراجعة الفواتير ومطابقة المواصفات عند الاستلام.
                 </p>
               </div>
 
               <div className="flex items-start gap-3 p-4 rounded-lg bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 text-emerald-900 dark:text-emerald-200 text-xs sm:text-sm font-medium leading-relaxed">
                 <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
-                <p>ننصح دائماً بالتعامل مع المتاجر التي تحمل شارة التوثيق الرسمية لضمان جودة ومصداقية الخدمة.</p>
+                <p>يُفضّل دائماً إتمام الطلبات عبر القنوات الرسمية داخل المنصة والاحتفاظ بإيصال الطلب لضمان سرعة الدعم والمتابعة.</p>
               </div>
 
               <label className="flex items-center gap-3 cursor-pointer group select-none min-h-[44px] px-1">

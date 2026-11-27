@@ -466,7 +466,7 @@ export default function LoginPage() {
                         onChange={(e) => setAgreedToTerms(e.target.checked)}
                         className="mt-0.5 w-4 h-4 rounded border-[#D5D1C7] cursor-pointer"
                       />
-                      <span className="text-xs text-amber-950 dark:text-amber-200 font-medium leading-relaxed">
+                      <span className="text-xs text-[#111214] dark:text-zinc-200 font-medium leading-relaxed">
                         أوافق على{' '}
                         <button
                           type="button"
@@ -474,9 +474,9 @@ export default function LoginPage() {
                           className={`underline font-bold hover:opacity-80 inline-flex items-center gap-0.5 ${getThemeClasses('text')}`}
                         >
                           <FileText className="w-3 h-3" />
-                          شروط وسياسات الاستخدام وإخلاء المسؤولية
+                          شروط وسياسات الاستخدام
                         </button>
-                        {' '}وتنبيهات الأمان والحماية من النصب والاحتيال في المتجر.
+                        {' '}وإرشادات التسوق الآمن في المتجر.
                       </span>
                     </label>
                   </div>

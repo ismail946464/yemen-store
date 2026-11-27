@@ -1,9 +1,9 @@
-import { Suspense, lazy, useState, useEffect } from 'react';
+import { Suspense, lazy, useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { useAppContext } from '../AppContext';
-import { formatArabicDate, formatArabicTime } from '../lib/deviceSafe';
+import { formatArabicDate, formatArabicTime, safeCopyText } from '../lib/deviceSafe';
 import {
   CheckCircle,
   ShoppingCart,
@@ -26,6 +26,13 @@ import {
   MapPin,
   Clock,
   Navigation,
+  Heart,
+  Eye,
+  Search,
+  Megaphone,
+  UserPlus,
+  UserCheck,
+  Share2,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { isProductOfferActive, getProductOfferBadgeText } from '../lib/offerUtils';
@@ -34,9 +41,11 @@ import { getStockLimit, isItemOutOfStock, calculateSafeDeposit } from '../lib/st
 import ProductPublisherMiniCard from '../components/ProductPublisherMiniCard';
 import { ProductGridSkeleton } from '../components/Skeletons';
 import { StoreCategoryItem, sortStoreCategories, getAssignedStoreCategories } from '../lib/storeCategories';
+import { resolveStoreAccent, StoreLayoutStyleId } from '../lib/storeStyles';
 
 const PreOrderModal = lazy(() => import('../components/PreOrderModal'));
 const ProductVariantsModal = lazy(() => import('../components/ProductVariantsModal'));
+const QuickViewModal = lazy(() => import('../components/QuickViewModal'));
 
 function StoreProductImage({ src, alt }: { src?: string; alt: string }) {
   const [failed, setFailed] = useState(false);
@@ -65,14 +74,32 @@ function StoreProductImage({ src, alt }: { src?: string; alt: string }) {
 export default function StoreProfile() {
   const userId = useParams().userId;
   const navigate = useNavigate();
-  const { getThemeClasses, addToCart, cart, user, userData, isAdmin, login } = useAppContext();
+  const {
+    getThemeClasses,
+    addToCart,
+    cart,
+    user,
+    userData,
+    isAdmin,
+    login,
+    isFavorite,
+    toggleFavorite,
+    recordRecentlyViewed,
+    toggleFollowStore,
+    isFollowingStore,
+  } = useAppContext();
   const [profile, setProfile] = useState<any>(null);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPreOrderProduct, setSelectedPreOrderProduct] = useState<any | null>(null);
   const [variantsModalProduct, setVariantsModalProduct] = useState<any | null>(null);
+  const [quickViewProduct, setQuickViewProduct] = useState<any | null>(null);
   const [showLinks, setShowLinks] = useState(false);
   const [showRatingModal, setShowRatingModal] = useState(false);
+
+  const [storeSearch, setStoreSearch] = useState('');
+  const [storeCategoryFilter, setStoreCategoryFilter] = useState('الكل');
+  const [storeSortBy, setStoreSortBy] = useState<'newest' | 'price-asc' | 'price-desc' | 'offers'>('newest');
 
   const [userRating, setUserRating] = useState(10);
   const [userCredibility, setUserCredibility] = useState(10);
@@ -83,6 +110,38 @@ export default function StoreProfile() {
 
   const isOnline = profile?.lastSeen && (new Date().getTime() - new Date(profile.lastSeen).getTime()) < 75000;
   const isVerified = Boolean(profile?.verified) && (!profile?.verifiedUntil || profile?.verifiedUntil === '' || new Date(profile.verifiedUntil).getTime() >= Date.now());
+  const storeAccent = useMemo(
+    () => resolveStoreAccent(profile?.themeColor, getThemeClasses),
+    [profile?.themeColor, getThemeClasses]
+  );
+  const layoutStyle = (profile?.storeStyle || 'classic') as StoreLayoutStyleId;
+
+  const productCategoriesInStore = useMemo(() => {
+    const cats = new Set<string>();
+    products.forEach((p) => {
+      if (p.category) cats.add(String(p.category));
+    });
+    return ['الكل', ...Array.from(cats)];
+  }, [products]);
+
+  const filteredStoreProducts = useMemo(() => {
+    const q = storeSearch.trim().toLowerCase();
+    return products
+      .filter((p) => {
+        if (storeCategoryFilter !== 'الكل' && p.category !== storeCategoryFilter) return false;
+        if (storeSortBy === 'offers' && !isProductOfferActive(p)) return false;
+        if (q) {
+          const hay = `${p.title || ''} ${p.description || ''} ${p.category || ''}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        if (storeSortBy === 'price-asc') return Number(a.price || 0) - Number(b.price || 0);
+        if (storeSortBy === 'price-desc') return Number(b.price || 0) - Number(a.price || 0);
+        return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+      });
+  }, [products, storeSearch, storeCategoryFilter, storeSortBy]);
 
   useEffect(() => {
     const fetchStoreData = async () => {
@@ -222,35 +281,75 @@ export default function StoreProfile() {
 
   return (
     <div className="pb-16 space-y-8" dir="rtl">
-      {/* Boutique Store Identity Header */}
-      <section className="rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] overflow-hidden">
-        <div className="relative h-44 sm:h-60 bg-[#EFEDE6] dark:bg-[#1C1F26] overflow-hidden">
-          {profile.bannerUrl ? (
-            <img
-              src={profile.bannerUrl}
-              alt={profile.name}
-              loading="eager"
-              decoding="async"
-              referrerPolicy="no-referrer"
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-[#5C5B57] dark:text-zinc-600">
-              <StoreIcon className="w-14 h-14 stroke-[1.25] opacity-40" />
-            </div>
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
+      {/* Custom Store Announcement Strip */}
+      {profile.storeAnnouncement && String(profile.storeAnnouncement).trim() && (
+        <div className={`rounded-lg border px-4 py-3 flex items-center gap-2.5 text-xs sm:text-sm font-bold ${storeAccent.border || 'border-[#E5E2DA] dark:border-[#232730]'} bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2]`}>
+          <Megaphone className={`w-4 h-4 shrink-0 ${storeAccent.text}`} />
+          <p className="leading-relaxed">{profile.storeAnnouncement}</p>
         </div>
+      )}
 
-        <div className="px-5 sm:px-8 pb-6">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-5 -mt-12 relative z-10">
-            <div className="flex items-end gap-4">
-              <div className="w-22 h-22 sm:w-26 sm:h-26 rounded-lg bg-white dark:bg-[#131519] p-1 border border-[#E5E2DA] dark:border-[#232730] shrink-0">
+      {/* Boutique Store Identity Header (supports 4 store layout styles) */}
+      <section className={`rounded-lg border overflow-hidden ${
+        layoutStyle === 'showcase'
+          ? 'border-zinc-800 bg-[#111214] text-white'
+          : 'border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519]'
+      }`}>
+        {layoutStyle !== 'compact' && (
+          <div className={`relative ${
+            layoutStyle === 'showcase'
+              ? 'h-52 sm:h-72 bg-zinc-900'
+              : layoutStyle === 'editorial'
+                ? 'h-36 sm:h-48 bg-[#EFEDE6] dark:bg-[#1C1F26]'
+                : 'h-44 sm:h-60 bg-[#EFEDE6] dark:bg-[#1C1F26]'
+          } overflow-hidden`}>
+            {profile.bannerUrl ? (
+              <img
+                src={profile.bannerUrl}
+                alt={profile.name}
+                loading="eager"
+                decoding="async"
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-[#5C5B57] dark:text-zinc-600">
+                <StoreIcon className="w-14 h-14 stroke-[1.25] opacity-40" />
+              </div>
+            )}
+            <div className={`absolute inset-0 ${
+              layoutStyle === 'showcase'
+                ? 'bg-gradient-to-t from-[#111214] via-black/45 to-transparent'
+                : 'bg-gradient-to-t from-black/45 via-transparent to-transparent'
+            }`} />
+          </div>
+        )}
+
+        <div className={`px-5 sm:px-8 pb-6 ${layoutStyle === 'compact' ? 'pt-6' : ''}`}>
+          <div className={`flex flex-col ${
+            layoutStyle === 'editorial'
+              ? 'items-center text-center -mt-12'
+              : layoutStyle === 'compact'
+                ? 'md:flex-row md:items-center justify-between'
+                : 'md:flex-row md:items-end justify-between -mt-12'
+          } gap-5 relative z-10`}>
+            <div className={`flex ${
+              layoutStyle === 'editorial'
+                ? 'flex-col items-center gap-3'
+                : 'items-end gap-4'
+            }`}>
+              <div className={`${
+                layoutStyle === 'compact' ? 'w-16 h-16 sm:w-20 sm:h-20' : 'w-22 h-22 sm:w-26 sm:h-26'
+              } rounded-lg p-1 border shrink-0 ${
+                layoutStyle === 'showcase'
+                  ? 'bg-[#181B20] border-zinc-700'
+                  : 'bg-white dark:bg-[#131519] border-[#E5E2DA] dark:border-[#232730]'
+              }`}>
                 <div className="w-full h-full rounded-md overflow-hidden bg-[#EFEDE6] dark:bg-[#1C1F26] flex items-center justify-center">
                   {profile.logoUrl ? (
                     <img src={profile.logoUrl} alt={profile.name} className="w-full h-full object-cover" />
                   ) : (
-                    <span className={`w-full h-full flex items-center justify-center ${getThemeClasses('bg')} text-2xl font-extrabold`}>
+                    <span className={`w-full h-full flex items-center justify-center ${storeAccent.bg} text-2xl font-extrabold`}>
                       {profile.name?.charAt(0) || 'م'}
                     </span>
                   )}
@@ -258,13 +357,17 @@ export default function StoreProfile() {
               </div>
 
               <div className="pb-1 space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-[#111214] dark:text-[#F4F4F2] tracking-tight">
+                <div className={`flex items-center gap-2 flex-wrap ${layoutStyle === 'editorial' ? 'justify-center' : ''}`}>
+                  <h1 className={`${
+                    layoutStyle === 'editorial' ? 'font-amiri text-3xl sm:text-4xl' : 'font-display text-2xl sm:text-3xl'
+                  } font-extrabold tracking-tight ${
+                    layoutStyle === 'showcase' ? 'text-white' : 'text-[#111214] dark:text-[#F4F4F2]'
+                  }`}>
                     {profile.name}
                   </h1>
                   {isVerified && (
                     <span title="متجر موثق ومعتمد رسمياً" className="inline-flex items-center">
-                      <CheckCircle className={`w-5 h-5 ${getThemeClasses('verified')}`} />
+                      <CheckCircle className={`w-5 h-5 ${storeAccent.verified}`} />
                     </span>
                   )}
                 </div>
@@ -304,6 +407,34 @@ export default function StoreProfile() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {userId && user?.uid !== userId && (
+                <button
+                  type="button"
+                  onClick={() => toggleFollowStore(userId, profile?.name)}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors min-h-[44px] ${
+                    isFollowingStore(userId)
+                      ? `${storeAccent.bg} ${storeAccent.hover}`
+                      : 'border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#1C1F26] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] text-[#111214] dark:text-[#F4F4F2]'
+                  }`}
+                >
+                  {isFollowingStore(userId) ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+                  <span>{isFollowingStore(userId) ? 'تتابع المتجر' : 'متابعة المتجر'}</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await safeCopyText(window.location.href);
+                  if (ok) toast.success('تم نسخ رابط المتجر للمشاركة');
+                }}
+                aria-label="مشاركة رابط المتجر"
+                title="نسخ رابط المتجر"
+                className="flex items-center justify-center border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#1C1F26] hover:bg-[#EFEDE6] dark:hover:bg-[#232730] text-[#111214] dark:text-[#F4F4F2] w-11 h-11 rounded-lg transition-colors"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+
               <button
                 type="button"
                 onClick={() => (user ? setShowRatingModal(true) : login())}
@@ -326,7 +457,7 @@ export default function StoreProfile() {
               {(isAdmin || user?.uid === userId) && (
                 <Link
                   to={isAdmin ? `/admin?tab=store-profile&editStoreId=${userId}` : "/admin?tab=store-profile"}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors min-h-[44px] ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors min-h-[44px] ${storeAccent.bg} ${storeAccent.hover}`}
                 >
                   <Edit className="w-4 h-4" />
                   <span>إدارة المتجر</span>
@@ -347,7 +478,9 @@ export default function StoreProfile() {
           </div>
 
           <p className="mt-5 pt-4 border-t border-[#E5E2DA] dark:border-[#232730] text-sm text-[#5C5B57] dark:text-zinc-300 leading-relaxed max-w-3xl">
-            {profile.description || 'متجر معتمد يقدم منتجات متنوعة مع خدمة التواصل المباشر والطلب السريع.'}
+            {profile.description || (isVerified
+              ? 'متجر موثق ومعتمد يقدم منتجات متنوعة مع خدمة التواصل المباشر والطلب السريع.'
+              : 'متجر مسجل يقدم منتجات متنوعة مع خدمة التواصل المباشر.')}
           </p>
 
           {(() => {
@@ -518,9 +651,9 @@ export default function StoreProfile() {
 
       {/* Store Products */}
       <section className="space-y-5">
-        <div className="flex justify-between items-center border-b border-[#E5E2DA] dark:border-[#232730] pb-3">
+        <div className="flex flex-wrap justify-between items-center gap-3 border-b border-[#E5E2DA] dark:border-[#232730] pb-3">
           <h2 className="font-display text-lg sm:text-xl font-extrabold text-[#111214] dark:text-[#F4F4F2]">
-            منتجات المتجر ({products.length})
+            منتجات المتجر ({filteredStoreProducts.length})
           </h2>
           <Link to="/search-stores" className="text-xs sm:text-sm text-[#5C5B57] dark:text-zinc-300 flex items-center gap-1 hover:text-[#111214] dark:hover:text-white transition-colors font-bold">
             <span>دليل المتاجر</span>
@@ -528,14 +661,92 @@ export default function StoreProfile() {
           </Link>
         </div>
 
-        {products.length === 0 ? (
-          <div className="text-center py-16 bg-white dark:bg-[#131519] rounded-lg border border-dashed border-[#E5E2DA] dark:border-[#232730]">
-            <StoreIcon className="w-10 h-10 text-[#5C5B57] dark:text-zinc-500 mx-auto mb-3 opacity-50" />
-            <p className="text-sm text-[#5C5B57] dark:text-zinc-400 font-bold">لا توجد منتجات معروضة حالياً لهذا المتجر.</p>
+        {/* In-Store Search, Category & Sort Bar */}
+        {products.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-[#5C5B57] dark:text-zinc-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={storeSearch}
+                  onChange={(e) => setStoreSearch(e.target.value)}
+                  placeholder={`ابحث داخل منتجات ${profile.name}...`}
+                  className="w-full min-h-[42px] bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] rounded-lg pr-10 pl-8 py-2 text-xs sm:text-sm text-[#111214] dark:text-[#F4F4F2] placeholder:text-[#5C5B57] dark:placeholder:text-zinc-500 outline-none focus:border-[#111214] dark:focus:border-zinc-500 transition-colors"
+                />
+                {storeSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setStoreSearch('')}
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5C5B57] hover:text-[#111214] dark:hover:text-white p-1"
+                    aria-label="مسح البحث"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <select
+                value={storeSortBy}
+                onChange={(e) => setStoreSortBy(e.target.value as any)}
+                className="min-h-[42px] px-3.5 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-xs font-bold text-[#111214] dark:text-[#F4F4F2] outline-none"
+              >
+                <option value="newest">الأحدث</option>
+                <option value="offers">العروض والخصومات فقط</option>
+                <option value="price-asc">السعر: الأقل أولاً</option>
+                <option value="price-desc">السعر: الأعلى أولاً</option>
+              </select>
+            </div>
+
+            {productCategoriesInStore.length > 2 && (
+              <div className="flex overflow-x-auto no-scrollbar gap-2 pb-1">
+                {productCategoriesInStore.map((catName) => {
+                  const active = storeCategoryFilter === catName;
+                  return (
+                    <button
+                      key={catName}
+                      type="button"
+                      onClick={() => setStoreCategoryFilter(catName)}
+                      className={`min-h-[34px] px-3 py-1 rounded-lg border text-xs font-bold whitespace-nowrap transition-colors ${
+                        active
+                          ? `${storeAccent.bg} border-transparent`
+                          : 'bg-white dark:bg-[#131519] border-[#E5E2DA] dark:border-[#232730] text-[#5C5B57] dark:text-zinc-300 hover:text-[#111214] dark:hover:text-white'
+                      }`}
+                    >
+                      {catName}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {filteredStoreProducts.length === 0 ? (
+          <div className="text-center py-16 bg-white dark:bg-[#131519] rounded-lg border border-dashed border-[#E5E2DA] dark:border-[#232730] space-y-2">
+            <StoreIcon className="w-10 h-10 text-[#5C5B57] dark:text-zinc-500 mx-auto mb-2 opacity-50" />
+            <p className="text-sm text-[#5C5B57] dark:text-zinc-400 font-bold">
+              {products.length === 0
+                ? 'لا توجد منتجات معروضة حالياً لهذا المتجر.'
+                : 'لا توجد منتجات مطابقة لخيارات البحث الحالية.'}
+            </p>
+            {(storeSearch || storeCategoryFilter !== 'الكل' || storeSortBy !== 'newest') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStoreSearch('');
+                  setStoreCategoryFilter('الكل');
+                  setStoreSortBy('newest');
+                }}
+                className="text-xs font-bold underline text-[#111214] dark:text-[#F4F4F2]"
+              >
+                عرض كل منتجات المتجر
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-8 sm:gap-x-6 sm:gap-y-10">
-            {products.map((product) => {
+            {filteredStoreProducts.map((product) => {
               const hasOfferActive = isProductOfferActive(product);
               const offerBadge = hasOfferActive ? getProductOfferBadgeText(product) : '';
               const hasCrossedPrice = Number(product.originalPrice || 0) > Number(product.price || 0);
@@ -549,11 +760,15 @@ export default function StoreProfile() {
               const baseAtCartMax = baseOutOfStock || (stockLimit !== null && inCartQty >= stockLimit);
               const isNoDelivery = Boolean(product.noDelivery);
               const canPreOrder = isNoDelivery || (isVerified && (product.isPreOrderEnabled ?? true));
+              const fav = isFavorite(product.id);
 
               return (
               <article
                 key={product.id}
-                onClick={() => navigate(`/product/${product.id}`)}
+                onClick={() => {
+                  recordRecentlyViewed(product.id);
+                  navigate(`/product/${product.id}`);
+                }}
                 className="group flex flex-col h-full cursor-pointer"
               >
                 <div className="aspect-[4/5] relative overflow-hidden rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#EFEDE6] dark:bg-[#1C1F26] mb-3">
@@ -567,6 +782,40 @@ export default function StoreProfile() {
                       {offerBadge}
                     </span>
                   )}
+
+                  <div className="absolute top-2.5 left-2.5 z-10 flex flex-col gap-1.5">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleFavorite(product.id);
+                      }}
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${
+                        fav
+                          ? 'bg-rose-600 text-white border-rose-600'
+                          : 'bg-white/90 dark:bg-[#131519]/90 text-[#111214] dark:text-[#F4F4F2] border-[#E5E2DA] dark:border-[#232730] hover:bg-white dark:hover:bg-[#131519]'
+                      }`}
+                      title={fav ? 'إزالة من المفضلة' : 'أضف للمفضلة'}
+                      aria-label={fav ? 'إزالة من المفضلة' : 'أضف للمفضلة'}
+                    >
+                      <Heart className={`w-3.5 h-3.5 ${fav ? 'fill-current' : ''}`} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        recordRecentlyViewed(product.id);
+                        setQuickViewProduct(product);
+                      }}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/90 dark:bg-[#131519]/90 text-[#111214] dark:text-[#F4F4F2] border border-[#E5E2DA] dark:border-[#232730] hover:bg-white dark:hover:bg-[#131519] transition-colors"
+                      title="معاينة سريعة"
+                      aria-label="معاينة سريعة"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
 
                   {fullyOutOfStock && (
                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-2 text-center z-20">
@@ -601,7 +850,7 @@ export default function StoreProfile() {
                   <div className="space-y-2 pt-1">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-baseline gap-1.5 flex-wrap">
-                        <span className={`text-sm sm:text-base font-extrabold ${getThemeClasses('price')} tabular-nums`}>
+                        <span className={`text-sm sm:text-base font-extrabold ${storeAccent.price} tabular-nums`}>
                           {Number(product.price || 0).toLocaleString()} <span className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">ر.ي</span>
                         </span>
                         {hasCrossedPrice && (
@@ -636,7 +885,7 @@ export default function StoreProfile() {
                             addToCart(buildBaseProductForCart(product));
                           }}
                           disabled={baseOutOfStock || baseAtCartMax}
-                          className={`w-9 h-9 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover')} flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed`}
+                          className={`w-9 h-9 rounded-lg ${storeAccent.bg} ${storeAccent.hover} flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed`}
                           title={baseOutOfStock ? 'نفدت الكمية من المنتج الأساسي' : baseAtCartMax ? 'بلغت الحد الأقصى المتاح' : 'أضف للسلة'}
                           aria-label="أضف للسلة"
                         >
@@ -894,6 +1143,27 @@ export default function StoreProfile() {
             product={buildBaseProductForCart(selectedPreOrderProduct)}
             isOpen={!!selectedPreOrderProduct}
             onClose={() => setSelectedPreOrderProduct(null)}
+          />
+        </Suspense>
+      )}
+
+      {/* Quick View Modal */}
+      {quickViewProduct && (
+        <Suspense fallback={null}>
+          <QuickViewModal
+            product={quickViewProduct}
+            storeProfile={{ ...profile, isVerified }}
+            isOpen={!!quickViewProduct}
+            onClose={() => setQuickViewProduct(null)}
+            onOpenPreOrder={(p) => {
+              setQuickViewProduct(null);
+              if (!user) { login(); return; }
+              setSelectedPreOrderProduct(p);
+            }}
+            onOpenVariants={(p) => {
+              setQuickViewProduct(null);
+              setVariantsModalProduct(p);
+            }}
           />
         </Suspense>
       )}

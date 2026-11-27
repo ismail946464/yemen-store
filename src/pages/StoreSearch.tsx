@@ -5,7 +5,7 @@ import { useAppContext } from '../AppContext';
 import {
   Search, Store, ArrowRight, CheckCircle, MapPin, Star,
   ShieldCheck, X, ArrowUpDown, LayoutGrid, ChevronRight, ChevronLeft,
-  Pill, Building2, Wrench, Utensils, Laptop, Shirt, Car, Tag
+  Pill, Building2, Wrench, Utensils, Laptop, Shirt, Car, Tag, Gavel
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { StoreGridSkeleton } from '../components/Skeletons';
@@ -259,7 +259,7 @@ export default function StoreSearch() {
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 md:w-[440px]">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 md:w-[540px]">
           <div className="relative flex-1">
             <Search className="h-4 w-4 text-[#5C5B57] dark:text-zinc-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
@@ -282,18 +282,28 @@ export default function StoreSearch() {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setVerifiedOnly(v => !v)}
-            className={`min-h-[44px] px-3.5 py-2.5 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap ${
-              verifiedOnly
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
-                : 'bg-white dark:bg-[#131519] border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26]'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>الموثقة فقط</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setVerifiedOnly(v => !v)}
+              className={`flex-1 sm:flex-none min-h-[44px] px-3.5 py-2.5 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap ${
+                verifiedOnly
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                  : 'bg-white dark:bg-[#131519] border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26]'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>الموثقة فقط</span>
+            </button>
+
+            <Link
+              to="/requests"
+              className={`flex-1 sm:flex-none min-h-[44px] px-3.5 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap ${getThemeClasses('bg')} ${getThemeClasses('hover')}`}
+            >
+              <Gavel className="w-4 h-4" />
+              <span>اطلب تسعيرة</span>
+            </Link>
+          </div>
         </div>
       </div>
 

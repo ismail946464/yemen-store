@@ -33,7 +33,7 @@ export default function BottomNav() {
   return (
     <nav
       aria-label="شريط المهام السفلي"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-[999] pointer-events-auto pb-[env(safe-area-inset-bottom,0px)]"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-[999] pointer-events-auto pb-[env(safe-area-inset-bottom,0px)] print:hidden"
       dir="rtl"
     >
       <div className="border-t border-[#E5E2DA] dark:border-[#232730] bg-white/95 dark:bg-[#0A0B0D]/95 backdrop-blur-md">

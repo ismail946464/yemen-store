@@ -23,7 +23,9 @@ export default function HeroBannerAds({ onFallbackScroll, className = '' }: Hero
   const [bannerAds, setBannerAds] = useState<BannerAdItem[]>([]);
   const [loadedAds, setLoadedAds] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
   const hasInitializedRandomStartRef = useRef(false);
+  const touchStartXRef = useRef<number | null>(null);
 
   useEffect(() => {
     const unsub = onSnapshot(
@@ -60,14 +62,14 @@ export default function HeroBannerAds({ onFallbackScroll, className = '' }: Hero
     }
   }, [loadedAds, activeAds.length, currentIndex]);
 
-  // Rotate in order every 30 seconds starting from the random initial ad
+  // Rotate in order every 30 seconds starting from the random initial ad (pauses on hover)
   useEffect(() => {
-    if (activeAds.length <= 1) return;
+    if (activeAds.length <= 1 || isPaused) return;
     const timer = window.setInterval(() => {
       setCurrentIndex((prev) => (prev + 1) % activeAds.length);
     }, BANNER_ROTATION_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [activeAds.length, currentIndex]);
+  }, [activeAds.length, currentIndex, isPaused]);
 
   // Respect Admin global toggle
   if (settings?.showHeroBanner === false) {
@@ -166,6 +168,23 @@ export default function HeroBannerAds({ onFallbackScroll, className = '' }: Hero
   return (
     <section
       onClick={handleAdClick}
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+      onTouchStart={(e) => {
+        touchStartXRef.current = e.touches[0]?.clientX ?? null;
+      }}
+      onTouchEnd={(e) => {
+        if (touchStartXRef.current === null || activeAds.length <= 1) return;
+        const deltaX = (e.changedTouches[0]?.clientX ?? 0) - touchStartXRef.current;
+        touchStartXRef.current = null;
+        if (Math.abs(deltaX) > 45) {
+          if (deltaX > 0) {
+            setCurrentIndex((prev) => (prev + 1) % activeAds.length);
+          } else {
+            setCurrentIndex((prev) => (prev - 1 + activeAds.length) % activeAds.length);
+          }
+        }
+      }}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
@@ -175,7 +194,7 @@ export default function HeroBannerAds({ onFallbackScroll, className = '' }: Hero
         }
       }}
       aria-label={currentAd.title || currentAd.targetStoreName || 'مساحة إعلانية'}
-      className={`w-full rounded-lg overflow-hidden border border-[#E5E2DA] dark:border-[#232730] relative group min-h-[240px] md:min-h-[340px] cursor-pointer select-none ${className}`}
+      className={`w-full rounded-xl overflow-hidden border border-[#E5E2DA] dark:border-[#232730] shadow-xs relative group min-h-[250px] md:min-h-[360px] cursor-pointer select-none ${className}`}
       dir="rtl"
     >
       <img
@@ -254,9 +273,12 @@ export default function HeroBannerAds({ onFallbackScroll, className = '' }: Hero
           </button>
 
           <div
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-black/40 backdrop-blur-xs px-2.5 py-1.5 rounded-lg border border-white/15 z-20"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-black/45 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/15 z-20"
             onClick={(e) => e.stopPropagation()}
           >
+            <span className="text-[10px] font-bold text-white/85 tabular-nums ml-1">
+              {safeIndex + 1}/{activeAds.length}
+            </span>
             {activeAds.map((ad, idx) => (
               <button
                 key={ad.id}
@@ -267,7 +289,7 @@ export default function HeroBannerAds({ onFallbackScroll, className = '' }: Hero
                 }}
                 aria-label={`عرض الإعلان ${idx + 1}: ${ad.title || ad.targetStoreName || ''}`}
                 className={`h-1.5 rounded-full transition-all ${
-                  idx === safeIndex ? 'w-6 bg-white' : 'w-2 bg-white/45 hover:bg-white/75'
+                  idx === safeIndex ? 'w-7 bg-white' : 'w-2 bg-white/45 hover:bg-white/75'
                 }`}
               />
             ))}

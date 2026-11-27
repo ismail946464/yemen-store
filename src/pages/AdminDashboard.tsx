@@ -19,13 +19,17 @@ import {
   Upload, Palette, Wallet, KeyRound, Lock, BookmarkCheck,
   Navigation, Loader2, EyeOff, RefreshCw, Percent, Gift, Truck, Layers, XCircle,
   Calendar, RotateCcw, ChevronRight, ChevronLeft, History, Tag,
-  Building2, Wrench, Pill, Utensils, Car, Laptop, Shirt
+  Building2, Wrench, Pill, Utensils, Car, Laptop, Shirt, Gavel, BellRing,
+  Megaphone, Layout, Type, LayoutGrid, ChevronDown, Ticket, Handshake
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import WalletManagement from '../components/WalletManagement';
+import CouponManager from '../components/CouponManager';
+import PriceOffersInbox from '../components/PriceOffersInbox';
 import StoreAccountsManagement from '../components/StoreAccountsManagement';
+import AdminBuyerRequestsTab from '../components/AdminBuyerRequestsTab';
 import ProductSafetyModal from '../components/ProductSafetyModal';
 import { isProductOfferActive, getProductOfferBadgeText } from '../lib/offerUtils';
 import { ProductVariant, getProductVariants } from '../lib/variantUtils';
@@ -67,6 +71,15 @@ import {
   formatArabicLongDate,
   safeCopyText
 } from '../lib/deviceSafe';
+import { BuyerRequestItem } from '../lib/buyerRequests';
+import { ProductWatcherItem, notifyWatchersOnProductUpdate } from '../lib/priceRadar';
+import { PriceOfferItem } from '../lib/priceOffers';
+import {
+  PLATFORM_THEMES,
+  STORE_LAYOUT_STYLES,
+  STORE_ACCENT_PALETTES,
+  PLATFORM_FONTS
+} from '../lib/storeStyles';
 
 const renderStoreCategoryIcon = (iconOrName?: string, className = 'w-4 h-4 shrink-0') => {
   const s = String(iconOrName || '').toLowerCase();
@@ -104,6 +117,8 @@ interface StoreProfile {
   coordinates?: { lat: number; lng: number } | null;
   googleMapsUrl?: string;
   themeColor?: string;
+  storeStyle?: string;
+  storeAnnouncement?: string;
   lastSeen?: string;
   statsReset?: StatsResetConfig | null;
   storeCategoryIds?: string[];
@@ -114,6 +129,7 @@ type AdminTab =
   | 'products'
   | 'product-review'
   | 'orders'
+  | 'buyer-requests'
   | 'users'
   | 'stores'
   | 'settings'
@@ -278,14 +294,23 @@ export default function AdminDashboard() {
 
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [showMobileAllSections, setShowMobileAllSections] = useState(false);
+  const [profileSubTab, setProfileSubTab] = useState<'identity' | 'location' | 'style'>('identity');
+  const [settingsSubTab, setSettingsSubTab] = useState<'brand' | 'appearance' | 'banners' | 'security'>('brand');
+  const [categoriesSubTab, setCategoriesSubTab] = useState<'stores' | 'products'>('stores');
+  const [walletsSubTab, setWalletsSubTab] = useState<'wallets' | 'coupons'>('wallets');
+  const [ordersSubTab, setOrdersSubTab] = useState<'orders' | 'offers'>('orders');
   const [isSaving, setIsSaving] = useState(false);
 
   const [products, setProducts] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
+  const [priceOffers, setPriceOffers] = useState<PriceOfferItem[]>([]);
+  const [buyerRequests, setBuyerRequests] = useState<BuyerRequestItem[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [storeCategories, setStoreCategories] = useState<StoreCategoryItem[]>([]);
   const [bannerAds, setBannerAds] = useState<BannerAdItem[]>([]);
+  const [productWatchers, setProductWatchers] = useState<ProductWatcherItem[]>([]);
   const [storeProfile, setStoreProfile] = useState<StoreProfile | null>(null);
   const [serverLogs, setServerLogs] = useState<any[]>([]);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
@@ -514,7 +539,7 @@ export default function AdminDashboard() {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
     const validTabs: AdminTab[] = [
-      'overview', 'products', 'product-review', 'orders', 'users', 'stores',
+      'overview', 'products', 'product-review', 'orders', 'buyer-requests', 'users', 'stores',
       'settings', 'categories', 'store-profile', 'wallets', 'server', 'store-accounts'
     ];
     if (tabParam && validTabs.includes(tabParam as AdminTab)) {
@@ -591,6 +616,29 @@ export default function AdminDashboard() {
       }, (err) => console.warn('Orders listener notice:', err.message));
       unsubscribers.push(unsubOrders);
 
+      const brQuery = query(collection(db, 'buyerRequests'), orderBy('updatedAt', 'desc'), limit(60));
+      const unsubBuyerReqs = onSnapshot(brQuery, (snap) => {
+        setBuyerRequests(snap.docs.map(d => ({ id: d.id, ...d.data() } as BuyerRequestItem)));
+      }, (err) => console.warn('BuyerRequests listener notice:', err.message));
+      unsubscribers.push(unsubBuyerReqs);
+
+      let pwQuery: any = collection(db, 'productWatchers');
+      if (isStore && !isAdmin) pwQuery = query(pwQuery, where('storeId', '==', user.uid));
+      const unsubWatchers = onSnapshot(pwQuery, (snap) => {
+        setProductWatchers(snap.docs.map(d => ({ id: d.id, ...d.data() } as ProductWatcherItem)));
+      }, (err) => console.warn('ProductWatchers listener notice:', err.message));
+      unsubscribers.push(unsubWatchers);
+
+      let poQuery: any = collection(db, 'priceOffers');
+      if (isStore && !isAdmin) poQuery = query(poQuery, where('storeId', '==', user.uid));
+      const unsubPriceOffers = onSnapshot(poQuery, (snap) => {
+        const list = snap.docs
+          .map(d => ({ id: d.id, ...d.data() } as PriceOfferItem))
+          .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setPriceOffers(list);
+      }, (err) => console.warn('PriceOffers listener notice:', err.message));
+      unsubscribers.push(unsubPriceOffers);
+
       if (isAdmin) {
         const unsubUsers = onSnapshot(query(collection(db, 'users'), limit(100)), (snap) => {
           setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -656,6 +704,25 @@ export default function AdminDashboard() {
       });
     });
   }, [orders, user, loading]);
+
+  const productWatchersByProdId = useMemo(() => {
+    const map: Record<string, { count: number; minTarget: number | null; restockCount: number }> = {};
+    for (const w of productWatchers) {
+      if (!w.productId) continue;
+      if (!map[w.productId]) {
+        map[w.productId] = { count: 0, minTarget: null, restockCount: 0 };
+      }
+      map[w.productId].count += 1;
+      if (w.watchRestock) map[w.productId].restockCount += 1;
+      if (w.targetPrice && w.targetPrice > 0) {
+        map[w.productId].minTarget =
+          map[w.productId].minTarget === null
+            ? Number(w.targetPrice)
+            : Math.min(map[w.productId].minTarget!, Number(w.targetPrice));
+      }
+    }
+    return map;
+  }, [productWatchers]);
 
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -798,11 +865,26 @@ export default function AdminDashboard() {
       }
 
       if (productForm.id) {
+        const prevProduct = products.find((p) => p.id === productForm.id);
         await updateDoc(doc(db, 'products', productForm.id), data);
         if (!isAdmin && nextStatus === 'queued') {
           toast.success('تم حفظ التعديلات في قائمة انتظار المتجر. يمكنك الآن معاينة كافة التفاصيل وإرساله لمراجعة الإدارة.');
         } else {
           toast.success('تم تحديث المنتج');
+          if (nextStatus === 'active') {
+            const notifiedCount = await notifyWatchersOnProductUpdate({
+              productId: productForm.id,
+              productTitle: String(productForm.title || prevProduct?.title || 'منتج'),
+              storeName: targetStoreName,
+              prevPrice: Number(prevProduct?.price || 0),
+              nextPrice: numericPrice,
+              prevOutOfStock: Boolean(prevProduct && (prevProduct.available === false || prevProduct.stock === 0)),
+              nextOutOfStock: cleanStock === 0,
+            });
+            if (notifiedCount > 0) {
+              toast.success(`تم إرسال تنبيه رادار الأسعار إلى ${notifiedCount} عميل مهتم`);
+            }
+          }
         }
       } else {
         data.createdAt = nowIso;
@@ -1076,6 +1158,9 @@ export default function AdminDashboard() {
         telegram: cleanStr(storeProfile.telegram),
         instagram: cleanStr(storeProfile.instagram),
         tiktok: cleanStr(storeProfile.tiktok),
+        themeColor: cleanStr(storeProfile.themeColor, 'default') || 'default',
+        storeStyle: cleanStr(storeProfile.storeStyle, 'classic') || 'classic',
+        storeAnnouncement: cleanStr(storeProfile.storeAnnouncement),
         seoTitle: cleanStr(storeProfile.seoTitle),
         seoDescription: cleanStr(storeProfile.seoDescription),
         updatedAt: new Date().toISOString()
@@ -1482,60 +1567,98 @@ export default function AdminDashboard() {
   };
 
   const pendingReviewProductsCount = products.filter(p => p.status === 'pending_review').length;
+  const pendingPriceOffersCount = priceOffers.filter(o => o.status === 'pending').length;
 
-  const navItems: { id: AdminTab; label: string; icon: React.ReactNode; count?: number; adminOnly?: boolean }[] = [
-    { id: 'overview', label: 'الإحصائيات', icon: <BarChart3 className="w-4 h-4" /> },
-    { id: 'store-profile', label: 'الملف التجاري', icon: <Store className="w-4 h-4" /> },
-    { id: 'wallets', label: 'المحافظ الإلكترونية', icon: <Wallet className="w-4 h-4" /> },
-    { id: 'products', label: 'المنتجات', icon: <Package className="w-4 h-4" />, count: !isAdmin ? products.filter(p => p.status === 'queued' || p.status === 'rejected').length : undefined },
+  const navItems: {
+    id: AdminTab;
+    label: string;
+    group: 'core' | 'store' | 'admin';
+    icon: React.ReactNode;
+    count?: number;
+    adminOnly?: boolean;
+  }[] = [
+    { id: 'overview', label: 'نظرة عامة', group: 'core', icon: <BarChart3 className="w-4 h-4" /> },
+    { id: 'orders', label: 'الطلبات والتفاوض', group: 'core', icon: <ShoppingCart className="w-4 h-4" />, count: viewedTabs['orders'] ? undefined : (orders.filter(o => o.status === 'pending').length + pendingPriceOffersCount) },
+    { id: 'products', label: 'المنتجات', group: 'core', icon: <Package className="w-4 h-4" />, count: !isAdmin ? products.filter(p => p.status === 'queued' || p.status === 'rejected').length : undefined },
+    { id: 'buyer-requests', label: 'طلبات التسعير', group: 'core', icon: <Gavel className="w-4 h-4" />, count: viewedTabs['buyer-requests'] ? undefined : buyerRequests.filter(r => r.status === 'open').length },
+    { id: 'store-profile', label: 'هوية المتجر', group: 'store', icon: <Store className="w-4 h-4" /> },
+    { id: 'wallets', label: 'المحافظ والكوبونات', group: 'store', icon: <Wallet className="w-4 h-4" /> },
     ...(isAdmin ? [
-      { id: 'product-review' as AdminTab, label: 'مراجعة المنتجات', icon: <ShieldCheck className="w-4 h-4" />, count: pendingReviewProductsCount, adminOnly: true },
-    ] : []),
-    { id: 'orders', label: 'طلبات الشراء', icon: <ShoppingCart className="w-4 h-4" />, count: viewedTabs['orders'] ? undefined : orders.filter(o => o.status === 'pending').length },
-    ...(isAdmin ? [
-      { id: 'store-accounts' as AdminTab, label: 'الحسابات وكلمات المرور', icon: <KeyRound className="w-4 h-4" />, adminOnly: true },
-      { id: 'stores' as AdminTab, label: 'المتاجر والتوثيق', icon: <Shield className="w-4 h-4" />, count: viewedTabs['stores'] ? undefined : allStoresList.length, adminOnly: true },
-      { id: 'users' as AdminTab, label: 'المستخدمون', icon: <Users className="w-4 h-4" />, count: viewedTabs['users'] ? undefined : users.length, adminOnly: true },
-      { id: 'categories' as AdminTab, label: 'التصنيفات', icon: <ListFilter className="w-4 h-4" />, adminOnly: true },
-      { id: 'settings' as AdminTab, label: 'إعدادات المنصة', icon: <SettingsIcon className="w-4 h-4" />, adminOnly: true },
-      { id: 'server' as AdminTab, label: 'إدارة السيرفر', icon: <Server className="w-4 h-4" />, adminOnly: true }
+      { id: 'product-review' as AdminTab, label: 'مراجعة المنتجات', group: 'admin' as const, icon: <ShieldCheck className="w-4 h-4" />, count: pendingReviewProductsCount, adminOnly: true },
+      { id: 'stores' as AdminTab, label: 'المتاجر والتوثيق', group: 'admin' as const, icon: <Shield className="w-4 h-4" />, count: viewedTabs['stores'] ? undefined : allStoresList.length, adminOnly: true },
+      { id: 'categories' as AdminTab, label: 'التصنيفات', group: 'admin' as const, icon: <ListFilter className="w-4 h-4" />, adminOnly: true },
+      { id: 'users' as AdminTab, label: 'المستخدمون', group: 'admin' as const, icon: <Users className="w-4 h-4" />, count: viewedTabs['users'] ? undefined : users.length, adminOnly: true },
+      { id: 'store-accounts' as AdminTab, label: 'الحسابات', group: 'admin' as const, icon: <KeyRound className="w-4 h-4" />, adminOnly: true },
+      { id: 'settings' as AdminTab, label: 'الإعدادات والبانر', group: 'admin' as const, icon: <SettingsIcon className="w-4 h-4" />, adminOnly: true },
+      { id: 'server' as AdminTab, label: 'السيرفر', group: 'admin' as const, icon: <Server className="w-4 h-4" />, adminOnly: true }
     ] : [])
   ];
 
+  const activeNavItem = navItems.find(n => n.id === activeTab) || navItems[0];
+  const mobileQuickTabIds: AdminTab[] = isAdmin
+    ? ['overview', 'orders', 'products', 'product-review', 'settings']
+    : ['overview', 'orders', 'products', 'store-profile', 'wallets'];
+  const mobileQuickTabs = navItems.filter(item => mobileQuickTabIds.includes(item.id));
+
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6" dir="rtl">
-      {/* Mobile Top Tab Rail */}
-      <div className="lg:hidden mb-4 bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] rounded-lg overflow-hidden">
-        <div className="px-4 py-3 border-b border-[#E5E2DA] dark:border-[#232730] flex items-center justify-between bg-[#FAF9F6] dark:bg-[#101216]">
-          <div className="flex items-center gap-2.5">
-            <div className={`w-8 h-8 rounded-md ${settings?.storeLogo ? 'bg-white border border-[#E5E2DA]' : `${getThemeClasses('bg')} text-white`} flex items-center justify-center overflow-hidden`}>
+      {/* Mobile Compact Header + Quick Tabs + Collapsible All-Sections Menu */}
+      <div className="lg:hidden mb-4 bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] rounded-xl overflow-hidden">
+        <div className="px-3.5 py-3 border-b border-[#E5E2DA] dark:border-[#232730] flex items-center justify-between gap-2 bg-[#FAF9F6] dark:bg-[#101216]">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className={`w-8 h-8 rounded-lg ${settings?.storeLogo ? 'bg-white border border-[#E5E2DA]' : `${getThemeClasses('bg')} text-white`} flex items-center justify-center overflow-hidden shrink-0`}>
               {settings?.storeLogo ? (
                 <img src={settings.storeLogo} alt="Logo" className="w-full h-full object-contain p-0.5" />
               ) : (
                 <Shield className="w-4 h-4" />
               )}
             </div>
-            <div>
-              <h2 className="font-display font-bold text-sm text-[#111214] dark:text-[#F4F4F2]">لوحة التحكم</h2>
-              <p className="text-[10px] text-[#5C5B57] dark:text-zinc-400 font-medium">{settings?.storeName || 'إدارة النظام'}</p>
+            <div className="min-w-0">
+              <p className="text-[10px] text-[#5C5B57] dark:text-zinc-400 font-medium truncate">
+                لوحة التحكم · {settings?.storeName || 'إدارة النظام'}
+              </p>
+              <h2 className="font-display font-bold text-sm text-[#111214] dark:text-[#F4F4F2] truncate">
+                {activeNavItem.label}
+              </h2>
             </div>
           </div>
 
-          <button
-            onClick={toggleDarkMode}
-            className="w-10 h-10 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] flex items-center justify-center text-[#111214] dark:text-[#F4F4F2]"
-            aria-label={isDarkMode ? 'الوضع النهاري' : 'الوضع الليلي'}
-          >
-            {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowMobileAllSections(prev => !prev)}
+              className={`min-h-[38px] px-2.5 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition whitespace-nowrap ${
+                showMobileAllSections
+                  ? 'bg-[#111214] text-white border-[#111214] dark:bg-[#F4F4F2] dark:text-[#111214] dark:border-[#F4F4F2]'
+                  : 'bg-white dark:bg-[#131519] border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-[#F4F4F2]'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>الأقسام</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showMobileAllSections ? 'rotate-180' : ''}`} />
+            </button>
+            <button
+              type="button"
+              onClick={toggleDarkMode}
+              className="w-9 h-9 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] flex items-center justify-center text-[#111214] dark:text-[#F4F4F2]"
+              aria-label={isDarkMode ? 'الوضع النهاري' : 'الوضع الليلي'}
+            >
+              {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
 
+        {/* Clean 1-row quick tabs */}
         <div className="flex items-center gap-1 overflow-x-auto no-scrollbar px-2">
-          {navItems.map(item => (
+          {mobileQuickTabs.map(item => (
             <button
               key={item.id}
-              onClick={() => handleTabClick(item.id)}
-              className={`min-h-[44px] px-3 py-2 text-xs font-bold border-b-2 transition flex items-center gap-1.5 shrink-0 ${
+              type="button"
+              onClick={() => {
+                handleTabClick(item.id);
+                setShowMobileAllSections(false);
+              }}
+              className={`min-h-[42px] px-3 py-2 text-xs font-bold border-b-2 transition flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                 activeTab === item.id
                   ? 'border-[#111214] dark:border-[#F4F4F2] text-[#111214] dark:text-[#F4F4F2]'
                   : 'border-transparent text-[#5C5B57] dark:text-zinc-400'
@@ -1551,12 +1674,60 @@ export default function AdminDashboard() {
             </button>
           ))}
         </div>
+
+        {/* Collapsible Grouped All-Sections Drawer on Mobile */}
+        {showMobileAllSections && (
+          <div className="p-3.5 border-t border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] space-y-3.5">
+            {(
+              [
+                { key: 'core', title: 'العمليات اليومية' },
+                { key: 'store', title: 'المتجر والمالية' },
+                ...(isAdmin ? [{ key: 'admin', title: 'إدارة المنصة' }] : [])
+              ] as { key: 'core' | 'store' | 'admin'; title: string }[]
+            ).map(groupMeta => {
+              const groupItems = navItems.filter(n => n.group === groupMeta.key);
+              if (groupItems.length === 0) return null;
+              return (
+                <div key={groupMeta.key} className="space-y-1.5">
+                  <p className="text-[11px] font-bold text-[#5C5B57] dark:text-zinc-400 px-1">{groupMeta.title}</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {groupItems.map(item => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          handleTabClick(item.id);
+                          setShowMobileAllSections(false);
+                        }}
+                        className={`min-h-[40px] px-3 py-2 rounded-lg text-xs font-bold border flex items-center justify-between gap-2 transition ${
+                          activeTab === item.id
+                            ? `${getThemeClasses('bg')} text-white border-transparent`
+                            : 'bg-white dark:bg-[#131519] border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-[#F4F4F2]'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2 min-w-0 truncate">
+                          <span className="shrink-0">{item.icon}</span>
+                          <span className="truncate">{item.label}</span>
+                        </span>
+                        {item.count !== undefined && item.count > 0 && activeTab !== item.id && (
+                          <span className="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[10px] tabular-nums shrink-0">
+                            {item.count}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Desktop 2-Pane Architectural Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6 items-start">
-        {/* Desktop Sidebar */}
-        <aside className="hidden lg:block sticky top-20 bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] rounded-lg overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-[256px_1fr] gap-6 items-start">
+        {/* Desktop Grouped Sidebar */}
+        <aside className="hidden lg:block sticky top-20 bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] rounded-xl overflow-hidden">
           <div className="p-4 border-b border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] flex items-center gap-3">
             <div className={`w-10 h-10 rounded-lg ${settings?.storeLogo ? 'bg-white border border-[#E5E2DA]' : `${getThemeClasses('bg')} text-white`} flex items-center justify-center overflow-hidden shrink-0`}>
               {settings?.storeLogo ? (
@@ -1571,22 +1742,39 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <nav className="p-2.5 space-y-1">
-            {navItems.filter(n => !n.adminOnly).map(item => (
-              <NavItem
-                key={item.id}
-                active={activeTab === item.id}
-                onClick={() => handleTabClick(item.id)}
-                icon={item.icon}
-                label={item.label}
-                count={viewedTabs[item.id] ? undefined : item.count}
-              />
-            ))}
+          <nav className="p-2.5 space-y-4">
+            <div className="space-y-1">
+              <p className="text-[10.5px] font-bold text-[#5C5B57] dark:text-zinc-400 px-3 py-1">العمليات اليومية</p>
+              {navItems.filter(n => n.group === 'core').map(item => (
+                <NavItem
+                  key={item.id}
+                  active={activeTab === item.id}
+                  onClick={() => handleTabClick(item.id)}
+                  icon={item.icon}
+                  label={item.label}
+                  count={viewedTabs[item.id] ? undefined : item.count}
+                />
+              ))}
+            </div>
+
+            <div className="pt-3 border-t border-[#E5E2DA] dark:border-[#232730] space-y-1">
+              <p className="text-[10.5px] font-bold text-[#5C5B57] dark:text-zinc-400 px-3 py-1">المتجر والمالية</p>
+              {navItems.filter(n => n.group === 'store').map(item => (
+                <NavItem
+                  key={item.id}
+                  active={activeTab === item.id}
+                  onClick={() => handleTabClick(item.id)}
+                  icon={item.icon}
+                  label={item.label}
+                  count={viewedTabs[item.id] ? undefined : item.count}
+                />
+              ))}
+            </div>
 
             {isAdmin && (
-              <div className="pt-3 mt-3 border-t border-[#E5E2DA] dark:border-[#232730] space-y-1">
-                <p className="text-[10px] font-bold text-[#5C5B57] dark:text-zinc-400 px-3 py-1">إدارة النظام</p>
-                {navItems.filter(n => n.adminOnly).map(item => (
+              <div className="pt-3 border-t border-[#E5E2DA] dark:border-[#232730] space-y-1">
+                <p className="text-[10.5px] font-bold text-[#5C5B57] dark:text-zinc-400 px-3 py-1">إدارة المنصة</p>
+                {navItems.filter(n => n.group === 'admin').map(item => (
                   <NavItem
                     key={item.id}
                     active={activeTab === item.id}
@@ -1599,24 +1787,25 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            <div className="pt-3 mt-3 border-t border-[#E5E2DA] dark:border-[#232730] space-y-2">
+            <div className="pt-3 border-t border-[#E5E2DA] dark:border-[#232730] flex items-center gap-2">
               <button
+                type="button"
                 onClick={toggleDarkMode}
-                className="w-full min-h-[44px] flex items-center justify-between px-3 py-2 rounded-lg text-xs font-bold bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition"
+                className="flex-1 min-h-[40px] flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition whitespace-nowrap"
               >
-                <span className="flex items-center gap-2.5">
-                  {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
-                  <span>{isDarkMode ? 'الوضع النهاري' : 'الوضع الليلي'}</span>
-                </span>
+                {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
+                <span>{isDarkMode ? 'نهاري' : 'ليلي'}</span>
               </button>
 
               {isAdmin && (
                 <button
+                  type="button"
                   onClick={() => setShowQrModal(true)}
-                  className="w-full min-h-[44px] flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-bold bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition"
+                  className="min-h-[40px] px-3 py-2 rounded-lg text-xs font-bold bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] transition flex items-center justify-center gap-1.5 whitespace-nowrap"
+                  title="رمز QR المتجر"
                 >
                   <QrCode className="w-4 h-4" />
-                  <span>رمز QR المتجر</span>
+                  <span>QR</span>
                 </button>
               )}
             </div>
@@ -1624,7 +1813,32 @@ export default function AdminDashboard() {
         </aside>
 
         {/* Main Content Workspace */}
-        <main className="min-w-0 bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] rounded-lg p-4 sm:p-6 lg:p-8 min-h-[70vh]">
+        <main className="min-w-0 bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] rounded-xl overflow-hidden min-h-[70vh]">
+          {/* Contextual Top Breadcrumb Bar */}
+          <div className="hidden sm:flex items-center justify-between gap-4 px-6 lg:px-8 py-3.5 border-b border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6]/70 dark:bg-[#101216]/70">
+            <div className="flex items-center gap-2 text-xs font-medium text-[#5C5B57] dark:text-zinc-400">
+              <span>لوحة التحكم</span>
+              <span aria-hidden="true">/</span>
+              <span className="font-bold text-[#111214] dark:text-[#F4F4F2] flex items-center gap-1.5">
+                {activeNavItem.icon}
+                <span>{activeNavItem.label}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {currentTargetStoreId && (
+                <Link
+                  to={`/store/${currentTargetStoreId}`}
+                  target="_blank"
+                  className="px-3 py-1.5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#EFEDE6] dark:hover:bg-[#1C1F26] text-xs font-bold text-[#111214] dark:text-[#F4F4F2] transition flex items-center gap-1.5 whitespace-nowrap"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>معاينة المتجر</span>
+                </Link>
+              )}
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-6 lg:p-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -1664,47 +1878,145 @@ export default function AdminDashboard() {
                   ? overviewReport.periodOrders
                   : overviewReport.periodOrders.slice(0, 5);
 
+                const pendingOrdersCount = orders.filter(o => o.status === 'pending').length;
+
                 return (
                 <div className="space-y-6">
-                  {/* Overview Header + Online Badge + Reset Button */}
+                  {/* Overview Clean Header */}
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-5 border-b border-[#E5E2DA] dark:border-[#232730]">
                     <div>
                       <h1 className="font-display text-xl sm:text-2xl font-bold text-[#111214] dark:text-[#F4F4F2]">نظرة عامة</h1>
-                      <p className="text-xs sm:text-sm text-[#5C5B57] dark:text-zinc-400 font-medium mt-0.5">
-                        {overviewReport.periodLabel}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-[#5C5B57] dark:text-zinc-400 font-medium mt-1">
+                        <span>{overviewReport.periodLabel}</span>
+                        <span aria-hidden="true">·</span>
+                        <span className="text-emerald-700 dark:text-emerald-400 font-bold tabular-nums">{realOnlineCount} متصل الآن</span>
+                      </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-xs font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">
-                        <span className="w-2 h-2 bg-emerald-500 rounded-full" />
-                        <span>{realOnlineCount} متصل الآن</span>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setProductForm({ title: '', price: '', description: '', stock: null, category: 'عام', images: [], status: isAdmin ? 'active' : 'queued', variants: [], hasOffer: false, offerType: 'discount', originalPrice: '', discountPercent: '', offerTitle: '', offerExtras: '', offerExpiresAt: '', noDelivery: false, isPreOrderEnabled: true, depositAmount: null, reservationDurationDays: 3 })}
+                        className={`min-h-[40px] px-4 py-2 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover')} text-white text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap`}
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>إضافة منتج</span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => setShowResetStatsModal(true)}
                         disabled={isResettingStats}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-rose-200 dark:border-rose-800/60 bg-rose-50 dark:bg-rose-950/30 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition disabled:opacity-50"
+                        className="min-h-[40px] inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] text-xs font-bold text-[#5C5B57] dark:text-zinc-300 hover:text-rose-600 dark:hover:text-rose-400 transition disabled:opacity-50 whitespace-nowrap"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
-                        <span>تصفير الإحصائيات</span>
+                        <span>تصفير العداد</span>
                       </button>
                     </div>
                   </div>
 
-                  {/* Period Filter Bar (All / Daily / Monthly / Custom Date & Time + Store Filter) */}
-                  <div className="p-3.5 sm:p-4 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] space-y-3">
+                  {/* Quick Shortcuts Bar */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleTabClick('orders')}
+                      className="p-3.5 rounded-xl border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6]/70 dark:bg-[#101216] hover:bg-white dark:hover:bg-[#181B20] text-right transition flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">طلبات الشراء</p>
+                        <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2] tabular-nums mt-0.5">
+                          {pendingOrdersCount > 0 ? `${pendingOrdersCount} بانتظار التنفيذ` : `${orders.length} إجمالي الطلبات`}
+                        </p>
+                      </div>
+                      <ShoppingCart className="w-4 h-4 text-[#5C5B57] dark:text-zinc-400 shrink-0" />
+                    </button>
+
+                    {isAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => handleTabClick('product-review')}
+                        className="p-3.5 rounded-xl border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6]/70 dark:bg-[#101216] hover:bg-white dark:hover:bg-[#181B20] text-right transition flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">مراجعة المنتجات</p>
+                          <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2] tabular-nums mt-0.5">
+                            {pendingReviewProductsCount > 0 ? `${pendingReviewProductsCount} بانتظار القرار` : 'كل المنتجات مراجعة'}
+                          </p>
+                        </div>
+                        <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleTabClick('products')}
+                        className="p-3.5 rounded-xl border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6]/70 dark:bg-[#101216] hover:bg-white dark:hover:bg-[#181B20] text-right transition flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">المنتجات</p>
+                          <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2] tabular-nums mt-0.5">
+                            {products.length} منتج مسجل
+                          </p>
+                        </div>
+                        <Package className="w-4 h-4 text-[#5C5B57] dark:text-zinc-400 shrink-0" />
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleTabClick('store-profile')}
+                      className="p-3.5 rounded-xl border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6]/70 dark:bg-[#101216] hover:bg-white dark:hover:bg-[#181B20] text-right transition flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">هوية المتجر</p>
+                        <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2] truncate mt-0.5">
+                          {storeProfile?.name || 'تعديل الشعار والستايل'}
+                        </p>
+                      </div>
+                      <Store className="w-4 h-4 text-[#5C5B57] dark:text-zinc-400 shrink-0" />
+                    </button>
+
+                    {isAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSettingsSubTab('banners');
+                          handleTabClick('settings');
+                        }}
+                        className="p-3.5 rounded-xl border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6]/70 dark:bg-[#101216] hover:bg-white dark:hover:bg-[#181B20] text-right transition flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">البانر والمظهر</p>
+                          <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2] tabular-nums mt-0.5">
+                            {bannerAds.length}/{MAX_BANNER_ADS} إعلانات نشطة
+                          </p>
+                        </div>
+                        <Palette className="w-4 h-4 text-[#5C5B57] dark:text-zinc-400 shrink-0" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleTabClick('wallets')}
+                        className="p-3.5 rounded-xl border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6]/70 dark:bg-[#101216] hover:bg-white dark:hover:bg-[#181B20] text-right transition flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400">المحافظ المالية</p>
+                          <p className="text-sm font-bold text-[#111214] dark:text-[#F4F4F2] mt-0.5">
+                            حسابات التحويل والدفع
+                          </p>
+                        </div>
+                        <Wallet className="w-4 h-4 text-[#5C5B57] dark:text-zinc-400 shrink-0" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Clean Segmented Period Filter Bar */}
+                  <div className="p-3 sm:p-3.5 rounded-xl border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6]/70 dark:bg-[#101216] space-y-3">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#5C5B57] dark:text-zinc-400 ml-1">
-                          <Calendar className="w-3.5 h-3.5" />
-                          <span>نطاق التقرير:</span>
-                        </span>
+                      <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] self-start overflow-x-auto max-w-full">
                         {(
                           [
                             { id: 'all', label: 'الكل' },
                             { id: 'daily', label: 'يومي' },
                             { id: 'monthly', label: 'شهري' },
-                            { id: 'custom', label: 'تحديد وقت محدد' }
+                            { id: 'custom', label: 'فترة مخصصة' }
                           ] as { id: ReportPeriodMode; label: string }[]
                         ).map(tab => (
                           <button
@@ -1714,10 +2026,10 @@ export default function AdminDashboard() {
                               setReportPeriodMode(tab.id);
                               setShowAllPeriodOrders(false);
                             }}
-                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition border ${
+                            className={`px-3.5 py-1.5 rounded-md text-xs font-bold transition whitespace-nowrap ${
                               reportPeriodMode === tab.id
-                                ? 'bg-[#111214] text-white border-[#111214] dark:bg-[#F4F4F2] dark:text-[#111214] dark:border-[#F4F4F2]'
-                                : 'bg-white dark:bg-[#131519] text-[#5C5B57] dark:text-zinc-300 border-[#E5E2DA] dark:border-[#232730] hover:border-[#111214] dark:hover:border-zinc-500'
+                                ? 'bg-[#111214] text-white dark:bg-[#F4F4F2] dark:text-[#111214]'
+                                : 'text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-[#F4F4F2]'
                             }`}
                           >
                             {tab.label}
@@ -2175,6 +2487,30 @@ export default function AdminDashboard() {
                     </button>
                   </div>
 
+                  {/* Sub-Tabs for Store Profile */}
+                  <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] overflow-x-auto max-w-full">
+                    {[
+                      { id: 'identity', label: 'الهوية والتوثيق', icon: <Store className="w-3.5 h-3.5" /> },
+                      { id: 'location', label: 'العنوان والتواصل', icon: <MapPin className="w-3.5 h-3.5" /> },
+                      { id: 'style', label: 'الستايل والتصنيف', icon: <Palette className="w-3.5 h-3.5" /> }
+                    ].map(tab => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setProfileSubTab(tab.id as any)}
+                        className={`px-3.5 py-2 rounded-md text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                          profileSubTab === tab.id
+                            ? 'bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] shadow-xs border border-[#E5E2DA]/80 dark:border-[#232730]'
+                            : 'text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-[#F4F4F2]'
+                        }`}
+                      >
+                        {tab.icon}
+                        <span>{tab.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {profileSubTab === 'identity' && (
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
                     <div className="md:col-span-4 space-y-6">
                       <ImageEditor
@@ -2315,7 +2651,12 @@ export default function AdminDashboard() {
                         onChange={(v: string) => setStoreProfile({ ...storeProfile, description: v })}
                         placeholder="اكتب نبذة عن متجرك ومنتجاتك..."
                       />
+                    </div>
+                  </div>
+                  )}
 
+                  {profileSubTab === 'location' && (
+                  <div className="space-y-6">
                       {/* Store Real-World Physical Address & GPS */}
                       <div className="p-5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] space-y-4">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E5E2DA] dark:border-[#232730]">
@@ -2465,6 +2806,101 @@ export default function AdminDashboard() {
                           <AdminInput label="تيك توك" value={storeProfile.tiktok || ''} onChange={(v: string) => setStoreProfile({ ...storeProfile, tiktok: v })} icon={<Globe className="w-4 h-4" />} placeholder="username" />
                         </div>
                       </div>
+                  </div>
+                  )}
+
+                  {profileSubTab === 'style' && (
+                  <div className="space-y-6">
+                      {/* Storefront Visual Style & Custom Accent */}
+                      <div className="space-y-5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <h3 className="font-display text-sm font-bold text-[#111214] dark:text-[#F4F4F2] flex items-center gap-2">
+                              <Layout className="w-4 h-4" />
+                              <span>ستايل وتصميم صفحة المتجر</span>
+                            </h3>
+                            <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400 mt-0.5">
+                              اختر شكل عرض صفحة متجرك، اللون المميز لأزرارك وأسعارك، وإعلان الترحيب للزوار
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {STORE_LAYOUT_STYLES.map((styleOption) => {
+                            const selected = (storeProfile.storeStyle || 'classic') === styleOption.id;
+                            return (
+                              <button
+                                key={styleOption.id}
+                                type="button"
+                                onClick={() => setStoreProfile({ ...storeProfile, storeStyle: styleOption.id })}
+                                className={`p-3.5 rounded-lg border text-right transition flex flex-col justify-between gap-1.5 ${
+                                  selected
+                                    ? 'border-[#111214] dark:border-[#F4F4F2] bg-[#FAF9F6] dark:bg-[#101216]'
+                                    : 'border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] hover:bg-[#FAF9F6] dark:hover:bg-[#101216]'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2 w-full">
+                                  <span className="font-bold text-xs text-[#111214] dark:text-[#F4F4F2]">
+                                    {styleOption.name}
+                                  </span>
+                                  {selected && <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />}
+                                </div>
+                                <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400 leading-relaxed">
+                                  {styleOption.desc}
+                                </p>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div className="space-y-2.5">
+                          <label className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2] flex items-center gap-1.5">
+                            <Palette className="w-3.5 h-3.5" />
+                            <span>اللون المميز لصفحة المتجر</span>
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            {STORE_ACCENT_PALETTES.map((accent) => {
+                              const selected = (storeProfile.themeColor || 'default') === accent.id;
+                              return (
+                                <button
+                                  key={accent.id}
+                                  type="button"
+                                  onClick={() => setStoreProfile({ ...storeProfile, themeColor: accent.id })}
+                                  className={`min-h-[38px] px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-2 transition ${
+                                    selected
+                                      ? 'border-[#111214] dark:border-[#F4F4F2] bg-[#111214] text-white dark:bg-[#F4F4F2] dark:text-[#111214]'
+                                      : 'border-[#E5E2DA] dark:border-[#232730] bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] hover:bg-[#FAF9F6] dark:hover:bg-[#1C1F26]'
+                                  }`}
+                                >
+                                  <span
+                                    className="w-3.5 h-3.5 rounded-full shrink-0 border border-black/15 dark:border-white/20"
+                                    style={{ backgroundColor: accent.swatch }}
+                                  />
+                                  <span className="whitespace-nowrap">{accent.name}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="text-xs font-bold text-[#111214] dark:text-[#F4F4F2] flex items-center gap-1.5">
+                              <Megaphone className="w-3.5 h-3.5" />
+                              <span>شريط إعلان المتجر للزوار (اختياري)</span>
+                            </label>
+                            <span className="text-[11px] text-[#5C5B57] dark:text-zinc-400">يظهر أعلى صفحة متجرك</span>
+                          </div>
+                          <input
+                            type="text"
+                            maxLength={250}
+                            value={storeProfile.storeAnnouncement || ''}
+                            onChange={(e) => setStoreProfile({ ...storeProfile, storeAnnouncement: e.target.value })}
+                            placeholder="مثال: توصيل مجاني داخل صنعاء للطلبات فوق 15,000 ر.ي هذا الأسبوع"
+                            className="w-full min-h-[44px] bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] rounded-lg px-3.5 py-2.5 font-medium text-sm text-[#111214] dark:text-[#F4F4F2] placeholder:text-[#5C5B57]/60 dark:placeholder:text-zinc-500 focus:bg-white dark:focus:bg-[#131519] focus:border-[#111214] dark:focus:border-zinc-400 outline-none transition"
+                          />
+                        </div>
+                      </div>
 
                       {isAdmin && (
                         <div className="pt-5 border-t border-[#E5E2DA] dark:border-[#232730] space-y-3">
@@ -2520,28 +2956,65 @@ export default function AdminDashboard() {
                           )}
                         </div>
                       )}
-                    </div>
                   </div>
+                  )}
                 </div>
               )}
 
-              {/* TAB: WALLETS */}
+              {/* TAB: WALLETS & COUPONS */}
               {activeTab === 'wallets' && (
                 <div className="space-y-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#E5E2DA] dark:border-[#232730]">
+                    <div>
+                      <h2 className="font-display text-xl sm:text-2xl font-bold text-[#111214] dark:text-[#F4F4F2]">
+                        المحافظ المالية وكوبونات الخصم
+                      </h2>
+                      <p className="text-xs sm:text-sm text-[#5C5B57] dark:text-zinc-400 font-medium mt-0.5">
+                        إدارة حسابات الدفع الإلكتروني وإنشاء أكواد الخصم الترويجية لعملائك
+                      </p>
+                    </div>
+                    <div className="flex items-center p-1 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730]">
+                      <button
+                        type="button"
+                        onClick={() => setWalletsSubTab('wallets')}
+                        className={`min-h-[36px] px-3.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-colors ${
+                          walletsSubTab === 'wallets'
+                            ? `${getThemeClasses('bg')}`
+                            : 'text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white'
+                        }`}
+                      >
+                        <Wallet className="w-3.5 h-3.5" />
+                        <span>المحافظ الإلكترونية</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWalletsSubTab('coupons')}
+                        className={`min-h-[36px] px-3.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-colors ${
+                          walletsSubTab === 'coupons'
+                            ? `${getThemeClasses('bg')}`
+                            : 'text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white'
+                        }`}
+                      >
+                        <Ticket className="w-3.5 h-3.5" />
+                        <span>كوبونات الخصم</span>
+                      </button>
+                    </div>
+                  </div>
+
                   {isAdmin && (
                     <div className="p-4 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] flex flex-col sm:flex-row items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                          <Wallet className="w-4 h-4" />
+                          {walletsSubTab === 'coupons' ? <Ticket className="w-4 h-4" /> : <Wallet className="w-4 h-4" />}
                         </div>
                         <div>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                            إدارة حسابات الدفع والتحويل
+                            {walletsSubTab === 'coupons' ? 'إدارة كوبونات الخصم' : 'إدارة حسابات الدفع والتحويل'}
                           </span>
                           <p className="text-sm font-bold mt-1 text-[#111214] dark:text-[#F4F4F2]">
                             {currentTargetStoreId === user?.uid
-                              ? 'إدارة محافظ: متجرك الشخصي / حساب المنصة'
-                              : `إدارة محافظ متجر: ${storeProfile?.name || ('متجر رقم ' + currentTargetStoreId.slice(0, 8))}`}
+                              ? 'إدارة: متجرك الشخصي / حساب المنصة'
+                              : `إدارة متجر: ${storeProfile?.name || ('متجر رقم ' + currentTargetStoreId.slice(0, 8))}`}
                           </p>
                         </div>
                       </div>
@@ -2556,7 +3029,16 @@ export default function AdminDashboard() {
                       )}
                     </div>
                   )}
-                  <WalletManagement merchantId={currentTargetStoreId || 'global'} />
+
+                  {walletsSubTab === 'wallets' ? (
+                    <WalletManagement merchantId={currentTargetStoreId || 'global'} />
+                  ) : (
+                    <CouponManager
+                      storeId={currentTargetStoreId || 'global'}
+                      storeName={storeProfile?.name || userData?.name || settings?.storeName || 'المتجر'}
+                      isMasterView={isAdmin && currentTargetStoreId === user?.uid}
+                    />
+                  )}
                 </div>
               )}
 
@@ -2706,6 +3188,17 @@ export default function AdminDashboard() {
                                       <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400 tabular-nums">
                                         {product.createdAt ? (formatArabicDate(product.createdAt) || '—') : '—'}
                                       </p>
+                                      {(productWatchersByProdId[product.id]?.count || 0) > 0 && (
+                                        <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 mt-0.5 flex items-center gap-1 tabular-nums">
+                                          <BellRing className="w-3 h-3 shrink-0" />
+                                          <span>
+                                            رادار العملاء: {productWatchersByProdId[product.id].count} مهتم
+                                            {productWatchersByProdId[product.id].minTarget
+                                              ? ` · أقل سعر مطلوب ${productWatchersByProdId[product.id].minTarget!.toLocaleString()} ر.ي`
+                                              : ''}
+                                          </span>
+                                        </p>
+                                      )}
                                       {product.status === 'rejected' && product.rejectionReason && (
                                         <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400 mt-0.5">
                                           سبب الرفض: {product.rejectionReason}
@@ -2969,7 +3462,20 @@ export default function AdminDashboard() {
                                     onClick={async () => {
                                       try {
                                         await approveAndPublishProductAction(product, user?.uid || 'admin');
-                                        toast.success(`تم اعتماد ونشر "${product.title}" للعامة`);
+                                        const notifiedCount = await notifyWatchersOnProductUpdate({
+                                          productId: product.id,
+                                          productTitle: String(product.title || 'منتج'),
+                                          storeName: String(product.ownerName || storeProfile?.name || 'المتجر'),
+                                          prevPrice: Number(product.price || 0),
+                                          nextPrice: Number(product.price || 0),
+                                          prevOutOfStock: product.available === false || product.stock === 0,
+                                          nextOutOfStock: product.available === false || product.stock === 0,
+                                        });
+                                        toast.success(
+                                          notifiedCount > 0
+                                            ? `تم اعتماد ونشر "${product.title}" وإرسال تنبيه رادار الأسعار إلى ${notifiedCount} عميل`
+                                            : `تم اعتماد ونشر "${product.title}" للعامة`
+                                        );
                                       } catch (err: any) {
                                         toast.error(err?.message || 'فشل الاعتماد');
                                       }
@@ -2990,16 +3496,54 @@ export default function AdminDashboard() {
                 );
               })()}
 
-              {/* TAB: ORDERS */}
+              {/* TAB: ORDERS & NEGOTIATIONS */}
               {activeTab === 'orders' && (
                 <div className="space-y-6">
-                  <div className="pb-5 border-b border-[#E5E2DA] dark:border-[#232730]">
-                    <h2 className="font-display text-xl sm:text-2xl font-bold text-[#111214] dark:text-[#F4F4F2]">طلبات الشراء</h2>
-                    <p className="text-xs sm:text-sm text-[#5C5B57] dark:text-zinc-400 font-medium mt-0.5">
-                      متابعة طلبات العملاء وتحديث حالات التسليم
-                    </p>
+                  <div className="pb-5 border-b border-[#E5E2DA] dark:border-[#232730] flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="font-display text-xl sm:text-2xl font-bold text-[#111214] dark:text-[#F4F4F2]">
+                        الطلبات وعروض التفاوض
+                      </h2>
+                      <p className="text-xs sm:text-sm text-[#5C5B57] dark:text-zinc-400 font-medium mt-0.5">
+                        متابعة طلبات العملاء وتحديث حالات التسليم والرد على عروض الأسعار المقترحة
+                      </p>
+                    </div>
+                    <div className="flex items-center p-1 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730]">
+                      <button
+                        type="button"
+                        onClick={() => setOrdersSubTab('orders')}
+                        className={`min-h-[36px] px-3.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-colors tabular-nums ${
+                          ordersSubTab === 'orders'
+                            ? `${getThemeClasses('bg')}`
+                            : 'text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white'
+                        }`}
+                      >
+                        <ShoppingCart className="w-3.5 h-3.5" />
+                        <span>الطلبات ({orders.length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOrdersSubTab('offers')}
+                        className={`min-h-[36px] px-3.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-colors tabular-nums ${
+                          ordersSubTab === 'offers'
+                            ? `${getThemeClasses('bg')}`
+                            : 'text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-white'
+                        }`}
+                      >
+                        <Handshake className="w-3.5 h-3.5" />
+                        <span>عروض التفاوض ({priceOffers.length})</span>
+                        {pendingPriceOffersCount > 0 && ordersSubTab !== 'offers' && (
+                          <span className="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[10px]">
+                            {pendingPriceOffersCount}
+                          </span>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
+                  {ordersSubTab === 'offers' ? (
+                    <PriceOffersInbox offers={priceOffers} />
+                  ) : (
                   <div className="border border-[#E5E2DA] dark:border-[#232730] rounded-lg overflow-hidden">
                     <div className="overflow-x-auto">
                       <table className="w-full text-right text-xs">
@@ -3096,6 +3640,7 @@ export default function AdminDashboard() {
                       </table>
                     </div>
                   </div>
+                  )}
                 </div>
               )}
 
@@ -3484,8 +4029,32 @@ export default function AdminDashboard() {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-5">
+                  {/* Sub-Tabs for Settings */}
+                  <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730] overflow-x-auto max-w-full">
+                    {[
+                      { id: 'brand', label: 'الهوية والشعار', icon: <Store className="w-3.5 h-3.5" /> },
+                      { id: 'appearance', label: 'المظهر والخطوط', icon: <Palette className="w-3.5 h-3.5" /> },
+                      { id: 'banners', label: 'المساحة الإعلانية', icon: <ImageIcon className="w-3.5 h-3.5" /> },
+                      { id: 'security', label: 'الأمان والربط الذكي', icon: <KeyRound className="w-3.5 h-3.5" /> }
+                    ].map(tab => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setSettingsSubTab(tab.id as any)}
+                        className={`px-3.5 py-2 rounded-md text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                          settingsSubTab === tab.id
+                            ? 'bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] shadow-xs border border-[#E5E2DA]/80 dark:border-[#232730]'
+                            : 'text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-[#F4F4F2]'
+                        }`}
+                      >
+                        {tab.icon}
+                        <span>{tab.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {settingsSubTab === 'brand' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <AdminInput
                         label="اسم المنصة"
                         value={localSettings.storeName || ''}
@@ -3503,8 +4072,19 @@ export default function AdminDashboard() {
                         value={localSettings.storeHandle || ''}
                         onChange={(v: any) => setLocalSettings({ ...localSettings, storeHandle: v })}
                       />
+                      <AdminInput
+                        label="شريط الإعلان العلوي للمنصة (اختياري)"
+                        value={localSettings.bannerMessage || ''}
+                        onChange={(v: any) => setLocalSettings({ ...localSettings, bannerMessage: v })}
+                        icon={<Megaphone className="w-4 h-4" />}
+                        placeholder="مثال: عروض نهاية الأسبوع متاحة الآن في جميع المتاجر الموثقة"
+                        extra="يظهر كشريط أنيق أعلى جميع الصفحات"
+                      />
+                    </div>
+                  )}
 
-                      {/* AI Assistant Configuration Card */}
+                  {/* AI Assistant Configuration Card */}
+                  {settingsSubTab === 'security' && (
                       <div className="p-5 rounded-lg border border-[#E5E2DA] dark:border-[#232730] bg-[#FAF9F6] dark:bg-[#101216] space-y-4">
                         <div className="flex items-start justify-between gap-2">
                           <div>
@@ -3553,58 +4133,89 @@ export default function AdminDashboard() {
                           </a>
                         </div>
                       </div>
-                    </div>
+                  )}
 
-                    {/* Theme & Appearance Box */}
+                  {settingsSubTab === 'appearance' && (
                     <div className="space-y-5 bg-[#FAF9F6] dark:bg-[#101216] p-5 rounded-lg border border-[#E5E2DA] dark:border-[#232730]">
                       <div className="flex items-center justify-between gap-2">
                         <div>
                           <h4 className="font-display text-sm font-bold text-[#111214] dark:text-[#F4F4F2]">
-                            ستايل ومظهر المنصة العام
+                            ستايل ومظهر المنصة العام ({PLATFORM_THEMES.length} ستايلات)
                           </h4>
                           <p className="text-xs text-[#5C5B57] dark:text-zinc-400 mt-0.5">
                             اختر الستايل المعتمد للأزرار والبطاقات والترويسة
                           </p>
                         </div>
-                        <span className="text-[11px] font-bold px-2.5 py-1 rounded-md bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] border border-[#E5E2DA] dark:border-[#232730]">
-                          {localSettings.storeTheme === 'blue' ? 'أزرق ملكي' :
-                           localSettings.storeTheme === 'red' ? 'أحمر ياقوتي' :
-                           localSettings.storeTheme === 'black' ? 'أسود فخم' :
-                           localSettings.storeTheme === 'green' ? 'أخضر زمردي' : 'أبيض ناصع'}
+                        <span className="text-[11px] font-bold px-2.5 py-1 rounded-md bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] border border-[#E5E2DA] dark:border-[#232730] whitespace-nowrap">
+                          {PLATFORM_THEMES.find((t) => t.id === (localSettings.storeTheme || 'white'))?.shortName || 'حجري'}
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {[
-                          { id: 'white', name: 'أبيض ناصع (الأساسي)', desc: 'نقي مع تباين أسود واضح', swatch: 'bg-white border-2 border-[#111214]' },
-                          { id: 'green', name: 'أخضر زمردي', desc: 'أخضر يمني متوازن', swatch: 'bg-emerald-600' },
-                          { id: 'blue', name: 'أزرق ملكي', desc: 'أزرق بحري احترافي', swatch: 'bg-blue-600' },
-                          { id: 'red', name: 'أحمر ياقوتي', desc: 'أحمر دافئ مميز', swatch: 'bg-rose-600' },
-                          { id: 'black', name: 'أسود فخم', desc: 'داكن متكامل المظهر', swatch: 'bg-zinc-950 border border-zinc-700' }
-                        ].map((themeItem) => {
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        {PLATFORM_THEMES.map((themeItem) => {
                           const isSelected = (localSettings.storeTheme || 'white') === themeItem.id;
                           return (
                             <button
                               key={themeItem.id}
                               type="button"
                               onClick={() => setLocalSettings({ ...localSettings, storeTheme: themeItem.id })}
-                              className={`p-3.5 rounded-lg border text-right transition flex flex-col justify-between ${
+                              className={`p-3 rounded-lg border text-right transition flex flex-col justify-between ${
                                 isSelected
                                   ? 'border-[#111214] dark:border-[#F4F4F2] bg-white dark:bg-[#131519]'
                                   : 'border-[#E5E2DA] dark:border-[#232730] bg-white/70 dark:bg-[#131519]/70 hover:bg-white dark:hover:bg-[#131519]'
                               }`}
                             >
-                              <div className="flex items-center justify-between w-full mb-2">
-                                <div className="flex items-center gap-2">
-                                  <span className={`w-4 h-4 rounded-full shrink-0 ${themeItem.swatch}`} />
-                                  <span className="font-bold text-xs text-[#111214] dark:text-[#F4F4F2]">{themeItem.name}</span>
+                              <div className="flex items-center justify-between w-full mb-1.5 gap-1">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className={`w-3.5 h-3.5 rounded-full shrink-0 ${themeItem.swatchClass}`} />
+                                  <span className="font-bold text-xs text-[#111214] dark:text-[#F4F4F2] truncate">{themeItem.name}</span>
                                 </div>
-                                {isSelected && <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />}
+                                {isSelected && <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />}
                               </div>
-                              <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400">{themeItem.desc}</p>
+                              <p className="text-[11px] text-[#5C5B57] dark:text-zinc-400 leading-snug">{themeItem.desc}</p>
                             </button>
                           );
                         })}
+                      </div>
+
+                      {/* Platform Typography / Font Selector */}
+                      <div className="pt-4 border-t border-[#E5E2DA] dark:border-[#232730] space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <h4 className="font-display text-xs font-bold text-[#111214] dark:text-[#F4F4F2] flex items-center gap-1.5">
+                            <Type className="w-3.5 h-3.5" />
+                            <span>خط المنصة والهوية</span>
+                          </h4>
+                          <span className="text-[11px] font-bold text-[#5C5B57] dark:text-zinc-400">
+                            {PLATFORM_FONTS.find((f) => f.id === (localSettings.storeFont || 'tajawal'))?.name || 'تجوال'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {PLATFORM_FONTS.map((fontOption) => {
+                            const selected = (localSettings.storeFont || 'tajawal') === fontOption.id;
+                            return (
+                              <button
+                                key={fontOption.id}
+                                type="button"
+                                onClick={() => setLocalSettings({ ...localSettings, storeFont: fontOption.id })}
+                                className={`p-3 rounded-lg border text-right transition flex items-start justify-between gap-2 ${
+                                  selected
+                                    ? 'border-[#111214] dark:border-[#F4F4F2] bg-white dark:bg-[#131519]'
+                                    : 'border-[#E5E2DA] dark:border-[#232730] bg-white/70 dark:bg-[#131519]/70 hover:bg-white dark:hover:bg-[#131519]'
+                                }`}
+                              >
+                                <div className="min-w-0">
+                                  <span className={`block text-xs font-bold text-[#111214] dark:text-[#F4F4F2] ${fontOption.className}`}>
+                                    {fontOption.name}
+                                  </span>
+                                  <span className="block text-[10.5px] text-[#5C5B57] dark:text-zinc-400 mt-0.5">
+                                    {fontOption.desc}
+                                  </span>
+                                </div>
+                                {selected && <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       <div className="pt-3 border-t border-[#E5E2DA] dark:border-[#232730]">
@@ -3628,9 +4239,9 @@ export default function AdminDashboard() {
                         </label>
                       </div>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Admin Account Security / Change Password Card */}
+                  {settingsSubTab === 'security' && (
                   <div className="bg-[#FAF9F6] dark:bg-[#101216] p-5 sm:p-6 rounded-lg border border-[#E5E2DA] dark:border-[#232730] space-y-5">
                     <div className="flex flex-wrap items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
@@ -3722,9 +4333,10 @@ export default function AdminDashboard() {
                       </div>
                     </form>
                   </div>
+                  )}
 
-                  {/* Admin-Only 5-Slot Banner Advertising Space */}
-                  <div className="pt-6 border-t border-[#E5E2DA] dark:border-[#232730] space-y-5">
+                  {settingsSubTab === 'banners' && (
+                  <div className="space-y-5">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
@@ -3908,8 +4520,9 @@ export default function AdminDashboard() {
                       </div>
                     )}
                   </div>
+                  )}
 
-                  {/* Site Icon & Primary Logo Customization */}
+                  {settingsSubTab === 'brand' && (
                   <div className="pt-6 border-t border-[#E5E2DA] dark:border-[#232730] space-y-6">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
@@ -4217,13 +4830,36 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   </div>
+                  )}
                 </div>
               )}
 
               {/* TAB: CATEGORIES */}
               {activeTab === 'categories' && isAdmin && (
-                <div className="space-y-8">
+                <div className="space-y-6">
+                  <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-[#FAF9F6] dark:bg-[#101216] border border-[#E5E2DA] dark:border-[#232730]">
+                    {[
+                      { id: 'stores', label: `قوائم المتاجر (${storeCategories.length})`, icon: <Store className="w-3.5 h-3.5" /> },
+                      { id: 'products', label: `أقسام المنتجات (${categories.length})`, icon: <ListFilter className="w-3.5 h-3.5" /> }
+                    ].map(tab => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setCategoriesSubTab(tab.id as any)}
+                        className={`px-3.5 py-2 rounded-md text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                          categoriesSubTab === tab.id
+                            ? 'bg-white dark:bg-[#131519] text-[#111214] dark:text-[#F4F4F2] shadow-xs border border-[#E5E2DA]/80 dark:border-[#232730]'
+                            : 'text-[#5C5B57] dark:text-zinc-400 hover:text-[#111214] dark:hover:text-[#F4F4F2]'
+                        }`}
+                      >
+                        {tab.icon}
+                        <span>{tab.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
                   {/* SECTION 1: Store Categories (Pharmacies, Malls, Shops, Mechanics...) */}
+                  {categoriesSubTab === 'stores' && (
                   <div className="space-y-5">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E5E2DA] dark:border-[#232730]">
                       <div>
@@ -4342,9 +4978,11 @@ export default function AdminDashboard() {
                       </div>
                     )}
                   </div>
+                  )}
 
                   {/* SECTION 2: Product Categories */}
-                  <div className="space-y-5 pt-4 border-t border-[#E5E2DA] dark:border-[#232730]">
+                  {categoriesSubTab === 'products' && (
+                  <div className="space-y-5">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E5E2DA] dark:border-[#232730]">
                       <div>
                         <h2 className="font-display text-xl sm:text-2xl font-bold text-[#111214] dark:text-[#F4F4F2]">أقسام المنتجات</h2>
@@ -4434,6 +5072,7 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   </div>
+                  )}
                 </div>
               )}
 
@@ -4562,12 +5201,26 @@ export default function AdminDashboard() {
                 </div>
               )}
 
+              {/* TAB: BUYER REQUESTS (REVERSE MARKETPLACE) */}
+              {activeTab === 'buyer-requests' && (
+                <AdminBuyerRequestsTab
+                  buyerRequests={buyerRequests}
+                  currentStoreId={currentTargetStoreId || user?.uid || ''}
+                  currentStoreName={storeProfile?.name || userData?.name || 'متجر'}
+                  storeProfile={storeProfile}
+                  storeProducts={products}
+                  isAdmin={isAdmin}
+                  getThemeClasses={getThemeClasses}
+                />
+              )}
+
               {/* TAB: STORE ACCOUNTS */}
               {activeTab === 'store-accounts' && isAdmin && (
                 <StoreAccountsManagement />
               )}
             </motion.div>
           </AnimatePresence>
+          </div>
         </main>
       </div>
 
@@ -6159,7 +6812,20 @@ export default function AdminDashboard() {
           onApproveAndPublish={async (prod) => {
             try {
               await approveAndPublishProductAction(prod, user?.uid || 'admin');
-              toast.success(`تم قبول ونشر «${prod.title}» للعامة بنجاح`);
+              const notifiedCount = await notifyWatchersOnProductUpdate({
+                productId: prod.id,
+                productTitle: String(prod.title || 'منتج'),
+                storeName: String(prod.ownerName || storeProfile?.name || 'المتجر'),
+                prevPrice: Number(prod.price || 0),
+                nextPrice: Number(prod.price || 0),
+                prevOutOfStock: prod.available === false || prod.stock === 0,
+                nextOutOfStock: prod.available === false || prod.stock === 0,
+              });
+              toast.success(
+                notifiedCount > 0
+                  ? `تم قبول ونشر «${prod.title}» وتنبيه ${notifiedCount} عميل عبر الرادار`
+                  : `تم قبول ونشر «${prod.title}» للعامة بنجاح`
+              );
               setInspectingProduct(null);
             } catch (err: any) {
               toast.error(err?.message || 'فشل اعتماد المنتج');
@@ -6276,21 +6942,17 @@ const NavItem: React.FC<{ active: boolean; onClick: () => void; icon: React.Reac
 
 function StatCard({ label, value, icon, trend }: { label: string; value: any; icon: React.ReactNode; trend?: string }) {
   return (
-    <div className="p-4 sm:p-5 space-y-2">
+    <div className="p-4 sm:p-5 space-y-1.5">
       <div className="flex items-center justify-between text-[#5C5B57] dark:text-zinc-400">
         <span className="text-[11px] font-bold">{label}</span>
-        <span className="w-8 h-8 rounded-md bg-white dark:bg-[#131519] border border-[#E5E2DA] dark:border-[#232730] flex items-center justify-center shrink-0">
-          {icon}
-        </span>
+        <span className="opacity-80 shrink-0">{icon}</span>
       </div>
-      <div className="flex items-baseline gap-2 flex-wrap">
-        <h3 className="text-xl sm:text-2xl font-bold text-[#111214] dark:text-[#F4F4F2] tabular-nums">{value}</h3>
-        {trend && (
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-            {trend}
-          </span>
-        )}
-      </div>
+      <h3 className="text-xl sm:text-2xl font-bold text-[#111214] dark:text-[#F4F4F2] tabular-nums tracking-tight">{value}</h3>
+      {trend && (
+        <p className="text-[11px] font-medium text-[#5C5B57] dark:text-zinc-400 tabular-nums">
+          {trend}
+        </p>
+      )}
     </div>
   );
 }
